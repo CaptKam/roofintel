@@ -21,6 +21,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/dcad-agent.ts` - DCAD ArcGIS REST API property fetcher (automated, no CSV needed)
 - `server/hail-correlator.ts` - Proximity-based hail-to-lead matching engine
 - `server/property-importer.ts` - County appraisal district CSV property importer (manual fallback)
+- `server/contact-enrichment.ts` - TX Comptroller API contact enrichment agent (officers, registered agents, SOS file numbers)
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
 - `shared/schema.ts` - Drizzle schema definitions and Zod validation
 
@@ -31,7 +32,8 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **Map View**: Interactive Leaflet map with color-coded markers by lead score, popup detail cards
 - **Hail Events**: Grid of tracked NOAA storm events with severity badges, event count display
 - **Export**: CSV export with configurable filters
-- **Data Management**: Import controls for NOAA hail data, property CSV upload, background job monitoring, import history
+- **Data Management**: Import controls for NOAA hail data, property CSV upload, contact enrichment, background job monitoring, import history
+- **Contact Enrichment**: TX Comptroller API-based owner lookup for LLC/Corp entities - finds registered agents, officers/directors, SOS file numbers
 
 ## Data Sources
 - **NOAA Storm Events**: Real hail event data fetched from NOAA's public CSV files (2020-present), 912+ events for DFW region
@@ -64,6 +66,8 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `GET /api/import/runs` - List import history
 - `GET /api/data-sources` - List configured data sources
 - `GET /api/jobs` - List background jobs
+- `GET /api/enrichment/status` - Check contact enrichment API key status
+- `POST /api/enrichment/contacts` - Trigger TX Comptroller contact enrichment (marketId, batchSize)
 - `POST /api/jobs/:id/run` - Trigger a background job
 
 ## Lead Scoring (0-100)

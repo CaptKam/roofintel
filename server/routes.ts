@@ -7,6 +7,7 @@ import { importNoaaHailData, importNoaaMultiYear } from "./noaa-importer";
 import { importPropertyCsv, generateSampleCsv } from "./property-importer";
 import { importDcadProperties } from "./dcad-agent";
 import { correlateHailToLeads } from "./hail-correlator";
+import { enrichLeadContacts, getEnrichmentStatus } from "./contact-enrichment";
 import { startJobScheduler } from "./job-scheduler";
 import { updateLeadSchema, type LeadFilter } from "@shared/schema";
 
@@ -294,6 +295,41 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Hail correlation error:", error);
       res.status(500).json({ message: "Failed to start hail correlation" });
+    }
+  });
+
+  app.get("/api/enrichment/status", async (_req, res) => {
+    try {
+      const status = getEnrichmentStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Enrichment status error:", error);
+      res.status(500).json({ message: "Failed to get enrichment status" });
+    }
+  });
+
+  app.post("/api/enrichment/contacts", async (req, res) => {
+    try {
+      const { marketId, batchSize } = req.body;
+
+      const status = getEnrichmentStatus();
+      if (!status.apiKeySet) {
+        return res.status(400).json({
+          message: "TX Comptroller API key not configured. Register free at https://data-secure.comptroller.texas.gov and add your key as TX_COMPTROLLER_API_KEY.",
+          needsApiKey: true,
+        });
+      }
+
+      res.json({ message: "Contact enrichment started", batchSize: batchSize || 50 });
+
+      enrichLeadContacts(marketId, { batchSize: batchSize || 50 }).then((result) => {
+        console.log(`Contact enrichment complete: ${result.enriched} enriched, ${result.skipped} skipped, ${result.errors} errors`);
+      }).catch((err) => {
+        console.error("Contact enrichment failed:", err);
+      });
+    } catch (error) {
+      console.error("Contact enrichment error:", error);
+      res.status(500).json({ message: "Failed to start contact enrichment" });
     }
   });
 

@@ -21,6 +21,8 @@ import {
   FileSpreadsheet,
   Download,
   Building2,
+  UserSearch,
+  AlertCircle,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -114,6 +116,28 @@ export default function DataManagement() {
     },
     onError: () => {
       toast({ title: "Import failed", description: "Could not start DCAD property import.", variant: "destructive" });
+    },
+  });
+
+  const { data: enrichmentStatus } = useQuery<{ configured: boolean; apiKeySet: boolean }>({
+    queryKey: ["/api/enrichment/status"],
+  });
+
+  const contactEnrichMutation = useMutation({
+    mutationFn: async ({ marketId, batchSize }: { marketId: string; batchSize?: number }) => {
+      const res = await apiRequest("POST", "/api/enrichment/contacts", { marketId, batchSize });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Contact enrichment started", description: "Looking up owner details via TX Comptroller. Results will appear shortly." });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/import/runs"] });
+      }, 15000);
+    },
+    onError: (err: any) => {
+      const message = err?.message || "Could not start contact enrichment.";
+      toast({ title: "Enrichment failed", description: message, variant: "destructive" });
     },
   });
 
@@ -335,6 +359,66 @@ export default function DataManagement() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <UserSearch className="w-4 h-4" />
+              Contact Enrichment
+            </CardTitle>
+            <Badge variant={enrichmentStatus?.apiKeySet ? "default" : "secondary"} className="text-[10px]">
+              {enrichmentStatus?.apiKeySet ? "API Ready" : "Needs Key"}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Enrich LLC/Corp owner contacts via TX Comptroller public records.
+              Finds registered agents, officers, directors, and filing details.
+            </p>
+            {!enrichmentStatus?.apiKeySet && (
+              <div className="flex items-start gap-2 p-2 rounded-md border border-amber-500/30 bg-amber-500/5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                <p className="text-[11px] text-muted-foreground">
+                  Free API key required. Register at{" "}
+                  <a href="https://data-secure.comptroller.texas.gov" target="_blank" rel="noopener" className="text-primary underline">
+                    TX Comptroller Developer Portal
+                  </a>
+                  , then add as TX_COMPTROLLER_API_KEY.
+                </p>
+              </div>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                onClick={() => dfwMarket && contactEnrichMutation.mutate({
+                  marketId: dfwMarket.id,
+                  batchSize: 50,
+                })}
+                disabled={contactEnrichMutation.isPending || !dfwMarket || !enrichmentStatus?.apiKeySet}
+                data-testid="button-enrich-contacts"
+              >
+                {contactEnrichMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <UserSearch className="w-3 h-3 mr-1" />
+                )}
+                Enrich Contacts
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => dfwMarket && contactEnrichMutation.mutate({
+                  marketId: dfwMarket.id,
+                  batchSize: 200,
+                })}
+                disabled={contactEnrichMutation.isPending || !dfwMarket || !enrichmentStatus?.apiKeySet}
+                data-testid="button-enrich-contacts-all"
+              >
+                Enrich All Leads
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4" />
               Property Data Import
             </CardTitle>
@@ -468,7 +552,8 @@ export default function DataManagement() {
                       <p className="text-sm font-medium">
                         {run.type === "noaa_hail" ? "NOAA Hail Import" :
                          run.type === "property_csv" ? "Property CSV Import" :
-                         run.type === "dcad_api" ? "DCAD Property Import" : run.type}
+                         run.type === "dcad_api" ? "DCAD Property Import" :
+                         run.type === "contact_enrichment" ? "Contact Enrichment" : run.type}
                         {(run.metadata as any)?.year && ` (${(run.metadata as any).year})`}
                       </p>
                       <p className="text-xs text-muted-foreground">

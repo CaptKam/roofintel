@@ -30,6 +30,8 @@ import {
   Home,
   Shield,
   FileText,
+  Briefcase,
+  Hash,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -221,9 +223,22 @@ export default function LeadDetail() {
               <DetailRow icon={Building2} label="Owner Type" value={lead.ownerType} />
               {lead.llcName && <DetailRow icon={FileText} label="LLC Name" value={lead.llcName} />}
               {lead.registeredAgent && <DetailRow icon={Shield} label="Registered Agent" value={lead.registeredAgent} />}
+              {lead.officerName && (
+                <DetailRow
+                  icon={Briefcase}
+                  label="Officer / Director"
+                  value={lead.officerTitle ? `${lead.officerName} (${lead.officerTitle})` : lead.officerName}
+                />
+              )}
+              {lead.sosFileNumber && <DetailRow icon={Hash} label="TX SOS File #" value={lead.sosFileNumber} />}
               <DetailRow icon={MapPin} label="Mailing Address" value={lead.ownerAddress} />
               <DetailRow icon={Phone} label="Phone" value={lead.ownerPhone} />
               <DetailRow icon={Mail} label="Email" value={lead.ownerEmail} />
+              {lead.contactEnrichedAt && (
+                <p className="text-[10px] text-muted-foreground pt-1">
+                  Enriched: {new Date(lead.contactEnrichedAt).toLocaleDateString()}
+                </p>
+              )}
             </CardContent>
           </Card>
 
