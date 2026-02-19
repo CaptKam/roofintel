@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { ScoreBadge } from "@/components/score-badge";
 import { StatusBadge } from "@/components/status-badge";
-import { Building2, Ruler, Calendar, CloudLightning, X, Radar } from "lucide-react";
+import { Building2, Ruler, Calendar, CloudLightning, X, Radar, Zap } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Lead, StormRun } from "@shared/schema";
@@ -52,6 +52,30 @@ interface HailTrackerData {
   fetchedAt: string;
 }
 
+interface HailThreat {
+  id: string;
+  centroidLat: number;
+  centroidLon: number;
+  maxSizeIN: number;
+  probSevere: number;
+  severe: boolean;
+  stormMotionDeg: number | null;
+  stormMotionMPH: number | null;
+  forecastPath: [number, number][];
+  threatPolygons: Array<{
+    timestamp: number;
+    dateTimeISO: string;
+    polygon: [number, number][];
+  }>;
+  affectedLeads: Array<{
+    leadId: string;
+    address: string;
+    distanceMiles: number;
+    etaMinutes: number | null;
+  }>;
+  placeName: string | null;
+}
+
 function getMarkerColor(score: number): string {
   if (score >= 80) return "#10b981";
   if (score >= 60) return "#f59e0b";
@@ -82,6 +106,13 @@ function getHailRadius(sevprob: number): number {
   return 4;
 }
 
+function getThreatColor(probSevere: number, severe: boolean): string {
+  if (severe) return "#9333ea";
+  if (probSevere >= 70) return "#dc2626";
+  if (probSevere >= 40) return "#f97316";
+  return "#eab308";
+}
+
 export default function MapView() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -89,9 +120,11 @@ export default function MapView() {
   const hailLayerRef = useRef<L.LayerGroup | null>(null);
   const alertLayerRef = useRef<L.LayerGroup | null>(null);
   const swathLayerRef = useRef<L.LayerGroup | null>(null);
+  const threatLayerRef = useRef<L.LayerGroup | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showHailTracker, setShowHailTracker] = useState(false);
   const [showSwathZones, setShowSwathZones] = useState(true);
+  const [showThreatForecast, setShowThreatForecast] = useState(true);
   const [daysBack, setDaysBack] = useState("7");
 
   const { data: leadsData, isLoading } = useQuery<LeadsResponse>({
@@ -108,6 +141,11 @@ export default function MapView() {
   const { data: stormRuns } = useQuery<StormRun[]>({
     queryKey: ["/api/storm/runs", { limit: 20 }],
     refetchInterval: 60000,
+  });
+
+  const { data: threats } = useQuery<HailThreat[]>({
+    queryKey: ["/api/xweather/threats"],
+    refetchInterval: 30000,
   });
 
   useEffect(() => {
@@ -127,6 +165,7 @@ export default function MapView() {
     hailLayerRef.current = L.layerGroup().addTo(map);
     alertLayerRef.current = L.layerGroup().addTo(map);
     swathLayerRef.current = L.layerGroup().addTo(map);
+    threatLayerRef.current = L.layerGroup().addTo(map);
 
     mapInstanceRef.current = map;
 
@@ -234,21 +273,24 @@ export default function MapView() {
       const severity = run.maxSevereProb >= 50 ? "high" : run.maxHailProb >= 60 ? "medium" : "low";
       const color = severity === "high" ? "#dc2626" : severity === "medium" ? "#f97316" : "#eab308";
       const isRecent = run.detectedAt && (Date.now() - new Date(run.detectedAt).getTime()) < 6 * 60 * 60 * 1000;
+      const isPredicted = run.status === "predicted";
 
       const polygon = L.polygon(swath.coordinates as [number, number][], {
-        color,
-        fillColor: color,
+        color: isPredicted ? "#9333ea" : color,
+        fillColor: isPredicted ? "#9333ea" : color,
         fillOpacity: isRecent ? 0.2 : 0.08,
         weight: isRecent ? 3 : 1.5,
-        dashArray: isRecent ? undefined : "6, 4",
+        dashArray: isPredicted ? "8, 4, 2, 4" : isRecent ? undefined : "6, 4",
       });
 
       const timeStr = run.detectedAt ? new Date(run.detectedAt).toLocaleString() : "Unknown";
+      const sourceLabel = isPredicted ? "Predicted Hail Zone (Xweather)" : "Hail Swath Zone";
       polygon.bindPopup(
         `<div style="font-size:12px;">
-          <strong>Hail Swath Zone</strong><br/>
+          <strong>${sourceLabel}</strong><br/>
           Hail Prob: ${run.maxHailProb}%<br/>
           Severe Prob: ${run.maxSevereProb}%<br/>
+          ${isPredicted && swath.maxSizeIN ? `Max Size: ${swath.maxSizeIN}"<br/>` : ""}
           Radar Signatures: ${run.radarSignatureCount}<br/>
           Affected Leads: ${run.affectedLeadCount}<br/>
           Detected: ${timeStr}
@@ -259,8 +301,106 @@ export default function MapView() {
     }
   }, [stormRuns, showSwathZones]);
 
+  useEffect(() => {
+    if (!threatLayerRef.current) return;
+    threatLayerRef.current.clearLayers();
+
+    if (!showThreatForecast || !threats || threats.length === 0) return;
+
+    for (const threat of threats) {
+      const color = getThreatColor(threat.probSevere, threat.severe);
+
+      for (let i = 0; i < threat.threatPolygons.length; i++) {
+        const tp = threat.threatPolygons[i];
+        if (!tp.polygon || tp.polygon.length < 3) continue;
+
+        const opacity = Math.max(0.05, 0.25 - (i * 0.03));
+        const weight = i === 0 ? 3 : 1.5;
+
+        const polygon = L.polygon(tp.polygon, {
+          color,
+          fillColor: color,
+          fillOpacity: opacity,
+          weight,
+          dashArray: i > 0 ? "4, 4" : undefined,
+        });
+
+        const time = new Date(tp.dateTimeISO).toLocaleTimeString();
+        polygon.bindPopup(
+          `<div style="font-size:12px;">
+            <strong>Hail Threat Forecast</strong><br/>
+            Step ${i + 1} of ${threat.threatPolygons.length}<br/>
+            Time: ${time}<br/>
+            Max Size: ${threat.maxSizeIN}"<br/>
+            Prob Severe: ${threat.probSevere}%<br/>
+            ${threat.severe ? "<strong style='color:#dc2626;'>SEVERE</strong><br/>" : ""}
+            ${threat.affectedLeads.length} leads in path
+          </div>`
+        );
+
+        threatLayerRef.current!.addLayer(polygon);
+      }
+
+      if (threat.forecastPath.length >= 2) {
+        const pathLine = L.polyline(threat.forecastPath, {
+          color,
+          weight: 3,
+          opacity: 0.8,
+          dashArray: "10, 6",
+        });
+
+        pathLine.bindPopup(
+          `<div style="font-size:12px;">
+            <strong>Storm Forecast Path</strong><br/>
+            ${threat.stormMotionMPH ? `Speed: ${threat.stormMotionMPH} MPH<br/>` : ""}
+            ${threat.stormMotionDeg !== null ? `Direction: ${threat.stormMotionDeg}&deg;<br/>` : ""}
+            Max Hail: ${threat.maxSizeIN}"<br/>
+            ${threat.affectedLeads.length} leads in path
+          </div>`
+        );
+
+        threatLayerRef.current!.addLayer(pathLine);
+
+        if (threat.forecastPath.length > 0) {
+          const arrowEnd = threat.forecastPath[threat.forecastPath.length - 1];
+          const arrowMarker = L.circleMarker(arrowEnd, {
+            radius: 5,
+            fillColor: color,
+            fillOpacity: 1,
+            color: "white",
+            weight: 2,
+          });
+          threatLayerRef.current!.addLayer(arrowMarker);
+        }
+      }
+
+      const centroidMarker = L.circleMarker([threat.centroidLat, threat.centroidLon], {
+        radius: 8,
+        fillColor: color,
+        fillOpacity: 0.9,
+        color: "white",
+        weight: 2,
+      });
+
+      centroidMarker.bindPopup(
+        `<div style="font-size:12px;">
+          <strong>Hail Threat Center</strong><br/>
+          ${threat.placeName ? `Near: ${threat.placeName}<br/>` : ""}
+          Max Size: ${threat.maxSizeIN}"<br/>
+          Prob Severe: ${threat.probSevere}%<br/>
+          ${threat.severe ? "<strong style='color:#dc2626;'>SEVERE HAIL</strong><br/>" : ""}
+          ${threat.stormMotionMPH ? `Moving: ${threat.stormMotionMPH} MPH<br/>` : ""}
+          Affected Leads: ${threat.affectedLeads.length}
+        </div>`
+      );
+
+      threatLayerRef.current!.addLayer(centroidMarker);
+    }
+  }, [threats, showThreatForecast]);
+
   const sigCount = hailData?.radarSignatures?.length || 0;
   const alertCount = hailData?.alerts?.length || 0;
+  const threatCount = threats?.length || 0;
 
   return (
     <div className="h-full flex flex-col">
@@ -272,6 +412,18 @@ export default function MapView() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            variant={showThreatForecast ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowThreatForecast(!showThreatForecast)}
+            data-testid="button-toggle-threat-forecast"
+          >
+            <Zap className="w-4 h-4 mr-1.5" />
+            Hail Forecast
+            {showThreatForecast && threatCount > 0 && (
+              <Badge variant="secondary" className="ml-1.5 text-[10px]">{threatCount}</Badge>
+            )}
+          </Button>
           <Button
             variant={showSwathZones ? "default" : "outline"}
             size="sm"
@@ -329,39 +481,66 @@ export default function MapView() {
         </div>
       </div>
 
-      {showHailTracker && (
+      {(showHailTracker || (showThreatForecast && threatCount > 0)) && (
         <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs font-medium text-muted-foreground">Radar Hail:</span>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-600" />
-              <span className="text-[10px] text-muted-foreground">Severe 50%+</span>
+          {showThreatForecast && threatCount > 0 && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-medium text-muted-foreground">Forecast:</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+                <span className="text-[10px] text-muted-foreground">Severe</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-600" />
+                <span className="text-[10px] text-muted-foreground">High</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                <span className="text-[10px] text-muted-foreground">Moderate</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                <span className="text-[10px] text-muted-foreground">Low</span>
+              </div>
+              <Badge variant="default" className="text-[10px]">
+                <Zap className="w-2.5 h-2.5 mr-1" />
+                {threatCount} Active Threat{threatCount > 1 ? "s" : ""}
+              </Badge>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-              <span className="text-[10px] text-muted-foreground">Severe 25%+</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-              <span className="text-[10px] text-muted-foreground">Likely</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-              <span className="text-[10px] text-muted-foreground">Possible</span>
-            </div>
-          </div>
-          {alertCount > 0 && (
-            <Badge variant="destructive" className="text-[10px]">
-              {alertCount} Active Alert{alertCount > 1 ? "s" : ""}
-            </Badge>
           )}
-          {hailLoading && (
-            <span className="text-[10px] text-muted-foreground animate-pulse">Loading radar data...</span>
-          )}
-          {hailData && !hailLoading && (
-            <span className="text-[10px] text-muted-foreground">
-              {sigCount} radar detections, updated {new Date(hailData.fetchedAt).toLocaleTimeString()}
-            </span>
+          {showHailTracker && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-medium text-muted-foreground">Radar Hail:</span>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-600" />
+                <span className="text-[10px] text-muted-foreground">Severe 50%+</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                <span className="text-[10px] text-muted-foreground">Severe 25%+</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
+                <span className="text-[10px] text-muted-foreground">Likely</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                <span className="text-[10px] text-muted-foreground">Possible</span>
+              </div>
+              {alertCount > 0 && (
+                <Badge variant="destructive" className="text-[10px]">
+                  {alertCount} Active Alert{alertCount > 1 ? "s" : ""}
+                </Badge>
+              )}
+              {hailLoading && (
+                <span className="text-[10px] text-muted-foreground animate-pulse">Loading radar data...</span>
+              )}
+              {hailData && !hailLoading && (
+                <span className="text-[10px] text-muted-foreground">
+                  {sigCount} radar detections, updated {new Date(hailData.fetchedAt).toLocaleTimeString()}
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

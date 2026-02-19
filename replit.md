@@ -26,6 +26,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/web-research-agent.ts` - Web research agent: finds business websites via Google Places, scrapes contact/team pages for facility managers and decision-makers, extracts phone/email, optional Serper web search fallback
 - `server/enrichment-pipeline.ts` - Unified 3-stage enrichment pipeline with contact confidence scoring
 - `server/storm-monitor.ts` - Real-time NOAA SWDI hail radar + NWS alerts monitor with swath polygon generation
+- `server/xweather-hail.ts` - Xweather/Vaisala predictive hail service: polls /hail/threats API every 2 min, parses threat polygons, calculates ETAs, triggers pre-storm SMS alerts
 - `server/hail-tracker.ts` - Live hail radar tracker (NOAA SWDI nx3hail + NWS Alerts API for DFW region)
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
 - `shared/schema.ts` - Drizzle schema definitions and Zod validation
@@ -34,13 +35,15 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **Dashboard**: Stats overview (total leads, hot leads, avg score, hail events), score distribution chart, county distribution pie chart, top scoring leads
 - **Leads List**: Filterable/searchable lead table with score badges, status badges, filters by county/score/zoning/status
 - **Lead Detail**: Full property info, hail exposure data, valuation, owner/contact info, status management, notes, score breakdown
-- **Map View**: Interactive Leaflet map with color-coded markers by lead score, popup detail cards, live hail tracker overlay (NEXRAD radar signatures + NWS alert polygons)
+- **Map View**: Interactive Leaflet map with color-coded markers by lead score, popup detail cards, live hail tracker overlay (NEXRAD radar signatures + NWS alert polygons), Xweather threat forecast overlay (color-coded polygons, forecast path lines)
 - **Hail Events**: Grid of tracked NOAA storm events with severity badges, event count display
 - **Export**: CSV export with configurable filters
 - **Data Management**: Import controls for NOAA hail data, property CSV upload, contact enrichment, phone enrichment, background job monitoring, import history
 - **Contact Enrichment**: TX Open Data Portal-based owner lookup for LLC/Corp entities - finds taxpayer IDs, SOS file numbers, filing status (free, no API key)
 - **Phone Enrichment**: Cascading phone number lookup using Google Places API, OpenCorporates, and Serper web search - stops at first match to minimize cost
 - **Web Research Agent**: Scans business websites to find facility managers, property managers, and decision-makers with their phone numbers and emails
+- **Predictive Hail Monitoring**: Xweather/Vaisala lightning-based nowcasting predicts hail 30-60 min before radar detection, with threat polygons, forecast paths, ETAs, and pre-storm SMS alerts
+- **Storm Response Dashboard**: Dual monitoring (NOAA reactive + Xweather predictive), prioritized call queue with distance/ETA ranking
 
 ## Data Sources
 - **NOAA Storm Events**: Real hail event data fetched from NOAA's public CSV files (2020-present), 912+ events for DFW region
@@ -84,6 +87,11 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `GET /api/leads/:id/confidence` - Contact confidence score and factors for a lead
 - `GET /api/hail-tracker` - Live radar hail detections + active NWS alerts (query: daysBack)
 - `POST /api/jobs/:id/run` - Trigger a background job
+- `GET /api/xweather/status` - Xweather predictive monitor status (running, configured, activeThreats)
+- `GET /api/xweather/threats` - Active hail threat polygons with affected leads and ETAs
+- `POST /api/xweather/scan` - Trigger manual Xweather prediction scan
+- `POST /api/xweather/monitor/start` - Start Xweather polling (2-minute interval)
+- `POST /api/xweather/monitor/stop` - Stop Xweather polling
 
 ## Lead Scoring (0-100)
 - Roof age: up to 30 points (2 pts per year since last replacement, 15 pts default if unknown)

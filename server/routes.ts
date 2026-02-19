@@ -14,6 +14,7 @@ import { getPipelineStats, runFullPipeline, calculateContactConfidence } from ".
 import { getHailTrackerData } from "./hail-tracker";
 import { startJobScheduler } from "./job-scheduler";
 import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMonitorStatus } from "./storm-monitor";
+import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweatherStatus, getActiveThreats } from "./xweather-hail";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter } from "@shared/schema";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -664,8 +665,56 @@ export async function registerRoutes(
     }
   });
 
+  // Xweather Hail Prediction
+  app.get("/api/xweather/status", async (_req, res) => {
+    try {
+      const status = getXweatherStatus();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get Xweather status" });
+    }
+  });
+
+  app.get("/api/xweather/threats", async (_req, res) => {
+    try {
+      const threats = getActiveThreats();
+      res.json(threats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get active threats" });
+    }
+  });
+
+  app.post("/api/xweather/scan", async (_req, res) => {
+    try {
+      const result = await runXweatherCycle();
+      res.json(result);
+    } catch (error) {
+      console.error("Xweather scan error:", error);
+      res.status(500).json({ message: "Failed to run Xweather scan" });
+    }
+  });
+
+  app.post("/api/xweather/monitor/start", async (_req, res) => {
+    try {
+      startXweatherMonitor(2);
+      res.json({ message: "Xweather predictive monitor started (2-minute interval)" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start Xweather monitor" });
+    }
+  });
+
+  app.post("/api/xweather/monitor/stop", async (_req, res) => {
+    try {
+      stopXweatherMonitor();
+      res.json({ message: "Xweather monitor stopped" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to stop Xweather monitor" });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
+  startXweatherMonitor(2);
 
   return httpServer;
 }

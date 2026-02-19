@@ -1,6 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio, Radar } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -38,6 +38,11 @@ export function AppSidebar() {
 
   const { data: monitorStatus } = useQuery<{ running: boolean }>({
     queryKey: ["/api/storm/status"],
+    refetchInterval: 30000,
+  });
+
+  const { data: xweatherStatus } = useQuery<{ running: boolean; configured: boolean; activeThreats: number }>({
+    queryKey: ["/api/xweather/status"],
     refetchInterval: 30000,
   });
 
@@ -132,6 +137,13 @@ export function AppSidebar() {
             <Badge variant="default" className="text-[10px]">
               <Radio className="w-2.5 h-2.5 mr-1" />
               Storm Watch
+            </Badge>
+          )}
+          {xweatherStatus?.running && (
+            <Badge variant="default" className="text-[10px]">
+              <Zap className="w-2.5 h-2.5 mr-1" />
+              Prediction
+              {(xweatherStatus?.activeThreats || 0) > 0 && ` (${xweatherStatus?.activeThreats})`}
             </Badge>
           )}
         </div>

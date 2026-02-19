@@ -130,6 +130,8 @@ export const stormAlertConfigs = pgTable("storm_alert_configs", {
   name: text("name").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   minHailSize: real("min_hail_size").notNull().default(1.0),
+  minProbSevere: integer("min_prob_severe").notNull().default(40),
+  predictiveAlerts: boolean("predictive_alerts").notNull().default(true),
   notifyEmail: boolean("notify_email").notNull().default(false),
   notifySms: boolean("notify_sms").notNull().default(false),
   recipients: jsonb("recipients").notNull().default(sql`'[]'::jsonb`),
