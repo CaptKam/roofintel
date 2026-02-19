@@ -91,7 +91,7 @@ function inferCity(address: string, zip: string | null): string {
     "75006": "Carrollton", "75007": "Carrollton", "75010": "Carrollton",
     "75019": "Coppell", "75038": "Irving", "75039": "Irving", "75060": "Irving", "75061": "Irving", "75062": "Irving",
     "75040": "Garland", "75041": "Garland", "75042": "Garland", "75043": "Garland", "75044": "Garland",
-    "75043": "Garland", "75080": "Richardson", "75081": "Richardson", "75082": "Richardson",
+    "75080": "Richardson", "75081": "Richardson", "75082": "Richardson",
     "75150": "Mesquite", "75149": "Mesquite", "75180": "Balch Springs",
     "75104": "Cedar Hill", "75115": "DeSoto", "75116": "Duncanville",
     "75134": "Lancaster", "75146": "Lancaster",
@@ -150,11 +150,13 @@ export async function importDcadProperties(
   options: {
     minImpValue?: number;
     maxRecords?: number;
+    minSqft?: number;
     skipGovernment?: boolean;
   } = {}
 ): Promise<DcadImportResult> {
   const minImpValue = options.minImpValue ?? 200000;
   const maxRecords = options.maxRecords ?? 4000;
+  const minSqft = options.minSqft ?? 0;
   const skipGovernment = options.skipGovernment ?? true;
 
   const run = await storage.createImportRun({
@@ -204,6 +206,12 @@ export async function importDcadProperties(
 
           const ownerType = inferOwnerType(a.OWNERNME1);
           if (skipGovernment && ownerType === "Government") {
+            result.skipped++;
+            continue;
+          }
+
+          const rawSqft = a.BLDGAREA || 0;
+          if (minSqft > 0 && rawSqft > 0 && rawSqft < minSqft) {
             result.skipped++;
             continue;
           }

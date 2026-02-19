@@ -251,7 +251,7 @@ export async function registerRoutes(
 
   app.post("/api/import/dcad", async (req, res) => {
     try {
-      const { marketId, minImpValue, maxRecords } = req.body;
+      const { marketId, minImpValue, maxRecords, minSqft } = req.body;
       if (!marketId) {
         return res.status(400).json({ message: "marketId is required" });
       }
@@ -261,11 +261,12 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Market not found" });
       }
 
-      res.json({ message: "DCAD property import started", minImpValue: minImpValue || 200000, maxRecords: maxRecords || 4000 });
+      res.json({ message: "DCAD property import started", minImpValue: minImpValue || 200000, maxRecords: maxRecords || 4000, minSqft: minSqft || 0 });
 
       importDcadProperties(marketId, {
         minImpValue: minImpValue || 200000,
         maxRecords: maxRecords || 4000,
+        minSqft: minSqft || 0,
       }).then((result) => {
         console.log(`DCAD import complete: ${result.imported} properties imported, ${result.skipped} skipped`);
       }).catch((err) => {

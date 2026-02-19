@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -48,6 +50,9 @@ function StatusIcon({ status }: { status: string }) {
 
 export default function DataManagement() {
   const { toast } = useToast();
+  const [dcadMinValue, setDcadMinValue] = useState("100000");
+  const [dcadMinSqft, setDcadMinSqft] = useState("0");
+  const [dcadMaxRecords, setDcadMaxRecords] = useState("5000");
 
   const { data: markets, isLoading: marketsLoading } = useQuery<Market[]>({
     queryKey: ["/api/markets"],
@@ -103,8 +108,8 @@ export default function DataManagement() {
   });
 
   const dcadImportMutation = useMutation({
-    mutationFn: async ({ marketId, minImpValue, maxRecords }: { marketId: string; minImpValue?: number; maxRecords?: number }) => {
-      const res = await apiRequest("POST", "/api/import/dcad", { marketId, minImpValue, maxRecords });
+    mutationFn: async ({ marketId, minImpValue, maxRecords, minSqft }: { marketId: string; minImpValue?: number; maxRecords?: number; minSqft?: number }) => {
+      const res = await apiRequest("POST", "/api/import/dcad", { marketId, minImpValue, maxRecords, minSqft });
       return res.json();
     },
     onSuccess: () => {
@@ -367,20 +372,56 @@ export default function DataManagement() {
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
               Fetch real commercial property data from Dallas Central Appraisal District
-              via ArcGIS REST API. Includes addresses, owners, valuations, and coordinates.
+              via ArcGIS REST API. Already-imported properties are automatically skipped (no reprocessing costs).
             </p>
             {dataSources?.filter((ds) => ds.type === "dcad_api").map((ds) => (
               <div key={ds.id} className="text-xs text-muted-foreground">
                 Last fetched: {formatDate(ds.lastFetchedAt as any)}
               </div>
             ))}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1">
+                <Label htmlFor="dcad-min-value" className="text-xs text-muted-foreground">Min Building Value</Label>
+                <Input
+                  id="dcad-min-value"
+                  type="number"
+                  value={dcadMinValue}
+                  onChange={(e) => setDcadMinValue(e.target.value)}
+                  placeholder="100000"
+                  data-testid="input-dcad-min-value"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="dcad-min-sqft" className="text-xs text-muted-foreground">Min Sq Ft</Label>
+                <Input
+                  id="dcad-min-sqft"
+                  type="number"
+                  value={dcadMinSqft}
+                  onChange={(e) => setDcadMinSqft(e.target.value)}
+                  placeholder="0"
+                  data-testid="input-dcad-min-sqft"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="dcad-max-records" className="text-xs text-muted-foreground">Max Records</Label>
+                <Input
+                  id="dcad-max-records"
+                  type="number"
+                  value={dcadMaxRecords}
+                  onChange={(e) => setDcadMaxRecords(e.target.value)}
+                  placeholder="5000"
+                  data-testid="input-dcad-max-records"
+                />
+              </div>
+            </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Button
                 size="sm"
                 onClick={() => dfwMarket && dcadImportMutation.mutate({
                   marketId: dfwMarket.id,
-                  minImpValue: 500000,
-                  maxRecords: 2000,
+                  minImpValue: parseInt(dcadMinValue) || 100000,
+                  maxRecords: parseInt(dcadMaxRecords) || 5000,
+                  minSqft: parseInt(dcadMinSqft) || 0,
                 })}
                 disabled={dcadImportMutation.isPending || !dfwMarket}
                 data-testid="button-import-dcad"
@@ -390,22 +431,12 @@ export default function DataManagement() {
                 ) : (
                   <Building2 className="w-3 h-3 mr-1" />
                 )}
-                Import Top Properties
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => dfwMarket && dcadImportMutation.mutate({
-                  marketId: dfwMarket.id,
-                  minImpValue: 200000,
-                  maxRecords: 4000,
-                })}
-                disabled={dcadImportMutation.isPending || !dfwMarket}
-                data-testid="button-import-dcad-all"
-              >
-                Import All Commercial
+                Import Properties
               </Button>
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              Duplicates are automatically skipped - only new properties are added.
+            </p>
           </CardContent>
         </Card>
 
