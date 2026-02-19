@@ -54,6 +54,7 @@ export async function registerRoutes(
         status: req.query.status as string | undefined,
         ownerType: req.query.ownerType as string | undefined,
         minSqft: req.query.minSqft ? Number(req.query.minSqft) : undefined,
+        hasPhone: req.query.hasPhone === "true" ? true : undefined,
       };
       const leads = await storage.getLeads(filter);
       res.json(leads);

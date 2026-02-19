@@ -26,6 +26,7 @@ import {
   X,
   ChevronRight,
   User,
+  Phone,
 } from "lucide-react";
 import type { Lead } from "@shared/schema";
 
@@ -35,6 +36,7 @@ export default function Leads() {
   const [minScore, setMinScore] = useState<string>("");
   const [zoning, setZoning] = useState<string>("");
   const [status, setStatus] = useState<string>("");
+  const [hasPhone, setHasPhone] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   const params = new URLSearchParams();
@@ -43,6 +45,7 @@ export default function Leads() {
   if (minScore) params.set("minScore", minScore);
   if (zoning) params.set("zoning", zoning);
   if (status) params.set("status", status);
+  if (hasPhone) params.set("hasPhone", "true");
 
   const queryString = params.toString();
 
@@ -50,13 +53,14 @@ export default function Leads() {
     queryKey: ["/api/leads", queryString ? `?${queryString}` : ""],
   });
 
-  const hasFilters = county || minScore || zoning || status;
+  const hasFilters = county || minScore || zoning || status || hasPhone;
 
   const clearFilters = () => {
     setCounty("");
     setMinScore("");
     setZoning("");
     setStatus("");
+    setHasPhone(false);
   };
 
   return (
@@ -105,7 +109,7 @@ export default function Leads() {
       {showFilters && (
         <Card>
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1.5 block">County</label>
                 <Select value={county} onValueChange={setCounty}>
@@ -164,6 +168,18 @@ export default function Leads() {
                     <SelectItem value="closed">Closed</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Contact Info</label>
+                <Button
+                  variant={hasPhone ? "default" : "outline"}
+                  className="w-full toggle-elevate"
+                  onClick={() => setHasPhone(!hasPhone)}
+                  data-testid="button-filter-has-phone"
+                >
+                  <Phone className="w-4 h-4 mr-1.5" />
+                  Has Phone
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -231,6 +247,12 @@ export default function Leads() {
                           <User className="w-3 h-3" />
                           {lead.ownerName}
                         </span>
+                        {(lead.ownerPhone || lead.contactPhone) && (
+                          <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <Phone className="w-3 h-3" />
+                            {lead.ownerPhone || lead.contactPhone}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">

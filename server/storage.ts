@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, ilike, or, desc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, ilike, or, desc, sql, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import {
@@ -99,6 +99,14 @@ export class DatabaseStorage implements IStorage {
     }
     if (filter?.status && filter.status !== "all") {
       conditions.push(eq(leads.status, filter.status));
+    }
+    if (filter?.hasPhone) {
+      conditions.push(
+        or(
+          isNotNull(leads.ownerPhone),
+          isNotNull(leads.contactPhone),
+        )!
+      );
     }
     if (filter?.search) {
       const term = `%${filter.search}%`;

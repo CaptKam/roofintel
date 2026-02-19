@@ -155,6 +155,7 @@ export const leadFilterSchema = z.object({
   ownerType: z.string().optional(),
   status: z.string().optional(),
   search: z.string().optional(),
+  hasPhone: z.boolean().optional(),
 });
 
 export type LeadFilter = z.infer<typeof leadFilterSchema>;
