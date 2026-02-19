@@ -3,11 +3,16 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import {
   leads, hailEvents, markets, dataSources, importRuns, jobs,
+  stormAlertConfigs, stormRuns, alertHistory, responseQueue,
   type Lead, type InsertLead, type HailEvent, type InsertHailEvent,
   type LeadFilter, type Market, type InsertMarket,
   type DataSource, type InsertDataSource,
   type ImportRun, type InsertImportRun,
   type Job, type InsertJob,
+  type StormAlertConfig, type InsertStormAlertConfig,
+  type StormRun, type InsertStormRun,
+  type AlertHistoryRecord, type InsertAlertHistory,
+  type ResponseQueueItem, type InsertResponseQueue,
 } from "@shared/schema";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -56,6 +61,28 @@ export interface IStorage {
 
   updateLeadHailData(leadId: string, hailCount: number, lastDate: string, lastSize: number): Promise<void>;
   updateLeadScore(leadId: string, score: number): Promise<void>;
+
+  getStormAlertConfigs(marketId?: string): Promise<StormAlertConfig[]>;
+  getStormAlertConfigById(id: string): Promise<StormAlertConfig | undefined>;
+  createStormAlertConfig(config: InsertStormAlertConfig): Promise<StormAlertConfig>;
+  updateStormAlertConfig(id: string, updates: Partial<StormAlertConfig>): Promise<StormAlertConfig | undefined>;
+  deleteStormAlertConfig(id: string): Promise<void>;
+
+  getStormRuns(limit?: number): Promise<StormRun[]>;
+  getStormRunById(id: string): Promise<StormRun | undefined>;
+  createStormRun(run: InsertStormRun): Promise<StormRun>;
+  updateStormRun(id: string, updates: Partial<StormRun>): Promise<StormRun | undefined>;
+  getActiveStormRuns(): Promise<StormRun[]>;
+
+  getAlertHistory(stormRunId?: string, limit?: number): Promise<AlertHistoryRecord[]>;
+  createAlertHistory(alert: InsertAlertHistory): Promise<AlertHistoryRecord>;
+
+  getResponseQueue(stormRunId: string): Promise<ResponseQueueItem[]>;
+  getActiveResponseQueue(): Promise<(ResponseQueueItem & { lead?: Lead; stormRun?: StormRun })[]>;
+  createResponseQueueItems(items: InsertResponseQueue[]): Promise<number>;
+  updateResponseQueueItem(id: string, updates: Partial<ResponseQueueItem>): Promise<ResponseQueueItem | undefined>;
+
+  getLeadsInBounds(west: number, south: number, east: number, north: number, marketId?: string): Promise<Lead[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -276,6 +303,125 @@ export class DatabaseStorage implements IStorage {
 
   async updateLeadScore(leadId: string, score: number): Promise<void> {
     await db.update(leads).set({ leadScore: score }).where(eq(leads.id, leadId));
+  }
+
+  async getStormAlertConfigs(marketId?: string): Promise<StormAlertConfig[]> {
+    if (marketId && marketId !== "all") {
+      return db.select().from(stormAlertConfigs).where(eq(stormAlertConfigs.marketId, marketId));
+    }
+    return db.select().from(stormAlertConfigs);
+  }
+
+  async getStormAlertConfigById(id: string): Promise<StormAlertConfig | undefined> {
+    const result = await db.select().from(stormAlertConfigs).where(eq(stormAlertConfigs.id, id));
+    return result[0];
+  }
+
+  async createStormAlertConfig(config: InsertStormAlertConfig): Promise<StormAlertConfig> {
+    const result = await db.insert(stormAlertConfigs).values(config).returning();
+    return result[0];
+  }
+
+  async updateStormAlertConfig(id: string, updates: Partial<StormAlertConfig>): Promise<StormAlertConfig | undefined> {
+    const { id: _id, createdAt: _ca, ...safeUpdates } = updates as any;
+    const result = await db.update(stormAlertConfigs).set(safeUpdates).where(eq(stormAlertConfigs.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteStormAlertConfig(id: string): Promise<void> {
+    await db.delete(stormAlertConfigs).where(eq(stormAlertConfigs.id, id));
+  }
+
+  async getStormRuns(limit = 50): Promise<StormRun[]> {
+    return db.select().from(stormRuns).orderBy(desc(stormRuns.detectedAt)).limit(limit);
+  }
+
+  async getStormRunById(id: string): Promise<StormRun | undefined> {
+    const result = await db.select().from(stormRuns).where(eq(stormRuns.id, id));
+    return result[0];
+  }
+
+  async createStormRun(run: InsertStormRun): Promise<StormRun> {
+    const result = await db.insert(stormRuns).values(run).returning();
+    return result[0];
+  }
+
+  async updateStormRun(id: string, updates: Partial<StormRun>): Promise<StormRun | undefined> {
+    const { id: _id, ...safeUpdates } = updates as any;
+    const result = await db.update(stormRuns).set(safeUpdates).where(eq(stormRuns.id, id)).returning();
+    return result[0];
+  }
+
+  async getActiveStormRuns(): Promise<StormRun[]> {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return db.select().from(stormRuns)
+      .where(gte(stormRuns.detectedAt, oneDayAgo))
+      .orderBy(desc(stormRuns.detectedAt));
+  }
+
+  async getAlertHistory(stormRunId?: string, limit = 100): Promise<AlertHistoryRecord[]> {
+    if (stormRunId) {
+      return db.select().from(alertHistory)
+        .where(eq(alertHistory.stormRunId, stormRunId))
+        .orderBy(desc(alertHistory.sentAt)).limit(limit);
+    }
+    return db.select().from(alertHistory).orderBy(desc(alertHistory.sentAt)).limit(limit);
+  }
+
+  async createAlertHistory(alert: InsertAlertHistory): Promise<AlertHistoryRecord> {
+    const result = await db.insert(alertHistory).values(alert).returning();
+    return result[0];
+  }
+
+  async getResponseQueue(stormRunId: string): Promise<ResponseQueueItem[]> {
+    return db.select().from(responseQueue)
+      .where(eq(responseQueue.stormRunId, stormRunId))
+      .orderBy(desc(responseQueue.priority));
+  }
+
+  async getActiveResponseQueue(): Promise<(ResponseQueueItem & { lead?: Lead; stormRun?: StormRun })[]> {
+    const items = await db.select().from(responseQueue)
+      .where(eq(responseQueue.status, "pending"))
+      .orderBy(desc(responseQueue.priority))
+      .limit(200);
+
+    const enriched = await Promise.all(items.map(async (item) => {
+      const lead = await this.getLeadById(item.leadId);
+      const run = await this.getStormRunById(item.stormRunId);
+      return { ...item, lead: lead || undefined, stormRun: run || undefined };
+    }));
+    return enriched;
+  }
+
+  async createResponseQueueItems(items: InsertResponseQueue[]): Promise<number> {
+    if (items.length === 0) return 0;
+    const batchSize = 100;
+    let total = 0;
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      await db.insert(responseQueue).values(batch);
+      total += batch.length;
+    }
+    return total;
+  }
+
+  async updateResponseQueueItem(id: string, updates: Partial<ResponseQueueItem>): Promise<ResponseQueueItem | undefined> {
+    const { id: _id, createdAt: _ca, ...safeUpdates } = updates as any;
+    const result = await db.update(responseQueue).set(safeUpdates).where(eq(responseQueue.id, id)).returning();
+    return result[0];
+  }
+
+  async getLeadsInBounds(west: number, south: number, east: number, north: number, marketId?: string): Promise<Lead[]> {
+    const conditions = [
+      gte(leads.latitude, south),
+      lte(leads.latitude, north),
+      gte(leads.longitude, west),
+      lte(leads.longitude, east),
+    ];
+    if (marketId && marketId !== "all") {
+      conditions.push(eq(leads.marketId, marketId));
+    }
+    return db.select().from(leads).where(and(...conditions)).orderBy(desc(leads.leadScore)).limit(5000);
   }
 
   async getDashboardStats(marketId?: string) {

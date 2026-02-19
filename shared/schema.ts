@@ -124,12 +124,66 @@ export const jobs = pgTable("jobs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const stormAlertConfigs = pgTable("storm_alert_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id"),
+  name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  minHailSize: real("min_hail_size").notNull().default(1.0),
+  notifyEmail: boolean("notify_email").notNull().default(false),
+  notifySms: boolean("notify_sms").notNull().default(false),
+  recipients: jsonb("recipients").notNull().default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const stormRuns = pgTable("storm_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id"),
+  status: text("status").notNull().default("detected"),
+  detectedAt: timestamp("detected_at").defaultNow(),
+  radarSignatureCount: integer("radar_signature_count").notNull().default(0),
+  maxHailProb: integer("max_hail_prob").notNull().default(0),
+  maxSevereProb: integer("max_severe_prob").notNull().default(0),
+  swathPolygon: jsonb("swath_polygon"),
+  affectedLeadCount: integer("affected_lead_count").notNull().default(0),
+  nwsAlertIds: text("nws_alert_ids").array(),
+  metadata: jsonb("metadata"),
+});
+
+export const alertHistory = pgTable("alert_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  stormRunId: varchar("storm_run_id"),
+  alertConfigId: varchar("alert_config_id"),
+  channel: text("channel").notNull(),
+  recipient: text("recipient").notNull(),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("sent"),
+  sentAt: timestamp("sent_at").defaultNow(),
+});
+
+export const responseQueue = pgTable("response_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  stormRunId: varchar("storm_run_id").notNull(),
+  leadId: varchar("lead_id").notNull(),
+  priority: integer("priority").notNull().default(0),
+  distanceMiles: real("distance_miles"),
+  hailProbability: integer("hail_probability"),
+  status: text("status").notNull().default("pending"),
+  assignedTo: text("assigned_to"),
+  calledAt: timestamp("called_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertMarketSchema = createInsertSchema(markets).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
 export const insertHailEventSchema = createInsertSchema(hailEvents).omit({ id: true });
 export const insertDataSourceSchema = createInsertSchema(dataSources).omit({ id: true, createdAt: true });
 export const insertImportRunSchema = createInsertSchema(importRuns).omit({ id: true });
 export const insertJobSchema = createInsertSchema(jobs).omit({ id: true, createdAt: true });
+export const insertStormAlertConfigSchema = createInsertSchema(stormAlertConfigs).omit({ id: true, createdAt: true });
+export const insertStormRunSchema = createInsertSchema(stormRuns).omit({ id: true });
+export const insertAlertHistorySchema = createInsertSchema(alertHistory).omit({ id: true });
+export const insertResponseQueueSchema = createInsertSchema(responseQueue).omit({ id: true, createdAt: true });
 
 export type Market = typeof markets.$inferSelect;
 export type InsertMarket = z.infer<typeof insertMarketSchema>;
@@ -143,6 +197,14 @@ export type ImportRun = typeof importRuns.$inferSelect;
 export type InsertImportRun = z.infer<typeof insertImportRunSchema>;
 export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;
+export type StormAlertConfig = typeof stormAlertConfigs.$inferSelect;
+export type InsertStormAlertConfig = z.infer<typeof insertStormAlertConfigSchema>;
+export type StormRun = typeof stormRuns.$inferSelect;
+export type InsertStormRun = z.infer<typeof insertStormRunSchema>;
+export type AlertHistoryRecord = typeof alertHistory.$inferSelect;
+export type InsertAlertHistory = z.infer<typeof insertAlertHistorySchema>;
+export type ResponseQueueItem = typeof responseQueue.$inferSelect;
+export type InsertResponseQueue = z.infer<typeof insertResponseQueueSchema>;
 
 export const leadFilterSchema = z.object({
   marketId: z.string().optional(),

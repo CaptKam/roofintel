@@ -15,6 +15,8 @@ import MapView from "@/pages/map-view";
 import HailEvents from "@/pages/hail-events";
 import Export from "@/pages/export";
 import DataManagement from "@/pages/data-management";
+import StormResponse from "@/pages/storm-response";
+import AlertConfig from "@/pages/alert-config";
 
 function Router() {
   return (
@@ -24,6 +26,8 @@ function Router() {
       <Route path="/leads/:id" component={LeadDetail} />
       <Route path="/map" component={MapView} />
       <Route path="/hail" component={HailEvents} />
+      <Route path="/storm" component={StormResponse} />
+      <Route path="/alerts" component={AlertConfig} />
       <Route path="/export" component={Export} />
       <Route path="/data" component={DataManagement} />
       <Route component={NotFound} />

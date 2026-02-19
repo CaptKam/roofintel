@@ -24,6 +24,8 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/contact-enrichment.ts` - TX Open Data Portal contact enrichment agent (taxpayer IDs, SOS file numbers, filing status)
 - `server/phone-enrichment.ts` - Cascading phone number enrichment (Google Places → OpenCorporates → Serper web search)
 - `server/web-research-agent.ts` - Web research agent: finds business websites via Google Places, scrapes contact/team pages for facility managers and decision-makers, extracts phone/email, optional Serper web search fallback
+- `server/enrichment-pipeline.ts` - Unified 3-stage enrichment pipeline with contact confidence scoring
+- `server/storm-monitor.ts` - Real-time NOAA SWDI hail radar + NWS alerts monitor with swath polygon generation
 - `server/hail-tracker.ts` - Live hail radar tracker (NOAA SWDI nx3hail + NWS Alerts API for DFW region)
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
 - `shared/schema.ts` - Drizzle schema definitions and Zod validation
@@ -77,6 +79,9 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `POST /api/enrichment/phones` - Trigger cascading phone number enrichment (marketId, batchSize)
 - `GET /api/enrichment/web-research-status` - Check web research agent status/capabilities
 - `POST /api/enrichment/web-research` - Trigger web research agent (marketId, batchSize)
+- `GET /api/enrichment/pipeline-stats` - Contact enrichment funnel stats with confidence scores
+- `POST /api/enrichment/run-pipeline` - Run full 3-stage enrichment pipeline (TX Filing -> Phone -> Web Research)
+- `GET /api/leads/:id/confidence` - Contact confidence score and factors for a lead
 - `GET /api/hail-tracker` - Live radar hail detections + active NWS alerts (query: daysBack)
 - `POST /api/jobs/:id/run` - Trigger a background job
 

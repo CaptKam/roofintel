@@ -1,5 +1,6 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +23,11 @@ const mainNav = [
   { title: "Hail Events", url: "/hail", icon: CloudLightning },
 ];
 
+const stormNav = [
+  { title: "Storm Response", url: "/storm", icon: Zap },
+  { title: "Alert Settings", url: "/alerts", icon: Bell },
+];
+
 const toolsNav = [
   { title: "Export", url: "/export", icon: Download },
   { title: "Data Sources", url: "/data", icon: Database },
@@ -29,6 +35,11 @@ const toolsNav = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+
+  const { data: monitorStatus } = useQuery<{ running: boolean }>({
+    queryKey: ["/api/storm/status"],
+    refetchInterval: 30000,
+  });
 
   return (
     <Sidebar>
@@ -73,6 +84,26 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
+          <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">Storm Center</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {stormNav.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.startsWith(item.url)}
+                  >
+                    <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+                      <item.icon className="w-4 h-4" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">Tools</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -97,6 +128,12 @@ export function AppSidebar() {
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-[10px]">DFW Region</Badge>
           <Badge variant="default" className="text-[10px]">NOAA Live</Badge>
+          {monitorStatus?.running && (
+            <Badge variant="default" className="text-[10px]">
+              <Radio className="w-2.5 h-2.5 mr-1" />
+              Storm Watch
+            </Badge>
+          )}
         </div>
       </SidebarFooter>
     </Sidebar>

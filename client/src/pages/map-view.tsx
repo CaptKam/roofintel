@@ -17,7 +17,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Building2, Ruler, Calendar, CloudLightning, X, Radar } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Lead } from "@shared/schema";
+import type { Lead, StormRun } from "@shared/schema";
 
 interface LeadsResponse {
   leads: Lead[];
@@ -88,8 +88,10 @@ export default function MapView() {
   const markersRef = useRef<L.Marker[]>([]);
   const hailLayerRef = useRef<L.LayerGroup | null>(null);
   const alertLayerRef = useRef<L.LayerGroup | null>(null);
+  const swathLayerRef = useRef<L.LayerGroup | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showHailTracker, setShowHailTracker] = useState(false);
+  const [showSwathZones, setShowSwathZones] = useState(true);
   const [daysBack, setDaysBack] = useState("7");
 
   const { data: leadsData, isLoading } = useQuery<LeadsResponse>({
@@ -101,6 +103,11 @@ export default function MapView() {
     queryKey: [`/api/hail-tracker?daysBack=${daysBack}`],
     enabled: showHailTracker,
     staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: stormRuns } = useQuery<StormRun[]>({
+    queryKey: ["/api/storm/runs", { limit: 20 }],
+    refetchInterval: 60000,
   });
 
   useEffect(() => {
@@ -119,6 +126,7 @@ export default function MapView() {
 
     hailLayerRef.current = L.layerGroup().addTo(map);
     alertLayerRef.current = L.layerGroup().addTo(map);
+    swathLayerRef.current = L.layerGroup().addTo(map);
 
     mapInstanceRef.current = map;
 
@@ -213,6 +221,44 @@ export default function MapView() {
     }
   }, [hailData, showHailTracker]);
 
+  useEffect(() => {
+    if (!swathLayerRef.current) return;
+    swathLayerRef.current.clearLayers();
+
+    if (!showSwathZones || !stormRuns) return;
+
+    for (const run of stormRuns) {
+      const swath = run.swathPolygon as any;
+      if (!swath?.coordinates || swath.coordinates.length < 3) continue;
+
+      const severity = run.maxSevereProb >= 50 ? "high" : run.maxHailProb >= 60 ? "medium" : "low";
+      const color = severity === "high" ? "#dc2626" : severity === "medium" ? "#f97316" : "#eab308";
+      const isRecent = run.detectedAt && (Date.now() - new Date(run.detectedAt).getTime()) < 6 * 60 * 60 * 1000;
+
+      const polygon = L.polygon(swath.coordinates as [number, number][], {
+        color,
+        fillColor: color,
+        fillOpacity: isRecent ? 0.2 : 0.08,
+        weight: isRecent ? 3 : 1.5,
+        dashArray: isRecent ? undefined : "6, 4",
+      });
+
+      const timeStr = run.detectedAt ? new Date(run.detectedAt).toLocaleString() : "Unknown";
+      polygon.bindPopup(
+        `<div style="font-size:12px;">
+          <strong>Hail Swath Zone</strong><br/>
+          Hail Prob: ${run.maxHailProb}%<br/>
+          Severe Prob: ${run.maxSevereProb}%<br/>
+          Radar Signatures: ${run.radarSignatureCount}<br/>
+          Affected Leads: ${run.affectedLeadCount}<br/>
+          Detected: ${timeStr}
+        </div>`
+      );
+
+      swathLayerRef.current.addLayer(polygon);
+    }
+  }, [stormRuns, showSwathZones]);
+
   const sigCount = hailData?.radarSignatures?.length || 0;
   const alertCount = hailData?.alerts?.length || 0;
 
@@ -226,6 +272,18 @@ export default function MapView() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            variant={showSwathZones ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowSwathZones(!showSwathZones)}
+            data-testid="button-toggle-swath-zones"
+          >
+            <CloudLightning className="w-4 h-4 mr-1.5" />
+            Hail Zones
+            {showSwathZones && stormRuns && stormRuns.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 text-[10px]">{stormRuns.length}</Badge>
+            )}
+          </Button>
           <Button
             variant={showHailTracker ? "default" : "outline"}
             size="sm"

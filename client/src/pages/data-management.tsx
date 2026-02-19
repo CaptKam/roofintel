@@ -183,6 +183,39 @@ export default function DataManagement() {
     },
   });
 
+  const { data: pipelineStats, isLoading: pipelineLoading } = useQuery<{
+    total: number;
+    withOwner: number;
+    withTxFilingData: number;
+    withPhone: number;
+    withBusinessWebsite: number;
+    withContactPerson: number;
+    withEmail: number;
+    fullyEnriched: number;
+    contactConfidence: { high: number; medium: number; low: number; none: number };
+  }>({
+    queryKey: ["/api/enrichment/pipeline-stats"],
+    refetchInterval: 10000,
+  });
+
+  const pipelineMutation = useMutation({
+    mutationFn: async ({ marketId, batchSize }: { marketId: string; batchSize?: number }) => {
+      const res = await apiRequest("POST", "/api/enrichment/run-pipeline", { marketId, batchSize });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Full pipeline started", description: "Running TX Filing -> Phone Lookup -> Web Research sequentially. This may take several minutes." });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/import/runs"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/enrichment/pipeline-stats"] });
+      }, 30000);
+    },
+    onError: (err: any) => {
+      toast({ title: "Pipeline failed", description: err?.message || "Could not start enrichment pipeline.", variant: "destructive" });
+    },
+  });
+
   const contactEnrichMutation = useMutation({
     mutationFn: async ({ marketId, batchSize }: { marketId: string; batchSize?: number }) => {
       const res = await apiRequest("POST", "/api/enrichment/contacts", { marketId, batchSize });
@@ -467,6 +500,78 @@ export default function DataManagement() {
             <p className="text-[10px] text-muted-foreground">
               Duplicates are automatically skipped - only new properties are added.
             </p>
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2 lg:col-span-3">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Contact Enrichment Pipeline
+            </CardTitle>
+            <Button
+              size="sm"
+              onClick={() => dfwMarket && pipelineMutation.mutate({
+                marketId: dfwMarket.id,
+                batchSize: 25,
+              })}
+              disabled={pipelineMutation.isPending || !dfwMarket}
+              data-testid="button-run-pipeline"
+            >
+              {pipelineMutation.isPending ? (
+                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+              ) : (
+                <Play className="w-3 h-3 mr-1" />
+              )}
+              Run Full Pipeline
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Automated 3-stage enrichment: TX Filing Lookup, Phone Number Discovery, Web Research for Decision-Makers.
+            </p>
+            {pipelineLoading ? (
+              <Skeleton className="h-20 w-full" />
+            ) : pipelineStats ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                  {[
+                    { label: "Total Leads", value: pipelineStats.total, color: "text-foreground" },
+                    { label: "Owner Known", value: pipelineStats.withOwner, color: "text-foreground" },
+                    { label: "TX Filing Data", value: pipelineStats.withTxFilingData, color: "text-blue-600 dark:text-blue-400" },
+                    { label: "Has Phone", value: pipelineStats.withPhone, color: "text-emerald-600 dark:text-emerald-400" },
+                    { label: "Business Website", value: pipelineStats.withBusinessWebsite, color: "text-violet-600 dark:text-violet-400" },
+                    { label: "Decision-Maker", value: pipelineStats.withContactPerson, color: "text-amber-600 dark:text-amber-400" },
+                    { label: "Has Email", value: pipelineStats.withEmail, color: "text-rose-600 dark:text-rose-400" },
+                    { label: "Fully Enriched", value: pipelineStats.fullyEnriched, color: "text-emerald-600 dark:text-emerald-400" },
+                  ].map((item) => (
+                    <div key={item.label} className="text-center" data-testid={`stat-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <p className={`text-lg font-semibold ${item.color}`}>{item.value.toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-4 pt-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Contact Confidence:</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs">High: {pipelineStats.contactConfidence.high}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-xs">Medium: {pipelineStats.contactConfidence.medium}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-orange-500" />
+                    <span className="text-xs">Low: {pipelineStats.contactConfidence.low}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                    <span className="text-xs">None: {pipelineStats.contactConfidence.none}</span>
+                  </div>
+                </div>
+              </>
+            ) : null}
           </CardContent>
         </Card>
 

@@ -10,9 +10,11 @@ import { correlateHailToLeads } from "./hail-correlator";
 import { enrichLeadContacts, getEnrichmentStatus } from "./contact-enrichment";
 import { enrichLeadPhones, getPhoneEnrichmentStatus } from "./phone-enrichment";
 import { runWebResearch, getWebResearchStatus } from "./web-research-agent";
+import { getPipelineStats, runFullPipeline, calculateContactConfidence } from "./enrichment-pipeline";
 import { getHailTrackerData } from "./hail-tracker";
 import { startJobScheduler } from "./job-scheduler";
-import { updateLeadSchema, type LeadFilter } from "@shared/schema";
+import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMonitorStatus } from "./storm-monitor";
+import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter } from "@shared/schema";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -451,6 +453,49 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/enrichment/pipeline-stats", async (req, res) => {
+    try {
+      const { marketId } = req.query;
+      const stats = await getPipelineStats(marketId as string | undefined);
+      res.json(stats);
+    } catch (error) {
+      console.error("Pipeline stats error:", error);
+      res.status(500).json({ message: "Failed to get pipeline stats" });
+    }
+  });
+
+  app.post("/api/enrichment/run-pipeline", async (req, res) => {
+    try {
+      const { marketId, batchSize } = req.body;
+      const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 25, 1), 100);
+
+      res.json({
+        message: "Full enrichment pipeline started (TX Filing -> Phone -> Web Research)",
+        batchSize: parsedBatchSize,
+      });
+
+      runFullPipeline(marketId, { batchSize: parsedBatchSize }).then((results) => {
+        console.log("[Pipeline] Results:", results);
+      }).catch((err) => {
+        console.error("[Pipeline] Failed:", err);
+      });
+    } catch (error) {
+      console.error("Pipeline error:", error);
+      res.status(500).json({ message: "Failed to start enrichment pipeline" });
+    }
+  });
+
+  app.get("/api/leads/:id/confidence", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      const confidence = calculateContactConfidence(lead);
+      res.json(confidence);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to calculate confidence" });
+    }
+  });
+
   app.post("/api/jobs/:id/run", async (req, res) => {
     try {
       const job = await storage.getJobs();
@@ -464,6 +509,163 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to trigger job" });
     }
   });
+
+  // Storm Monitor
+  app.get("/api/storm/status", async (_req, res) => {
+    try {
+      const status = getStormMonitorStatus();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get storm monitor status" });
+    }
+  });
+
+  app.post("/api/storm/monitor/start", async (_req, res) => {
+    try {
+      startStormMonitor(10);
+      res.json({ message: "Storm monitor started (10-minute interval)" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start storm monitor" });
+    }
+  });
+
+  app.post("/api/storm/monitor/stop", async (_req, res) => {
+    try {
+      stopStormMonitor();
+      res.json({ message: "Storm monitor stopped" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to stop storm monitor" });
+    }
+  });
+
+  app.post("/api/storm/scan", async (_req, res) => {
+    try {
+      const result = await runStormMonitorCycle();
+      res.json(result);
+    } catch (error) {
+      console.error("Storm scan error:", error);
+      res.status(500).json({ message: "Failed to run storm scan" });
+    }
+  });
+
+  // Storm Runs
+  app.get("/api/storm/runs", async (req, res) => {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 50;
+      const runs = await storage.getStormRuns(limit);
+      res.json(runs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get storm runs" });
+    }
+  });
+
+  app.get("/api/storm/runs/active", async (_req, res) => {
+    try {
+      const runs = await storage.getActiveStormRuns();
+      res.json(runs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get active storm runs" });
+    }
+  });
+
+  app.get("/api/storm/runs/:id", async (req, res) => {
+    try {
+      const run = await storage.getStormRunById(req.params.id);
+      if (!run) return res.status(404).json({ message: "Storm run not found" });
+      res.json(run);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get storm run" });
+    }
+  });
+
+  // Response Queue
+  app.get("/api/storm/response-queue", async (req, res) => {
+    try {
+      const stormRunId = req.query.stormRunId as string | undefined;
+      if (stormRunId) {
+        const queue = await storage.getResponseQueue(stormRunId);
+        res.json(queue);
+      } else {
+        const queue = await storage.getActiveResponseQueue();
+        res.json(queue);
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get response queue" });
+    }
+  });
+
+  app.patch("/api/storm/response-queue/:id", async (req, res) => {
+    try {
+      const { status, assignedTo } = req.body;
+      const updates: any = {};
+      if (status) updates.status = status;
+      if (assignedTo) updates.assignedTo = assignedTo;
+      if (status === "called") updates.calledAt = new Date();
+      const updated = await storage.updateResponseQueueItem(req.params.id, updates);
+      if (!updated) return res.status(404).json({ message: "Queue item not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update queue item" });
+    }
+  });
+
+  // Alert Configs
+  app.get("/api/storm/alert-configs", async (req, res) => {
+    try {
+      const marketId = req.query.marketId as string | undefined;
+      const configs = await storage.getStormAlertConfigs(marketId);
+      res.json(configs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get alert configs" });
+    }
+  });
+
+  app.post("/api/storm/alert-configs", async (req, res) => {
+    try {
+      const parsed = insertStormAlertConfigSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid config data", errors: parsed.error.flatten() });
+      }
+      const config = await storage.createStormAlertConfig(parsed.data);
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create alert config" });
+    }
+  });
+
+  app.patch("/api/storm/alert-configs/:id", async (req, res) => {
+    try {
+      const updated = await storage.updateStormAlertConfig(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ message: "Config not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update alert config" });
+    }
+  });
+
+  app.delete("/api/storm/alert-configs/:id", async (req, res) => {
+    try {
+      await storage.deleteStormAlertConfig(req.params.id);
+      res.json({ message: "Config deleted" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete alert config" });
+    }
+  });
+
+  // Alert History
+  app.get("/api/storm/alert-history", async (req, res) => {
+    try {
+      const stormRunId = req.query.stormRunId as string | undefined;
+      const limit = req.query.limit ? Number(req.query.limit) : 100;
+      const history = await storage.getAlertHistory(stormRunId, limit);
+      res.json(history);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get alert history" });
+    }
+  });
+
+  // Start storm monitor on boot
+  startStormMonitor(10);
 
   return httpServer;
 }

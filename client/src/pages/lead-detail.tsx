@@ -39,6 +39,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import type { Lead } from "@shared/schema";
+import { ShieldCheck } from "lucide-react";
 
 function DetailRow({
   icon: Icon,
@@ -67,6 +68,15 @@ export default function LeadDetail() {
 
   const { data: lead, isLoading } = useQuery<Lead>({
     queryKey: ["/api/leads", id],
+  });
+
+  const { data: confidence } = useQuery<{
+    score: number;
+    level: "high" | "medium" | "low" | "none";
+    factors: string[];
+  }>({
+    queryKey: ["/api/leads", id, "confidence"],
+    enabled: !!lead,
   });
 
   const updateMutation = useMutation({
@@ -214,11 +224,21 @@ export default function LeadDetail() {
 
         <div className="space-y-4">
           <Card>
-            <CardHeader className="pb-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <User className="w-4 h-4 text-primary" />
                 Owner / Contact
               </CardTitle>
+              {confidence && (
+                <Badge
+                  variant={confidence.level === "high" ? "default" : confidence.level === "medium" ? "secondary" : "outline"}
+                  className="text-[10px]"
+                  data-testid="badge-contact-confidence"
+                >
+                  <ShieldCheck className="w-3 h-3 mr-1" />
+                  {confidence.level === "high" ? "High" : confidence.level === "medium" ? "Medium" : "Low"} Confidence ({confidence.score}/100)
+                </Badge>
+              )}
             </CardHeader>
             <CardContent className="space-y-1">
               <DetailRow icon={User} label="Owner" value={lead.ownerName} />
