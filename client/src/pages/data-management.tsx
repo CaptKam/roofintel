@@ -20,6 +20,7 @@ import {
   Upload,
   FileSpreadsheet,
   Download,
+  Building2,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -78,6 +79,41 @@ export default function DataManagement() {
     },
     onError: () => {
       toast({ title: "Import failed", description: "Could not start NOAA data import.", variant: "destructive" });
+    },
+  });
+
+  const hailCorrelationMutation = useMutation({
+    mutationFn: async ({ marketId, radiusMiles }: { marketId: string; radiusMiles?: number }) => {
+      const res = await apiRequest("POST", "/api/correlate/hail", { marketId, radiusMiles });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Hail correlation started", description: "Matching hail events to nearby properties. Scores will update shortly." });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      }, 10000);
+    },
+    onError: () => {
+      toast({ title: "Correlation failed", description: "Could not start hail proximity matching.", variant: "destructive" });
+    },
+  });
+
+  const dcadImportMutation = useMutation({
+    mutationFn: async ({ marketId, minImpValue, maxRecords }: { marketId: string; minImpValue?: number; maxRecords?: number }) => {
+      const res = await apiRequest("POST", "/api/import/dcad", { marketId, minImpValue, maxRecords });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "DCAD import started", description: "Fetching commercial property data from Dallas County. This may take a few minutes." });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/import/runs"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      }, 10000);
+    },
+    onError: () => {
+      toast({ title: "Import failed", description: "Could not start DCAD property import.", variant: "destructive" });
     },
   });
 
@@ -223,9 +259,79 @@ export default function DataManagement() {
               >
                 Import Last 5 Years
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => dfwMarket && hailCorrelationMutation.mutate({
+                  marketId: dfwMarket.id,
+                  radiusMiles: 5,
+                })}
+                disabled={hailCorrelationMutation.isPending || !dfwMarket}
+                data-testid="button-correlate-hail"
+              >
+                {hailCorrelationMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Activity className="w-3 h-3 mr-1" />
+                )}
+                Match to Leads
+              </Button>
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Building2 className="w-4 h-4" />
+              DCAD Property Agent
+            </CardTitle>
+            <Badge variant="default" className="text-[10px]">Live API</Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Fetch real commercial property data from Dallas Central Appraisal District
+              via ArcGIS REST API. Includes addresses, owners, valuations, and coordinates.
+            </p>
+            {dataSources?.filter((ds) => ds.type === "dcad_api").map((ds) => (
+              <div key={ds.id} className="text-xs text-muted-foreground">
+                Last fetched: {formatDate(ds.lastFetchedAt as any)}
+              </div>
+            ))}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                onClick={() => dfwMarket && dcadImportMutation.mutate({
+                  marketId: dfwMarket.id,
+                  minImpValue: 500000,
+                  maxRecords: 2000,
+                })}
+                disabled={dcadImportMutation.isPending || !dfwMarket}
+                data-testid="button-import-dcad"
+              >
+                {dcadImportMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Building2 className="w-3 h-3 mr-1" />
+                )}
+                Import Top Properties
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => dfwMarket && dcadImportMutation.mutate({
+                  marketId: dfwMarket.id,
+                  minImpValue: 200000,
+                  maxRecords: 4000,
+                })}
+                disabled={dcadImportMutation.isPending || !dfwMarket}
+                data-testid="button-import-dcad-all"
+              >
+                Import All Commercial
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
@@ -361,7 +467,8 @@ export default function DataManagement() {
                     <div>
                       <p className="text-sm font-medium">
                         {run.type === "noaa_hail" ? "NOAA Hail Import" :
-                         run.type === "property_csv" ? "Property CSV Import" : run.type}
+                         run.type === "property_csv" ? "Property CSV Import" :
+                         run.type === "dcad_api" ? "DCAD Property Import" : run.type}
                         {(run.metadata as any)?.year && ` (${(run.metadata as any).year})`}
                       </p>
                       <p className="text-xs text-muted-foreground">

@@ -5,6 +5,8 @@ import { storage } from "./storage";
 import { seedDatabase } from "./seed";
 import { importNoaaHailData, importNoaaMultiYear } from "./noaa-importer";
 import { importPropertyCsv, generateSampleCsv } from "./property-importer";
+import { importDcadProperties } from "./dcad-agent";
+import { correlateHailToLeads } from "./hail-correlator";
 import { startJobScheduler } from "./job-scheduler";
 import { updateLeadSchema, type LeadFilter } from "@shared/schema";
 
@@ -244,11 +246,55 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/import/dcad", async (req, res) => {
+    try {
+      const { marketId, minImpValue, maxRecords } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      res.json({ message: "DCAD property import started", minImpValue: minImpValue || 200000, maxRecords: maxRecords || 4000 });
+
+      importDcadProperties(marketId, {
+        minImpValue: minImpValue || 200000,
+        maxRecords: maxRecords || 4000,
+      }).then((result) => {
+        console.log(`DCAD import complete: ${result.imported} properties imported, ${result.skipped} skipped`);
+      }).catch((err) => {
+        console.error("DCAD import failed:", err);
+      });
+    } catch (error) {
+      console.error("DCAD import error:", error);
+      res.status(500).json({ message: "Failed to start DCAD import" });
+    }
+  });
+
   app.get("/api/import/sample-csv", (_req, res) => {
     const csv = generateSampleCsv();
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", 'attachment; filename="sample-property-data.csv"');
     res.send(csv);
+  });
+
+  app.post("/api/correlate/hail", async (req, res) => {
+    try {
+      const { marketId, radiusMiles } = req.body;
+      res.json({ message: "Hail correlation started", radiusMiles: radiusMiles || 5 });
+
+      correlateHailToLeads(marketId, radiusMiles || 5).then((result) => {
+        console.log(`Hail correlation complete: ${result.leadsUpdated} leads updated`);
+      }).catch((err) => {
+        console.error("Hail correlation failed:", err);
+      });
+    } catch (error) {
+      console.error("Hail correlation error:", error);
+      res.status(500).json({ message: "Failed to start hail correlation" });
+    }
   });
 
   app.post("/api/jobs/:id/run", async (req, res) => {

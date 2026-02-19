@@ -16,9 +16,11 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `client/src/components/` - Shared components (app-sidebar, score-badge, status-badge, theme-provider, theme-toggle)
 - `server/routes.ts` - API endpoints
 - `server/storage.ts` - Database storage layer with Drizzle ORM
-- `server/seed.ts` - Seed data and calculateScore function
+- `server/seed.ts` - Market setup and calculateScore function (no fake data)
 - `server/noaa-importer.ts` - Real NOAA Storm Events hail data importer
-- `server/property-importer.ts` - County appraisal district CSV property importer
+- `server/dcad-agent.ts` - DCAD ArcGIS REST API property fetcher (automated, no CSV needed)
+- `server/hail-correlator.ts` - Proximity-based hail-to-lead matching engine
+- `server/property-importer.ts` - County appraisal district CSV property importer (manual fallback)
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
 - `shared/schema.ts` - Drizzle schema definitions and Zod validation
 
@@ -33,7 +35,9 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 
 ## Data Sources
 - **NOAA Storm Events**: Real hail event data fetched from NOAA's public CSV files (2020-present), 912+ events for DFW region
-- **Property CSV Import**: Upload county appraisal district CSV files with auto-column detection, supports DCAD and generic formats
+- **DCAD ArcGIS API**: Automated commercial property fetching from Dallas Central Appraisal District REST API (maps.dcad.org), filters by use code 2 (Commercial) with improvement value thresholds
+- **Hail-to-Lead Correlation**: Proximity matching engine (5-mile radius) that links hail events to nearby properties and updates lead scores
+- **Property CSV Import**: Upload county appraisal district CSV files with auto-column detection, supports DCAD and generic formats (manual fallback)
 - **Background Jobs**: Automated NOAA sync and lead score recalculation on 4-hour intervals
 
 ## Data Model
@@ -53,6 +57,8 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `GET /api/leads/export` - CSV export with filters
 - `GET /api/hail-events` - List hail events (optional marketId filter)
 - `POST /api/import/noaa` - Trigger NOAA hail data import (marketId, startYear, endYear)
+- `POST /api/import/dcad` - Trigger DCAD property import (marketId, minImpValue, maxRecords)
+- `POST /api/correlate/hail` - Run hail-to-lead proximity matching (marketId, radiusMiles)
 - `POST /api/import/property-csv` - Upload property CSV file (multipart form: file, marketId, minSqft)
 - `GET /api/import/sample-csv` - Download sample property CSV template
 - `GET /api/import/runs` - List import history
