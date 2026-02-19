@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { calculateScore } from "./seed";
 import type { InsertLead } from "@shared/schema";
 
 interface ColumnMapping {
@@ -337,7 +338,7 @@ export async function importPropertyCsv(
 
       const llcName = ownerType === "LLC" ? ownerName : undefined;
 
-      leadsBatch.push({
+      const leadData: InsertLead = {
         marketId,
         address,
         city,
@@ -364,7 +365,10 @@ export async function importPropertyCsv(
         sourceId,
         leadScore: 0,
         status: "new",
-      });
+      };
+
+      leadData.leadScore = calculateScore(leadData);
+      leadsBatch.push(leadData);
 
       if (leadsBatch.length >= 100) {
         await storage.createLeadsBatch(leadsBatch);
