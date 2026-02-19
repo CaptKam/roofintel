@@ -19,6 +19,11 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Lead } from "@shared/schema";
 
+interface LeadsResponse {
+  leads: Lead[];
+  total: number;
+}
+
 interface SwdiHailSignature {
   lat: number;
   lon: number;
@@ -87,9 +92,10 @@ export default function MapView() {
   const [showHailTracker, setShowHailTracker] = useState(false);
   const [daysBack, setDaysBack] = useState("7");
 
-  const { data: leads, isLoading } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
+  const { data: leadsData, isLoading } = useQuery<LeadsResponse>({
+    queryKey: ["/api/leads?limit=500"],
   });
+  const leads = leadsData?.leads;
 
   const { data: hailData, isLoading: hailLoading } = useQuery<HailTrackerData>({
     queryKey: [`/api/hail-tracker?daysBack=${daysBack}`],
@@ -216,7 +222,7 @@ export default function MapView() {
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Map View</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {leads ? `${leads.length} properties` : "Loading..."} plotted by score
+            {leadsData ? `Top ${leads?.length} of ${leadsData.total.toLocaleString()} properties` : "Loading..."} plotted by score
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

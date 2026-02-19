@@ -33,7 +33,7 @@ export async function correlateHailToLeads(
   console.log(`[Hail Correlator] Starting proximity matching (radius: ${radiusMiles} miles)...`);
 
   const allHailEvents = await storage.getHailEvents(marketId);
-  const allLeads = await storage.getLeads(marketId ? { marketId } : {});
+  const { leads: allLeads } = await storage.getLeads(marketId ? { marketId } : {});
 
   console.log(`[Hail Correlator] Processing ${allLeads.length} leads against ${allHailEvents.length} hail events`);
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,22 +25,37 @@ import {
   SlidersHorizontal,
   X,
   ChevronRight,
+  ChevronLeft,
   User,
   Phone,
 } from "lucide-react";
 import type { Lead } from "@shared/schema";
+
+const PAGE_SIZE = 50;
+
+interface LeadsResponse {
+  leads: Lead[];
+  total: number;
+}
 
 export default function Leads() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [county, setCounty] = useState<string>(urlParams.get("county") || "");
   const [minScore, setMinScore] = useState<string>(urlParams.get("minScore") || "");
   const [zoning, setZoning] = useState<string>(urlParams.get("zoning") || "");
   const [status, setStatus] = useState<string>(urlParams.get("status") || "");
   const [hasPhone, setHasPhone] = useState(urlParams.get("hasPhone") === "true");
+  const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     const fresh = new URLSearchParams(searchString);
@@ -57,22 +72,32 @@ export default function Leads() {
     if (newMinScore || newCounty || newZoning || newStatus || newHasPhone) {
       setShowFilters(true);
     }
+    setPage(1);
   }, [searchString]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, county, minScore, zoning, status, hasPhone]);
+
   const params = new URLSearchParams();
-  if (search) params.set("search", search);
+  if (debouncedSearch) params.set("search", debouncedSearch);
   if (county) params.set("county", county);
   if (minScore) params.set("minScore", minScore);
   if (zoning) params.set("zoning", zoning);
   if (status) params.set("status", status);
   if (hasPhone) params.set("hasPhone", "true");
+  params.set("limit", String(PAGE_SIZE));
+  params.set("offset", String((page - 1) * PAGE_SIZE));
 
   const queryString = params.toString();
 
-  const { data: leads, isLoading } = useQuery<Lead[]>({
-    queryKey: ["/api/leads", queryString ? `?${queryString}` : ""],
+  const { data, isLoading } = useQuery<LeadsResponse>({
+    queryKey: [`/api/leads?${queryString}`],
   });
 
+  const leads = data?.leads;
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
   const hasFilters = county || minScore || zoning || status || hasPhone;
 
   const clearFilters = () => {
@@ -89,7 +114,7 @@ export default function Leads() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Leads</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {leads ? `${leads.length} properties` : "Loading..."} in your pipeline
+            {isLoading ? "Loading..." : `${total.toLocaleString()} properties`} in your pipeline
           </p>
         </div>
       </div>
@@ -285,6 +310,61 @@ export default function Leads() {
               </Card>
             </Link>
           ))}
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between gap-4 pt-3">
+              <p className="text-xs text-muted-foreground">
+                Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString()}
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                  data-testid="button-prev-page"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />
+                  Previous
+                </Button>
+                <div className="flex items-center gap-1 px-2">
+                  {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                    let pageNum: number;
+                    if (totalPages <= 7) {
+                      pageNum = i + 1;
+                    } else if (page <= 4) {
+                      pageNum = i + 1;
+                    } else if (page >= totalPages - 3) {
+                      pageNum = totalPages - 6 + i;
+                    } else {
+                      pageNum = page - 3 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={pageNum === page ? "default" : "ghost"}
+                        size="icon"
+                        onClick={() => setPage(pageNum)}
+                        data-testid={`button-page-${pageNum}`}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(page + 1)}
+                  data-testid="button-next-page"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <Card>

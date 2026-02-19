@@ -156,6 +156,8 @@ export const leadFilterSchema = z.object({
   status: z.string().optional(),
   search: z.string().optional(),
   hasPhone: z.boolean().optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
 });
 
 export type LeadFilter = z.infer<typeof leadFilterSchema>;

@@ -18,7 +18,7 @@ export interface IStorage {
   getMarketById(id: string): Promise<Market | undefined>;
   createMarket(market: InsertMarket): Promise<Market>;
 
-  getLeads(filter?: LeadFilter): Promise<Lead[]>;
+  getLeads(filter?: LeadFilter): Promise<{ leads: Lead[]; total: number }>;
   getLeadById(id: string): Promise<Lead | undefined>;
   createLead(lead: InsertLead): Promise<Lead>;
   createLeadsBatch(leadsData: InsertLead[]): Promise<number>;
@@ -73,7 +73,7 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getLeads(filter?: LeadFilter): Promise<Lead[]> {
+  async getLeads(filter?: LeadFilter): Promise<{ leads: Lead[]; total: number }> {
     const conditions = [];
 
     if (filter?.marketId && filter.marketId !== "all") {
@@ -120,10 +120,29 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
-    if (conditions.length > 0) {
-      return db.select().from(leads).where(and(...conditions)).orderBy(desc(leads.leadScore));
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const countResult = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(leads)
+      .where(whereClause);
+    const total = countResult[0]?.count ?? 0;
+
+    let query = db
+      .select()
+      .from(leads)
+      .where(whereClause)
+      .orderBy(desc(leads.leadScore));
+
+    if (filter?.limit) {
+      query = query.limit(filter.limit) as typeof query;
     }
-    return db.select().from(leads).orderBy(desc(leads.leadScore));
+    if (filter?.offset) {
+      query = query.offset(filter.offset) as typeof query;
+    }
+
+    const result = await query;
+    return { leads: result, total };
   }
 
   async getLeadById(id: string): Promise<Lead | undefined> {

@@ -56,9 +56,11 @@ export async function registerRoutes(
         ownerType: req.query.ownerType as string | undefined,
         minSqft: req.query.minSqft ? Number(req.query.minSqft) : undefined,
         hasPhone: req.query.hasPhone === "true" ? true : undefined,
+        limit: req.query.limit ? Number(req.query.limit) : undefined,
+        offset: req.query.offset ? Number(req.query.offset) : undefined,
       };
-      const leads = await storage.getLeads(filter);
-      res.json(leads);
+      const result = await storage.getLeads(filter);
+      res.json(result);
     } catch (error) {
       console.error("Leads fetch error:", error);
       res.status(500).json({ message: "Failed to load leads" });
@@ -74,7 +76,7 @@ export async function registerRoutes(
         zoning: req.query.zoning as string | undefined,
         status: req.query.status as string | undefined,
       };
-      const leads = await storage.getLeads(filter);
+      const { leads: exportLeads } = await storage.getLeads(filter);
 
       const headers = [
         "Address", "City", "County", "State", "Zip", "Sqft", "Year Built",
@@ -83,7 +85,7 @@ export async function registerRoutes(
         "Email", "Score", "Status", "Total Value",
       ];
 
-      const rows = leads.map((l) => [
+      const rows = exportLeads.map((l) => [
         l.address, l.city, l.county, l.state, l.zipCode,
         l.sqft, l.yearBuilt, l.zoning, l.roofLastReplaced || "",
         l.roofMaterial || "", l.hailEvents, l.lastHailDate || "",

@@ -59,7 +59,7 @@ async function runScoreRecalc() {
   await storage.updateJob(job.id, { status: "running", lastRunAt: new Date() });
 
   try {
-    const allLeads = await storage.getLeads();
+    const { leads: allLeads } = await storage.getLeads();
     let updated = 0;
 
     for (const lead of allLeads) {

@@ -14,6 +14,11 @@ import { Download, FileText, Building2, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Lead } from "@shared/schema";
 
+interface LeadsResponse {
+  leads: Lead[];
+  total: number;
+}
+
 export default function Export() {
   const { toast } = useToast();
   const [minScore, setMinScore] = useState<string>("");
@@ -25,16 +30,20 @@ export default function Export() {
   if (minScore) params.set("minScore", minScore);
   if (county) params.set("county", county);
   if (zoning) params.set("zoning", zoning);
-  const queryString = params.toString();
+  const filterString = params.toString();
+  const countParams = new URLSearchParams(params);
+  countParams.set("limit", "1");
+  const countQuery = countParams.toString();
 
-  const { data: leads } = useQuery<Lead[]>({
-    queryKey: ["/api/leads", queryString ? `?${queryString}` : ""],
+  const { data } = useQuery<LeadsResponse>({
+    queryKey: [`/api/leads?${countQuery}`],
   });
+  const totalCount = data?.total ?? 0;
 
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`/api/leads/export?${queryString}`);
+      const res = await fetch(`/api/leads/export?${filterString}`);
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -43,7 +52,7 @@ export default function Export() {
       a.download = `roofIntel-leads-${new Date().toISOString().split("T")[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      toast({ title: "Export complete", description: `${leads?.length || 0} leads exported to CSV` });
+      toast({ title: "Export complete", description: `${totalCount} leads exported to CSV` });
     } catch {
       toast({ title: "Export failed", variant: "destructive" });
     }
@@ -119,12 +128,12 @@ export default function Export() {
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
-                    {leads ? `${leads.length} leads match your filters` : "Loading..."}
+                    {data ? `${totalCount.toLocaleString()} leads match your filters` : "Loading..."}
                   </span>
                 </div>
                 <Button
                   onClick={handleExport}
-                  disabled={exporting || !leads || leads.length === 0}
+                  disabled={exporting || !data || totalCount === 0}
                   data-testid="button-export-csv"
                 >
                   <Download className="w-4 h-4 mr-1.5" />

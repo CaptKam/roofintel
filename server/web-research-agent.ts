@@ -423,7 +423,7 @@ export async function runWebResearch(
   marketId?: string,
   options: { batchSize?: number; delayMs?: number } = {}
 ): Promise<WebResearchProgress> {
-  const allLeads = await storage.getLeads(marketId ? { marketId } : undefined);
+  const { leads: allLeads } = await storage.getLeads(marketId ? { marketId } : undefined);
   const eligibleLeads = allLeads.filter(lead =>
     !lead.webResearchedAt &&
     lead.ownerName

@@ -246,7 +246,7 @@ export async function enrichLeadPhones(
   marketId?: string,
   options: { batchSize?: number; delayMs?: number } = {}
 ): Promise<{ enriched: number; skipped: number; errors: number; total: number }> {
-  const allLeads = await storage.getLeads(marketId ? { marketId } : undefined);
+  const { leads: allLeads } = await storage.getLeads(marketId ? { marketId } : undefined);
   const eligibleLeads = allLeads.filter(lead =>
     !lead.ownerPhone &&
     !lead.phoneEnrichedAt &&
