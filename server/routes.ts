@@ -1,10 +1,14 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import multer from "multer";
 import { storage } from "./storage";
 import { seedDatabase } from "./seed";
 import { importNoaaHailData, importNoaaMultiYear } from "./noaa-importer";
+import { importPropertyCsv, generateSampleCsv } from "./property-importer";
 import { startJobScheduler } from "./job-scheduler";
 import { updateLeadSchema, type LeadFilter } from "@shared/schema";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 export async function registerRoutes(
   httpServer: Server,
@@ -200,6 +204,51 @@ export async function registerRoutes(
       console.error("Jobs error:", error);
       res.status(500).json({ message: "Failed to load jobs" });
     }
+  });
+
+  app.post("/api/import/property-csv", upload.single("file"), async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const marketId = req.body.marketId;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      const csvContent = file.buffer.toString("utf-8");
+      const minSqft = req.body.minSqft ? parseInt(req.body.minSqft, 10) : 2000;
+      const countyFilter = req.body.countyFilter || undefined;
+      const zoningFilter = req.body.zoningFilter ? req.body.zoningFilter.split(",") : undefined;
+
+      const result = await importPropertyCsv(csvContent, marketId, {
+        minSqft,
+        countyFilter,
+        zoningFilter,
+      });
+
+      res.json({
+        message: `Import complete: ${result.imported} properties imported`,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("Property CSV import error:", error);
+      res.status(500).json({ message: "Failed to import property CSV", error: error.message });
+    }
+  });
+
+  app.get("/api/import/sample-csv", (_req, res) => {
+    const csv = generateSampleCsv();
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", 'attachment; filename="sample-property-data.csv"');
+    res.send(csv);
   });
 
   app.post("/api/jobs/:id/run", async (req, res) => {
