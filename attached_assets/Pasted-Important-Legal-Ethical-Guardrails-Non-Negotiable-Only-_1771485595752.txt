@@ -1,0 +1,71 @@
+Important Legal & Ethical Guardrails (Non-Negotiable)
+
+Only target business phone numbers (main lines, sales, office) — never personal cell phones of owners unless they are publicly listed as the business contact.
+Always respect TCPA/CAN-SPAM/state laws: Business-to-business calls have fewer restrictions, but you must scrub against the National Do Not Call Registry and honor opt-outs.
+Never use aggressive scraping that violates website ToS (Google, LinkedIn, Facebook are strict).
+Stick to public records + APIs + voluntary published info.
+
+The agent will use a cascading enrichment workflow (try free/public first, then paid) so it stays cheap and compliant.
+6 Clever, Agent-Native Ways MoneyHound Can Pull Phone Numbers
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+RankMethodHow the Agent Uses ItSuccess Rate (2026)CostWhy It Works for LLCs/Corps1Google Places / Business Profile APISearch by company name + city/state/address → get formatted_phone_number60–80% (if they have a claimed Google profile)Free $200/mo credit → ~$5–$17 per 1,000Most local LLCs claim a Google Business Profile and list their main phone2Company Website Contact PageFind official site → browse /contact, /about, footer40–65%Free (with rate limits)Businesses voluntarily publish their main line3OpenCorporates API + Registered AgentGet official filing → extract registered agent name/address → web search “[agent name] [company] phone”25–50%Free tier generousMany states list agent phone in public filings4Tavily / Serper.dev / Bright Data SearchIntelligent query: “[LLC Name] [State] official phone number site:company.com OR contact”50–70% (with smart follow-up browse)$0.001–$0.01 per queryAgentic search optimized for LLMs — pulls snippets then browses5Paid B2B Enrichment APIs (fallback)Apollo.io, Datagma, ZoomInfo, Lusha, LeadIQ, Uplead70–90% (verified)$0.10–$1 per successful matchDesigned exactly for this — return business phones + direct dials6Social Media SignalsX semantic search for “[company name] phone OR call OR contact” + check company bio/profile15–35%Free (X API) or low-costCompanies sometimes post their number i
