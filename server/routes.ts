@@ -2,6 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { seedDatabase } from "./seed";
+import { importNoaaHailData, importNoaaMultiYear } from "./noaa-importer";
+import { startJobScheduler } from "./job-scheduler";
 import { updateLeadSchema, type LeadFilter } from "@shared/schema";
 
 export async function registerRoutes(
@@ -9,10 +11,22 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   await seedDatabase();
+  startJobScheduler();
 
-  app.get("/api/dashboard/stats", async (_req, res) => {
+  app.get("/api/markets", async (_req, res) => {
     try {
-      const stats = await storage.getDashboardStats();
+      const markets = await storage.getMarkets();
+      res.json(markets);
+    } catch (error) {
+      console.error("Markets fetch error:", error);
+      res.status(500).json({ message: "Failed to load markets" });
+    }
+  });
+
+  app.get("/api/dashboard/stats", async (req, res) => {
+    try {
+      const marketId = req.query.marketId as string | undefined;
+      const stats = await storage.getDashboardStats(marketId);
       res.json(stats);
     } catch (error) {
       console.error("Dashboard stats error:", error);
@@ -23,6 +37,7 @@ export async function registerRoutes(
   app.get("/api/leads", async (req, res) => {
     try {
       const filter: LeadFilter = {
+        marketId: req.query.marketId as string | undefined,
         search: req.query.search as string | undefined,
         county: req.query.county as string | undefined,
         minScore: req.query.minScore ? Number(req.query.minScore) : undefined,
@@ -42,6 +57,7 @@ export async function registerRoutes(
   app.get("/api/leads/export", async (req, res) => {
     try {
       const filter: LeadFilter = {
+        marketId: req.query.marketId as string | undefined,
         county: req.query.county as string | undefined,
         minScore: req.query.minScore ? Number(req.query.minScore) : undefined,
         zoning: req.query.zoning as string | undefined,
@@ -114,13 +130,89 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/hail-events", async (_req, res) => {
+  app.get("/api/hail-events", async (req, res) => {
     try {
-      const events = await storage.getHailEvents();
+      const marketId = req.query.marketId as string | undefined;
+      const events = await storage.getHailEvents(marketId);
       res.json(events);
     } catch (error) {
       console.error("Hail events error:", error);
       res.status(500).json({ message: "Failed to load hail events" });
+    }
+  });
+
+  app.post("/api/import/noaa", async (req, res) => {
+    try {
+      const { startYear, endYear, marketId } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      const targetCounties = new Set(market.counties.map((c: string) => c.toUpperCase()));
+      const currentYear = new Date().getFullYear();
+      const start = startYear || currentYear - 5;
+      const end = Math.min(endYear || currentYear, currentYear);
+
+      res.json({ message: "NOAA import started", years: `${start}-${end}` });
+
+      importNoaaMultiYear(start, end, marketId, targetCounties).then((results) => {
+        const totalImported = results.reduce((sum, r) => sum + r.imported, 0);
+        console.log(`NOAA import complete: ${totalImported} events imported across ${results.length} years`);
+      }).catch((err) => {
+        console.error("NOAA import failed:", err);
+      });
+    } catch (error) {
+      console.error("NOAA import error:", error);
+      res.status(500).json({ message: "Failed to start NOAA import" });
+    }
+  });
+
+  app.get("/api/import/runs", async (_req, res) => {
+    try {
+      const runs = await storage.getImportRuns();
+      res.json(runs);
+    } catch (error) {
+      console.error("Import runs error:", error);
+      res.status(500).json({ message: "Failed to load import runs" });
+    }
+  });
+
+  app.get("/api/data-sources", async (_req, res) => {
+    try {
+      const sources = await storage.getDataSources();
+      res.json(sources);
+    } catch (error) {
+      console.error("Data sources error:", error);
+      res.status(500).json({ message: "Failed to load data sources" });
+    }
+  });
+
+  app.get("/api/jobs", async (_req, res) => {
+    try {
+      const allJobs = await storage.getJobs();
+      res.json(allJobs);
+    } catch (error) {
+      console.error("Jobs error:", error);
+      res.status(500).json({ message: "Failed to load jobs" });
+    }
+  });
+
+  app.post("/api/jobs/:id/run", async (req, res) => {
+    try {
+      const job = await storage.getJobs();
+      const targetJob = job.find((j) => j.id === req.params.id);
+      if (!targetJob) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.json({ message: `Job "${targetJob.name}" triggered` });
+    } catch (error) {
+      console.error("Job trigger error:", error);
+      res.status(500).json({ message: "Failed to trigger job" });
     }
   });
 

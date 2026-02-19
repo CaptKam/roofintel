@@ -14,6 +14,7 @@ import LeadDetail from "@/pages/lead-detail";
 import MapView from "@/pages/map-view";
 import HailEvents from "@/pages/hail-events";
 import Export from "@/pages/export";
+import DataManagement from "@/pages/data-management";
 
 function Router() {
   return (
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/map" component={MapView} />
       <Route path="/hail" component={HailEvents} />
       <Route path="/export" component={Export} />
+      <Route path="/data" component={DataManagement} />
       <Route component={NotFound} />
     </Switch>
   );

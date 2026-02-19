@@ -3,8 +3,21 @@ import { pgTable, text, varchar, integer, real, boolean, timestamp, jsonb } from
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const markets = pgTable("markets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  state: text("state").notNull(),
+  counties: text("counties").array().notNull(),
+  centerLat: real("center_lat").notNull(),
+  centerLng: real("center_lng").notNull(),
+  radiusMiles: integer("radius_miles").notNull().default(50),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const leads = pgTable("leads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id"),
   address: text("address").notNull(),
   city: text("city").notNull(),
   county: text("county").notNull(),
@@ -36,35 +49,88 @@ export const leads = pgTable("leads", {
   leadScore: integer("lead_score").notNull().default(0),
   status: text("status").notNull().default("new"),
   notes: text("notes"),
+  sourceType: text("source_type").default("seed"),
+  sourceId: text("source_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const hailEvents = pgTable("hail_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id"),
   eventDate: text("event_date").notNull(),
   latitude: real("latitude").notNull(),
   longitude: real("longitude").notNull(),
   hailSize: real("hail_size").notNull(),
   county: text("county").notNull(),
   city: text("city"),
+  state: text("state").default("TX"),
   source: text("source").notNull().default("NOAA"),
+  noaaEventId: text("noaa_event_id"),
+  noaaEpisodeId: text("noaa_episode_id"),
 });
 
-export const insertLeadSchema = createInsertSchema(leads).omit({
-  id: true,
-  createdAt: true,
+export const dataSources = pgTable("data_sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  url: text("url"),
+  marketId: varchar("market_id"),
+  lastFetchedAt: timestamp("last_fetched_at"),
+  nextFetchAt: timestamp("next_fetch_at"),
+  isActive: boolean("is_active").notNull().default(true),
+  config: jsonb("config"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const insertHailEventSchema = createInsertSchema(hailEvents).omit({
-  id: true,
+export const importRuns = pgTable("import_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  dataSourceId: varchar("data_source_id"),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("pending"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  recordsProcessed: integer("records_processed").default(0),
+  recordsImported: integer("records_imported").default(0),
+  recordsSkipped: integer("records_skipped").default(0),
+  errors: text("errors"),
+  metadata: jsonb("metadata"),
 });
 
+export const jobs = pgTable("jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("idle"),
+  schedule: text("schedule"),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  config: jsonb("config"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMarketSchema = createInsertSchema(markets).omit({ id: true, createdAt: true });
+export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
+export const insertHailEventSchema = createInsertSchema(hailEvents).omit({ id: true });
+export const insertDataSourceSchema = createInsertSchema(dataSources).omit({ id: true, createdAt: true });
+export const insertImportRunSchema = createInsertSchema(importRuns).omit({ id: true });
+export const insertJobSchema = createInsertSchema(jobs).omit({ id: true, createdAt: true });
+
+export type Market = typeof markets.$inferSelect;
+export type InsertMarket = z.infer<typeof insertMarketSchema>;
 export type InsertLead = z.infer<typeof insertLeadSchema>;
 export type Lead = typeof leads.$inferSelect;
 export type InsertHailEvent = z.infer<typeof insertHailEventSchema>;
 export type HailEvent = typeof hailEvents.$inferSelect;
+export type DataSource = typeof dataSources.$inferSelect;
+export type InsertDataSource = z.infer<typeof insertDataSourceSchema>;
+export type ImportRun = typeof importRuns.$inferSelect;
+export type InsertImportRun = z.infer<typeof insertImportRunSchema>;
+export type Job = typeof jobs.$inferSelect;
+export type InsertJob = z.infer<typeof insertJobSchema>;
 
 export const leadFilterSchema = z.object({
+  marketId: z.string().optional(),
   county: z.string().optional(),
   minScore: z.number().optional(),
   maxScore: z.number().optional(),

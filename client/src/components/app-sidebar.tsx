@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Settings } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +23,7 @@ const mainNav = [
 
 const toolsNav = [
   { title: "Export", url: "/export", icon: Download },
+  { title: "Data Sources", url: "/data", icon: Database },
 ];
 
 export function AppSidebar() {
@@ -78,7 +79,7 @@ export function AppSidebar() {
                     asChild
                     isActive={location.startsWith(item.url)}
                   >
-                    <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                    <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
                       <item.icon className="w-4 h-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -90,9 +91,9 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-[10px]">DFW Region</Badge>
-          <Badge variant="secondary" className="text-[10px]">MVP</Badge>
+          <Badge variant="default" className="text-[10px]">NOAA Live</Badge>
         </div>
       </SidebarFooter>
     </Sidebar>

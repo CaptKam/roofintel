@@ -1,19 +1,50 @@
 import { eq, and, gte, lte, ilike, or, desc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { leads, hailEvents, type Lead, type InsertLead, type HailEvent, type InsertHailEvent, type LeadFilter } from "@shared/schema";
+import {
+  leads, hailEvents, markets, dataSources, importRuns, jobs,
+  type Lead, type InsertLead, type HailEvent, type InsertHailEvent,
+  type LeadFilter, type Market, type InsertMarket,
+  type DataSource, type InsertDataSource,
+  type ImportRun, type InsertImportRun,
+  type Job, type InsertJob,
+} from "@shared/schema";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool);
 
 export interface IStorage {
+  getMarkets(): Promise<Market[]>;
+  getMarketById(id: string): Promise<Market | undefined>;
+  createMarket(market: InsertMarket): Promise<Market>;
+
   getLeads(filter?: LeadFilter): Promise<Lead[]>;
   getLeadById(id: string): Promise<Lead | undefined>;
   createLead(lead: InsertLead): Promise<Lead>;
+  createLeadsBatch(leadsData: InsertLead[]): Promise<number>;
   updateLead(id: string, updates: Partial<Lead>): Promise<Lead | undefined>;
-  getHailEvents(): Promise<HailEvent[]>;
+  getLeadCount(marketId?: string): Promise<number>;
+  getLeadBySourceId(sourceType: string, sourceId: string): Promise<Lead | undefined>;
+
+  getHailEvents(marketId?: string): Promise<HailEvent[]>;
   createHailEvent(event: InsertHailEvent): Promise<HailEvent>;
-  getDashboardStats(): Promise<{
+  createHailEventsBatch(events: InsertHailEvent[]): Promise<number>;
+  getHailEventByNoaaId(noaaEventId: string): Promise<HailEvent | undefined>;
+
+  getDataSources(): Promise<DataSource[]>;
+  createDataSource(ds: InsertDataSource): Promise<DataSource>;
+  updateDataSource(id: string, updates: Partial<DataSource>): Promise<DataSource | undefined>;
+
+  getImportRuns(limit?: number): Promise<ImportRun[]>;
+  createImportRun(run: InsertImportRun): Promise<ImportRun>;
+  updateImportRun(id: string, updates: Partial<ImportRun>): Promise<ImportRun | undefined>;
+
+  getJobs(): Promise<Job[]>;
+  getJobByName(name: string): Promise<Job | undefined>;
+  createJob(job: InsertJob): Promise<Job>;
+  updateJob(id: string, updates: Partial<Job>): Promise<Job | undefined>;
+
+  getDashboardStats(marketId?: string): Promise<{
     totalLeads: number;
     hotLeads: number;
     avgScore: number;
@@ -22,13 +53,32 @@ export interface IStorage {
     countyDistribution: { county: string; count: number }[];
     recentLeads: Lead[];
   }>;
-  getLeadCount(): Promise<number>;
+
+  updateLeadHailData(leadId: string, hailCount: number, lastDate: string, lastSize: number): Promise<void>;
+  updateLeadScore(leadId: string, score: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
+  async getMarkets(): Promise<Market[]> {
+    return db.select().from(markets).orderBy(markets.name);
+  }
+
+  async getMarketById(id: string): Promise<Market | undefined> {
+    const result = await db.select().from(markets).where(eq(markets.id, id));
+    return result[0];
+  }
+
+  async createMarket(market: InsertMarket): Promise<Market> {
+    const result = await db.insert(markets).values(market).returning();
+    return result[0];
+  }
+
   async getLeads(filter?: LeadFilter): Promise<Lead[]> {
     const conditions = [];
 
+    if (filter?.marketId && filter.marketId !== "all") {
+      conditions.push(eq(leads.marketId, filter.marketId));
+    }
     if (filter?.county && filter.county !== "all") {
       conditions.push(eq(leads.county, filter.county));
     }
@@ -78,13 +128,43 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
+  async createLeadsBatch(leadsData: InsertLead[]): Promise<number> {
+    if (leadsData.length === 0) return 0;
+    const batchSize = 100;
+    let total = 0;
+    for (let i = 0; i < leadsData.length; i += batchSize) {
+      const batch = leadsData.slice(i, i + batchSize);
+      await db.insert(leads).values(batch);
+      total += batch.length;
+    }
+    return total;
+  }
+
   async updateLead(id: string, updates: Partial<Lead>): Promise<Lead | undefined> {
     const { id: _id, createdAt: _ca, ...safeUpdates } = updates as any;
     const result = await db.update(leads).set(safeUpdates).where(eq(leads.id, id)).returning();
     return result[0];
   }
 
-  async getHailEvents(): Promise<HailEvent[]> {
+  async getLeadCount(marketId?: string): Promise<number> {
+    if (marketId) {
+      const result = await db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.marketId, marketId));
+      return Number(result[0].count);
+    }
+    const result = await db.select({ count: sql<number>`count(*)` }).from(leads);
+    return Number(result[0].count);
+  }
+
+  async getLeadBySourceId(sourceType: string, sourceId: string): Promise<Lead | undefined> {
+    const result = await db.select().from(leads)
+      .where(and(eq(leads.sourceType, sourceType), eq(leads.sourceId, sourceId)));
+    return result[0];
+  }
+
+  async getHailEvents(marketId?: string): Promise<HailEvent[]> {
+    if (marketId && marketId !== "all") {
+      return db.select().from(hailEvents).where(eq(hailEvents.marketId, marketId)).orderBy(desc(hailEvents.eventDate));
+    }
     return db.select().from(hailEvents).orderBy(desc(hailEvents.eventDate));
   }
 
@@ -93,14 +173,95 @@ export class DatabaseStorage implements IStorage {
     return result[0];
   }
 
-  async getLeadCount(): Promise<number> {
-    const result = await db.select({ count: sql<number>`count(*)` }).from(leads);
-    return Number(result[0].count);
+  async createHailEventsBatch(events: InsertHailEvent[]): Promise<number> {
+    if (events.length === 0) return 0;
+    const batchSize = 100;
+    let total = 0;
+    for (let i = 0; i < events.length; i += batchSize) {
+      const batch = events.slice(i, i + batchSize);
+      await db.insert(hailEvents).values(batch);
+      total += batch.length;
+    }
+    return total;
   }
 
-  async getDashboardStats() {
-    const allLeads = await db.select().from(leads).orderBy(desc(leads.leadScore));
-    const allHailEvents = await db.select().from(hailEvents);
+  async getHailEventByNoaaId(noaaEventId: string): Promise<HailEvent | undefined> {
+    const result = await db.select().from(hailEvents).where(eq(hailEvents.noaaEventId, noaaEventId));
+    return result[0];
+  }
+
+  async getDataSources(): Promise<DataSource[]> {
+    return db.select().from(dataSources).orderBy(dataSources.name);
+  }
+
+  async createDataSource(ds: InsertDataSource): Promise<DataSource> {
+    const result = await db.insert(dataSources).values(ds).returning();
+    return result[0];
+  }
+
+  async updateDataSource(id: string, updates: Partial<DataSource>): Promise<DataSource | undefined> {
+    const { id: _id, createdAt: _ca, ...safeUpdates } = updates as any;
+    const result = await db.update(dataSources).set(safeUpdates).where(eq(dataSources.id, id)).returning();
+    return result[0];
+  }
+
+  async getImportRuns(limit = 50): Promise<ImportRun[]> {
+    return db.select().from(importRuns).orderBy(desc(importRuns.startedAt)).limit(limit);
+  }
+
+  async createImportRun(run: InsertImportRun): Promise<ImportRun> {
+    const result = await db.insert(importRuns).values(run).returning();
+    return result[0];
+  }
+
+  async updateImportRun(id: string, updates: Partial<ImportRun>): Promise<ImportRun | undefined> {
+    const result = await db.update(importRuns).set(updates).where(eq(importRuns.id, id)).returning();
+    return result[0];
+  }
+
+  async getJobs(): Promise<Job[]> {
+    return db.select().from(jobs).orderBy(jobs.name);
+  }
+
+  async getJobByName(name: string): Promise<Job | undefined> {
+    const result = await db.select().from(jobs).where(eq(jobs.name, name));
+    return result[0];
+  }
+
+  async createJob(job: InsertJob): Promise<Job> {
+    const result = await db.insert(jobs).values(job).returning();
+    return result[0];
+  }
+
+  async updateJob(id: string, updates: Partial<Job>): Promise<Job | undefined> {
+    const { id: _id, createdAt: _ca, ...safeUpdates } = updates as any;
+    const result = await db.update(jobs).set(safeUpdates).where(eq(jobs.id, id)).returning();
+    return result[0];
+  }
+
+  async updateLeadHailData(leadId: string, hailCount: number, lastDate: string, lastSize: number): Promise<void> {
+    await db.update(leads).set({
+      hailEvents: hailCount,
+      lastHailDate: lastDate,
+      lastHailSize: lastSize,
+    }).where(eq(leads.id, leadId));
+  }
+
+  async updateLeadScore(leadId: string, score: number): Promise<void> {
+    await db.update(leads).set({ leadScore: score }).where(eq(leads.id, leadId));
+  }
+
+  async getDashboardStats(marketId?: string) {
+    let allLeads: Lead[];
+    let allHailEvts: HailEvent[];
+
+    if (marketId && marketId !== "all") {
+      allLeads = await db.select().from(leads).where(eq(leads.marketId, marketId)).orderBy(desc(leads.leadScore));
+      allHailEvts = await db.select().from(hailEvents).where(eq(hailEvents.marketId, marketId));
+    } else {
+      allLeads = await db.select().from(leads).orderBy(desc(leads.leadScore));
+      allHailEvts = await db.select().from(hailEvents);
+    }
 
     const totalLeads = allLeads.length;
     const hotLeads = allLeads.filter((l) => l.leadScore >= 80).length;
@@ -131,7 +292,7 @@ export class DatabaseStorage implements IStorage {
       totalLeads,
       hotLeads,
       avgScore,
-      totalHailEvents: allHailEvents.length,
+      totalHailEvents: allHailEvts.length,
       scoreDistribution,
       countyDistribution,
       recentLeads: allLeads.slice(0, 8),
