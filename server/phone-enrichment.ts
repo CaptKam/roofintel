@@ -56,6 +56,29 @@ function isValidBusinessPhone(phone: string): boolean {
   return true;
 }
 
+async function googlePlacesSearch(query: string, apiKey: string): Promise<PhoneResult | null> {
+  const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
+  const searchRes = await fetch(searchUrl);
+  if (!searchRes.ok) return null;
+  const searchData = await searchRes.json();
+
+  if (searchData.status !== "OK" || !searchData.candidates || searchData.candidates.length === 0) return null;
+
+  const placeId = searchData.candidates[0].place_id;
+
+  const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,name&key=${apiKey}`;
+  const detailRes = await fetch(detailUrl);
+  if (!detailRes.ok) return null;
+  const detailData = await detailRes.json();
+
+  if (detailData.result?.formatted_phone_number) {
+    const phone = detailData.result.formatted_phone_number;
+    if (isValidBusinessPhone(phone)) return { phone, source: "Google Places" };
+  }
+
+  return null;
+}
+
 const googlePlacesProvider: PhoneProvider = {
   name: "Google Places",
   isAvailable: () => !!process.env.GOOGLE_PLACES_API_KEY,
@@ -67,35 +90,14 @@ const googlePlacesProvider: PhoneProvider = {
       const companyName = cleanCompanyName(lead.ownerName);
       const city = (lead.city || "").trim();
       const state = lead.state || "TX";
-      const query = `${companyName} ${city} ${state}`;
+      const address = (lead.address || "").trim();
 
-      const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name,formatted_phone_number&key=${apiKey}`;
+      const result = await googlePlacesSearch(`${companyName} ${city} ${state}`, apiKey);
+      if (result) return result;
 
-      const searchRes = await fetch(searchUrl);
-      if (!searchRes.ok) return null;
-      const searchData = await searchRes.json();
-
-      if (!searchData.candidates || searchData.candidates.length === 0) return null;
-
-      const placeId = searchData.candidates[0].place_id;
-
-      if (searchData.candidates[0].formatted_phone_number) {
-        const phone = searchData.candidates[0].formatted_phone_number;
-        if (isValidBusinessPhone(phone)) {
-          return { phone, source: "Google Places" };
-        }
-      }
-
-      const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,name&key=${apiKey}`;
-      const detailRes = await fetch(detailUrl);
-      if (!detailRes.ok) return null;
-      const detailData = await detailRes.json();
-
-      if (detailData.result?.formatted_phone_number) {
-        const phone = detailData.result.formatted_phone_number;
-        if (isValidBusinessPhone(phone)) {
-          return { phone, source: "Google Places" };
-        }
+      if (address && city) {
+        const addressResult = await googlePlacesSearch(`${address} ${city} ${state}`, apiKey);
+        if (addressResult) return addressResult;
       }
 
       return null;
