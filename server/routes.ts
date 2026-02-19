@@ -729,7 +729,7 @@ export async function registerRoutes(
       const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 10, 1), 50);
 
       res.json({
-        message: "Owner intelligence pipeline started (10 agents)",
+        message: "Owner intelligence pipeline started (11 agents)",
         batchSize: parsedBatchSize,
       });
 
@@ -758,6 +758,7 @@ export async function registerRoutes(
         managingMemberEmail: result.managingMemberEmail,
         llcChain: result.llcChain,
         ownerIntelligence: result.dossier,
+        buildingContacts: result.dossier.buildingContacts,
         intelligenceScore: result.score,
         intelligenceSources: result.sources,
         intelligenceAt: new Date(),
@@ -781,6 +782,7 @@ export async function registerRoutes(
         managingMemberPhone: lead.managingMemberPhone,
         managingMemberEmail: lead.managingMemberEmail,
         llcChain: lead.llcChain,
+        buildingContacts: lead.buildingContacts,
         dossier: lead.ownerIntelligence,
         score: lead.intelligenceScore,
         sources: lead.intelligenceSources,

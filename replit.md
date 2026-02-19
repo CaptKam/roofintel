@@ -28,7 +28,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/storm-monitor.ts` - Real-time NOAA SWDI hail radar + NWS alerts monitor with swath polygon generation
 - `server/xweather-hail.ts` - Xweather/Vaisala predictive hail service: polls /hail/threats API every 2 min, parses threat polygons, calculates ETAs, triggers pre-storm SMS alerts
 - `server/hail-tracker.ts` - Live hail radar tracker (NOAA SWDI nx3hail + NWS Alerts API for DFW region)
-- `server/owner-intelligence.ts` - 10-agent owner intelligence system (TX SOS Deep, LLC Chain, TX Comptroller, Property Tax, People Search, Email Discovery, Google Business, Court Records, Social Intelligence, Master Orchestrator)
+- `server/owner-intelligence.ts` - 11-agent owner intelligence system (TX SOS Deep, LLC Chain, TX Comptroller, Property Tax, People Search, Email Discovery, Google Business, Court Records, Social Intelligence, Building Contacts, Master Orchestrator)
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
 - `shared/schema.ts` - Drizzle schema definitions and Zod validation
 

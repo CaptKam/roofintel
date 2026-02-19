@@ -39,6 +39,8 @@ import {
   LinkIcon,
   Play,
   Loader2,
+  HardHat,
+  UserCheck,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -89,6 +91,7 @@ export default function LeadDetail() {
     managingMemberPhone: string | null;
     managingMemberEmail: string | null;
     llcChain: Array<{ entityName: string; entityType: string; officers: Array<{ name: string; title?: string; confidence: number }>; source: string; status?: string }>;
+    buildingContacts: Array<{ name: string; role: string; company?: string; phone?: string; email?: string; source: string; confidence: number }> | null;
     dossier: any;
     score: number;
     sources: string[];
@@ -461,13 +464,59 @@ export default function LeadDetail() {
                       data-testid="button-run-intel"
                     >
                       {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
-                      Run 10-Agent Pipeline
+                      Run 11-Agent Pipeline
                     </Button>
                   )}
                 </div>
               )}
             </CardContent>
           </Card>
+
+          {intelligence?.buildingContacts && intelligence.buildingContacts.length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <HardHat className="w-4 h-4 text-primary" />
+                  Building Contacts
+                </CardTitle>
+                <Badge variant="outline" className="text-[10px] no-default-active-elevate" data-testid="badge-building-contacts-count">
+                  {intelligence.buildingContacts.length} found
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {intelligence.buildingContacts.slice(0, 8).map((contact, i) => (
+                  <div key={i} className="space-y-1" data-testid={`building-contact-${i}`}>
+                    <div className="flex items-center gap-2">
+                      <UserCheck className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm font-medium" data-testid={`text-building-contact-name-${i}`}>{contact.name}</span>
+                    </div>
+                    <div className="pl-5 space-y-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-[10px] no-default-active-elevate" data-testid={`badge-building-contact-role-${i}`}>{contact.role}</Badge>
+                        {contact.company && (
+                          <span className="text-xs text-muted-foreground" data-testid={`text-building-contact-company-${i}`}>{contact.company}</span>
+                        )}
+                      </div>
+                      {contact.phone && (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Phone className="w-3 h-3 text-muted-foreground" />
+                          <a href={`tel:${contact.phone}`} className="text-primary hover:underline" data-testid={`link-building-contact-phone-${i}`}>{contact.phone}</a>
+                        </div>
+                      )}
+                      {contact.email && (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Mail className="w-3 h-3 text-muted-foreground" />
+                          <a href={`mailto:${contact.email}`} className="text-primary hover:underline" data-testid={`link-building-contact-email-${i}`}>{contact.email}</a>
+                        </div>
+                      )}
+                      <span className="text-[10px] text-muted-foreground" data-testid={`text-building-contact-source-${i}`}>{contact.source}</span>
+                    </div>
+                    {i < intelligence.buildingContacts!.length - 1 && i < 7 && <Separator className="mt-2" />}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="pb-2">

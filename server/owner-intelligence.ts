@@ -27,8 +27,19 @@ export interface LlcChainLink {
   source: string;
 }
 
+export interface BuildingContact {
+  name: string;
+  role: string;
+  company?: string;
+  phone?: string;
+  email?: string;
+  source: string;
+  confidence: number;
+}
+
 export interface OwnerDossier {
   realPeople: PersonRecord[];
+  buildingContacts: BuildingContact[];
   llcChain: LlcChainLink[];
   businessProfiles: Array<{
     source: string;
@@ -865,7 +876,252 @@ async function socialIntelAgent(lead: Lead, knownPeople: PersonRecord[]): Promis
 }
 
 // ============================================================
-// AGENT 10: Master Orchestrator
+// AGENT 10: Building Contacts Agent
+// ============================================================
+
+async function buildingContactsAgent(lead: Lead): Promise<{ contacts: BuildingContact[]; agentDetail: string }> {
+  const contacts: BuildingContact[] = [];
+  const serperKey = process.env.SERPER_API_KEY;
+  const googleKey = process.env.GOOGLE_PLACES_API_KEY;
+
+  const address = (lead.address || "").trim();
+  const city = (lead.city || "").trim();
+  const state = lead.state || "TX";
+  const fullAddress = `${address}, ${city}, ${state}`;
+
+  // Strategy 1: Google Places - find businesses AT this address (tenants, management companies)
+  if (googleKey) {
+    try {
+      const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(fullAddress)}&key=${googleKey}`;
+      const searchRes = await fetchWithTimeout(searchUrl);
+      if (searchRes && searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.results) {
+          for (const place of searchData.results.slice(0, 5)) {
+            const placeTypes = place.types || [];
+            const isRelevant = !placeTypes.includes("locality") && !placeTypes.includes("sublocality") && !placeTypes.includes("route");
+            if (!isRelevant) continue;
+
+            const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,website,types,business_status&key=${googleKey}`;
+            const detailRes = await fetchWithTimeout(detailUrl);
+            if (!detailRes || !detailRes.ok) continue;
+            const detail = (await detailRes.json()).result;
+            if (!detail || detail.business_status === "CLOSED_PERMANENTLY") continue;
+
+            const role = placeTypes.includes("real_estate_agency") ? "Property Manager" :
+                         placeTypes.includes("general_contractor") ? "Contractor" :
+                         "Tenant / Occupant";
+
+            contacts.push({
+              name: detail.name || place.name,
+              role,
+              phone: detail.formatted_phone_number,
+              source: "Google Places (at address)",
+              confidence: 55,
+            });
+
+            if (detail.website) {
+              const html = await fetchPage(detail.website);
+              if (html) {
+                const $ = cheerio.load(html);
+                const pageText = $.text();
+                const pageEmails = extractEmails(pageText);
+                const pagePhones = extractPhones(pageText);
+
+                const managerPattern = /(?:property\s*manager|facility\s*manager|building\s*manager|maintenance\s*(?:manager|director|supervisor)|leasing\s*(?:agent|manager|director))[\s:,\-–]+([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi;
+                let match;
+                while ((match = managerPattern.exec(pageText)) !== null) {
+                  if (isPersonName(match[1])) {
+                    const roleFromMatch = match[0].split(/[\s:,\-–]+/)[0].replace(/\s+/g, " ").trim();
+                    contacts.push({
+                      name: match[1].trim(),
+                      role: roleFromMatch,
+                      company: detail.name,
+                      email: pageEmails[0],
+                      phone: pagePhones[0],
+                      source: "Business Website (at address)",
+                      confidence: 65,
+                    });
+                  }
+                }
+
+                if (pageEmails.length > 0) {
+                  const lastContact = contacts[contacts.length - 1];
+                  if (lastContact && !lastContact.email) lastContact.email = pageEmails[0];
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Strategy 2: Web search for property managers, facility managers, tenants at this address
+  if (serperKey) {
+    try {
+      const queries = [
+        `"${address}" "${city}" property manager OR facility manager OR building manager`,
+        `"${address}" "${city}" TX tenant OR occupant OR leasing`,
+        `"${address}" "${city}" TX building permit OR contractor OR renovation`,
+      ];
+
+      for (const query of queries) {
+        const res = await fetchWithTimeout("https://google.serper.dev/search", {
+          method: "POST",
+          headers: { "X-API-KEY": serperKey, "Content-Type": "application/json" },
+          body: JSON.stringify({ q: query, num: 5 }),
+        });
+        if (!res || !res.ok) continue;
+        const data = await res.json();
+
+        if (data.organic) {
+          for (const result of data.organic) {
+            const snippet = result.snippet || "";
+            const title = result.title || "";
+            const combined = `${title} ${snippet}`;
+            const url = result.link || "";
+
+            const rolePatterns = [
+              { pattern: /(?:property\s*manag(?:er|ement)|managed\s*by)[\s:,\-–]*([A-Z][a-zA-Z&\s]+?)(?:\.|,|\s{2}|$)/gi, role: "Property Manager" },
+              { pattern: /(?:facility\s*manag(?:er|ement))[\s:,\-–]*([A-Z][a-zA-Z&\s]+?)(?:\.|,|\s{2}|$)/gi, role: "Facility Manager" },
+              { pattern: /(?:leasing\s*(?:agent|contact|office|by))[\s:,\-–]*([A-Z][a-zA-Z&\s]+?)(?:\.|,|\s{2}|$)/gi, role: "Leasing Agent" },
+              { pattern: /(?:tenant|occupied\s*by|leased\s*(?:to|by))[\s:,\-–]*([A-Z][a-zA-Z&\s]+?)(?:\.|,|\s{2}|$)/gi, role: "Tenant" },
+              { pattern: /(?:contractor|permit(?:\s*holder)?|(?:filed|pulled)\s*(?:by|permit))[\s:,\-–]*([A-Z][a-zA-Z&\s]+?)(?:\.|,|\s{2}|$)/gi, role: "Contractor / Permit Filer" },
+              { pattern: /(?:maintenance\s*(?:manager|director|supervisor|contact))[\s:,\-–]*([A-Z][a-zA-Z&\s]+?)(?:\.|,|\s{2}|$)/gi, role: "Maintenance Contact" },
+            ];
+
+            for (const { pattern, role } of rolePatterns) {
+              let m;
+              while ((m = pattern.exec(combined)) !== null) {
+                const nameOrCompany = m[1].trim().substring(0, 60);
+                if (nameOrCompany.length < 3) continue;
+                const phones = extractPhones(snippet);
+                const emails = extractEmails(snippet);
+
+                contacts.push({
+                  name: nameOrCompany,
+                  role,
+                  phone: phones[0],
+                  email: emails[0],
+                  source: url.includes("permit") ? "Building Permits" : "Web Search",
+                  confidence: isPersonName(nameOrCompany) ? 55 : 45,
+                });
+              }
+            }
+
+            if (url.includes("permit") || combined.toLowerCase().includes("permit")) {
+              const permitNames = combined.match(/(?:filed by|applicant|permit holder|contractor)[\s:,\-–]+([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi);
+              if (permitNames) {
+                for (const raw of permitNames) {
+                  const nameOnly = raw.replace(/^(?:filed by|applicant|permit holder|contractor)[\s:,\-–]+/i, "").trim();
+                  if (isPersonName(nameOnly)) {
+                    contacts.push({
+                      name: nameOnly,
+                      role: "Permit Filer",
+                      source: "Building Permits",
+                      confidence: 50,
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        await new Promise(r => setTimeout(r, 500));
+      }
+    } catch {}
+  }
+
+  // Strategy 3: Search for property management company on the website (if business has one)
+  if (lead.businessWebsite) {
+    try {
+      const contactPages = [
+        lead.businessWebsite,
+        `${lead.businessWebsite.replace(/\/$/, "")}/contact`,
+        `${lead.businessWebsite.replace(/\/$/, "")}/about`,
+        `${lead.businessWebsite.replace(/\/$/, "")}/management`,
+        `${lead.businessWebsite.replace(/\/$/, "")}/team`,
+      ];
+
+      for (const pageUrl of contactPages) {
+        const html = await fetchPage(pageUrl);
+        if (!html) continue;
+
+        const $ = cheerio.load(html);
+        const pageText = $.text();
+
+        const titlePatterns = [
+          /(?:property\s*manager|facility\s*manager|building\s*manager|site\s*manager|maintenance\s*(?:manager|director|supervisor)|general\s*manager|leasing\s*(?:agent|manager|director|specialist)|building\s*superintendent|chief\s*engineer)[\s:,\-–]+([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/gi,
+        ];
+
+        for (const pattern of titlePatterns) {
+          let match;
+          while ((match = pattern.exec(pageText)) !== null) {
+            if (isPersonName(match[1])) {
+              const roleStr = match[0].split(/[\s:,\-–]+/).slice(0, -1).join(" ").replace(/\s+/g, " ").trim();
+              const nearbyText = pageText.substring(Math.max(0, match.index - 100), match.index + match[0].length + 200);
+              const nearbyEmails = extractEmails(nearbyText);
+              const nearbyPhones = extractPhones(nearbyText);
+
+              contacts.push({
+                name: match[1].trim(),
+                role: roleStr.charAt(0).toUpperCase() + roleStr.slice(1).toLowerCase(),
+                phone: nearbyPhones[0],
+                email: nearbyEmails[0],
+                source: "Business Website",
+                confidence: 70,
+              });
+            }
+          }
+        }
+
+        const vcardBlocks = pageText.match(/(?:[A-Z][a-z]+ [A-Z][a-z]+)\s*\n?\s*(?:Property Manager|Facility Manager|Building Manager|Maintenance|Leasing|Site Manager)/gi);
+        if (vcardBlocks) {
+          for (const block of vcardBlocks) {
+            const lines = block.split(/\n/).map(l => l.trim()).filter(Boolean);
+            if (lines.length >= 2 && isPersonName(lines[0])) {
+              const nearbyText = pageText.substring(Math.max(0, pageText.indexOf(block) - 50), pageText.indexOf(block) + block.length + 200);
+              contacts.push({
+                name: lines[0],
+                role: lines[1],
+                phone: extractPhones(nearbyText)[0],
+                email: extractEmails(nearbyText)[0],
+                source: "Business Website",
+                confidence: 65,
+              });
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Deduplicate building contacts
+  const seen = new Map<string, BuildingContact>();
+  for (const c of contacts) {
+    const key = c.name.toUpperCase().replace(/\s+/g, " ").trim();
+    const existing = seen.get(key);
+    if (!existing || c.confidence > existing.confidence) {
+      if (existing) {
+        c.phone = c.phone || existing.phone;
+        c.email = c.email || existing.email;
+        c.company = c.company || existing.company;
+      }
+      seen.set(key, c);
+    }
+  }
+  const dedupedContacts = Array.from(seen.values()).sort((a, b) => b.confidence - a.confidence).slice(0, 15);
+
+  return {
+    contacts: dedupedContacts,
+    agentDetail: `Found ${dedupedContacts.length} building-connected contacts`,
+  };
+}
+
+// ============================================================
+// AGENT 11: Master Orchestrator
 // ============================================================
 
 function calculateIntelligenceScore(dossier: OwnerDossier): number {
@@ -888,19 +1144,23 @@ function calculateIntelligenceScore(dossier: OwnerDossier): number {
   if (dossier.businessProfiles.length > 0) score += 5;
   if (dossier.emails.some(e => e.verified)) score += 5;
 
+  if (dossier.buildingContacts && dossier.buildingContacts.length > 0) score += 5;
+  if (dossier.buildingContacts && dossier.buildingContacts.some(c => c.phone || c.email)) score += 5;
+
   return Math.min(100, score);
 }
 
 export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResult> {
   const agentResults: OwnerDossier["agentResults"] = [];
   let allPeople: PersonRecord[] = [];
+  let buildingContacts: BuildingContact[] = [];
   let llcChain: LlcChainLink[] = [];
   let businessProfiles: any[] = [];
   let courtRecords: any[] = [];
   let discoveredEmails: Array<{ email: string; source: string; verified: boolean }> = [];
   let sources: string[] = [];
 
-  console.log(`[Intelligence] Running 10-agent pipeline for: ${lead.ownerName} (${lead.address})`);
+  console.log(`[Intelligence] Running 11-agent pipeline for: ${lead.ownerName} (${lead.address})`);
 
   // Stage 1: TX SOS Deep Agent
   const sosResult = await txSosDeepAgent(lead);
@@ -973,6 +1233,12 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   agentResults.push({ agent: "Social Intelligence", status: socialResult.people.length > 0 || socialResult.profiles.length > 0 ? "found" : "empty", found: socialResult.people.length, detail: socialResult.agentDetail });
   if (socialResult.people.length > 0 || socialResult.profiles.length > 0) sources.push("Social Intel");
 
+  // Stage 10: Building Contacts Agent
+  const buildingResult = await buildingContactsAgent(lead);
+  buildingContacts = buildingResult.contacts;
+  agentResults.push({ agent: "Building Contacts", status: buildingResult.contacts.length > 0 ? "found" : "empty", found: buildingResult.contacts.length, detail: buildingResult.agentDetail });
+  if (buildingResult.contacts.length > 0) sources.push("Building Contacts");
+
   // Final deduplication
   allPeople = deduplicatePeople(allPeople);
 
@@ -1002,6 +1268,7 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   // Build dossier
   const dossier: OwnerDossier = {
     realPeople: allPeople.slice(0, 10),
+    buildingContacts,
     llcChain,
     businessProfiles,
     courtRecords,
@@ -1093,6 +1360,7 @@ export async function runOwnerIntelligenceBatch(
             managingMemberEmail: result.managingMemberEmail,
             llcChain: result.llcChain,
             ownerIntelligence: result.dossier,
+            buildingContacts: result.dossier.buildingContacts,
             intelligenceScore: result.score,
             intelligenceSources: result.sources,
             intelligenceAt: new Date(),
@@ -1153,6 +1421,7 @@ export function getIntelligenceStatus(): {
     { name: "Google Business", available: !!process.env.GOOGLE_PLACES_API_KEY, description: "Google Places business profile and owner info from reviews" },
     { name: "Court Records", available: !!process.env.SERPER_API_KEY, description: "Searches public court filings and building permits" },
     { name: "Social Intelligence", available: !!process.env.SERPER_API_KEY, description: "BBB profiles, LinkedIn companies, and business registrations" },
+    { name: "Building Contacts", available: !!process.env.SERPER_API_KEY || !!process.env.GOOGLE_PLACES_API_KEY, description: "Finds property managers, tenants, contractors, and permit filers connected to the building" },
     { name: "Master Orchestrator", available: true, description: "Chains all agents, deduplicates, and scores confidence" },
   ];
 

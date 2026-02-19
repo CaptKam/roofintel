@@ -47,6 +47,7 @@ function AgentIcon({ name }: { name: string }) {
     case "Google Business": return <Globe className="w-3.5 h-3.5" />;
     case "Court Records": return <Scale className="w-3.5 h-3.5" />;
     case "Social Intelligence": return <Users className="w-3.5 h-3.5" />;
+    case "Building Contacts": return <Building2 className="w-3.5 h-3.5" />;
     case "Master Orchestrator": return <Bot className="w-3.5 h-3.5" />;
     default: return <Bot className="w-3.5 h-3.5" />;
   }
@@ -127,7 +128,7 @@ export default function OwnerIntelligence() {
             <Fingerprint className="w-5 h-5 text-primary" />
             Owner Intelligence
           </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">10-agent pipeline to unmask the real people behind LLCs</p>
+          <p className="text-sm text-muted-foreground mt-0.5">11-agent pipeline to unmask the real people behind LLCs and find building contacts</p>
         </div>
         <Button
           onClick={() => runPipelineMutation.mutate()}
@@ -209,6 +210,14 @@ export default function OwnerIntelligence() {
                               <Mail className="w-2.5 h-2.5 mr-0.5" /> Email
                             </Badge>
                           )}
+                          {(() => {
+                            const bc = lead.buildingContacts as any[] | null;
+                            return bc && bc.length > 0 ? (
+                              <Badge variant="outline" className="text-[10px] no-default-active-elevate" data-testid={`badge-bldg-contacts-${lead.id}`}>
+                                <Building2 className="w-2.5 h-2.5 mr-0.5" /> {bc.length} Bldg
+                              </Badge>
+                            ) : null;
+                          })()}
                         </div>
                         <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       </div>
@@ -290,7 +299,7 @@ export default function OwnerIntelligence() {
               <CardTitle className="text-sm font-medium">How It Works</CardTitle>
             </CardHeader>
             <CardContent className="text-xs text-muted-foreground space-y-2">
-              <p>The intelligence pipeline runs 10 specialized agents against each LLC/Corporation to find the real human owners:</p>
+              <p>The intelligence pipeline runs 11 specialized agents against each LLC/Corporation to find the real human owners and building-connected people:</p>
               <ol className="list-decimal list-inside space-y-1">
                 <li>Search TX Secretary of State filings for officers</li>
                 <li>Follow LLC ownership chains up to 3 levels</li>
@@ -301,6 +310,7 @@ export default function OwnerIntelligence() {
                 <li>Pull Google Business profiles and reviews</li>
                 <li>Search court filings and building permits</li>
                 <li>Check BBB, LinkedIn, business registrations</li>
+                <li>Find property managers, tenants, and contractors connected to the building</li>
                 <li>Deduplicate all findings and score confidence</li>
               </ol>
             </CardContent>
