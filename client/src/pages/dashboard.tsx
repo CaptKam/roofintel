@@ -15,6 +15,7 @@ import {
   MapPin,
   Ruler,
   Calendar,
+  Fingerprint,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import type { Lead } from "@shared/schema";
@@ -24,6 +25,7 @@ interface DashboardStats {
   hotLeads: number;
   avgScore: number;
   totalHailEvents: number;
+  ownersUnmasked: number;
   scoreDistribution: { range: string; count: number }[];
   countyDistribution: { county: string; count: number }[];
   recentLeads: Lead[];
@@ -98,8 +100,8 @@ export default function Dashboard() {
           <h2 className="text-xl font-semibold tracking-tight">Dashboard</h2>
           <p className="text-sm text-muted-foreground mt-0.5">Overview of your lead intelligence pipeline</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <StatCardSkeleton key={i} />)}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {[...Array(5)].map((_, i) => <StatCardSkeleton key={i} />)}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <Card><CardContent className="p-6"><Skeleton className="h-48 w-full" /></CardContent></Card>
@@ -126,7 +128,7 @@ export default function Dashboard() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Total Leads"
           value={stats.totalLeads.toLocaleString()}
@@ -151,6 +153,12 @@ export default function Dashboard() {
           value={stats.totalHailEvents}
           icon={CloudLightning}
           subtitle="In tracked regions"
+        />
+        <StatCard
+          title="Owners Unmasked"
+          value={stats.ownersUnmasked}
+          icon={Fingerprint}
+          subtitle="Intelligence score 70+"
         />
       </div>
 
@@ -260,7 +268,15 @@ export default function Dashboard() {
                 >
                   <ScoreDot score={lead.leadScore} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{lead.address}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">{lead.address}</p>
+                      {lead.managingMember && lead.intelligenceScore >= 70 && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Fingerprint className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs font-medium text-primary">{lead.managingMember}</span>
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
@@ -281,6 +297,12 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <StatusBadge status={lead.status} />
                     <ScoreBadge score={lead.leadScore} />
+                    {lead.intelligenceScore >= 70 && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Fingerprint className="w-3 h-3 mr-1" />
+                        {lead.intelligenceScore}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </Link>

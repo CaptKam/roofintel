@@ -28,6 +28,7 @@ import {
   ChevronLeft,
   User,
   Phone,
+  Fingerprint,
 } from "lucide-react";
 import type { Lead } from "@shared/schema";
 
@@ -116,6 +117,11 @@ export default function Leads() {
           <p className="text-sm text-muted-foreground mt-0.5">
             {isLoading ? "Loading..." : `${total.toLocaleString()} properties`} in your pipeline
           </p>
+          {!isLoading && leads && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {leads.filter(l => l.managingMember).length} unmasked
+            </p>
+          )}
         </div>
       </div>
 
@@ -292,6 +298,12 @@ export default function Leads() {
                           <User className="w-3 h-3" />
                           {lead.ownerName}
                         </span>
+                        {lead.managingMember && (
+                          <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <Fingerprint className="w-3 h-3" />
+                            {lead.managingMember}
+                          </span>
+                        )}
                         {(lead.ownerPhone || lead.contactPhone) && (
                           <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                             <Phone className="w-3 h-3" />

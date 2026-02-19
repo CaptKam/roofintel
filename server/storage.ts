@@ -461,11 +461,14 @@ export class DatabaseStorage implements IStorage {
       .map(([county, count]) => ({ county, count }))
       .sort((a, b) => b.count - a.count);
 
+    const ownersUnmasked = allLeads.filter((l) => l.intelligenceScore >= 70).length;
+
     return {
       totalLeads,
       hotLeads,
       avgScore,
       totalHailEvents: allHailEvts.length,
+      ownersUnmasked,
       scoreDistribution,
       countyDistribution,
       recentLeads: allLeads.slice(0, 8),

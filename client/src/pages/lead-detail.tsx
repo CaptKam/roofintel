@@ -34,12 +34,16 @@ import {
   Hash,
   Globe,
   Search,
+  ShieldCheck,
+  Fingerprint,
+  LinkIcon,
+  Play,
+  Loader2,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import type { Lead } from "@shared/schema";
-import { ShieldCheck } from "lucide-react";
 
 function DetailRow({
   icon: Icon,
@@ -56,7 +60,7 @@ function DetailRow({
       <Icon className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-sm font-medium mt-0.5" data-testid={`detail-${label.toLowerCase().replace(/\s/g, "-")}`}>{value}</p>
+        <div className="text-sm font-medium mt-0.5" data-testid={`detail-${label.toLowerCase().replace(/\s/g, "-")}`}>{value}</div>
       </div>
     </div>
   );
@@ -77,6 +81,36 @@ export default function LeadDetail() {
   }>({
     queryKey: ["/api/leads", id, "confidence"],
     enabled: !!lead,
+  });
+
+  const { data: intelligence } = useQuery<{
+    managingMember: string | null;
+    managingMemberTitle: string | null;
+    managingMemberPhone: string | null;
+    managingMemberEmail: string | null;
+    llcChain: Array<{ entityName: string; entityType: string; officers: Array<{ name: string; title?: string; confidence: number }>; source: string; status?: string }>;
+    dossier: any;
+    score: number;
+    sources: string[];
+    generatedAt: string | null;
+  }>({
+    queryKey: ["/api/leads", id, "intelligence"],
+    enabled: !!lead,
+  });
+
+  const runIntelMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/intelligence/run-single/${id}`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "intelligence"] });
+      toast({ title: "Intelligence gathered" });
+    },
+    onError: () => {
+      toast({ title: "Intelligence gathering failed", variant: "destructive" });
+    },
   });
 
   const updateMutation = useMutation({
@@ -356,6 +390,84 @@ export default function LeadDetail() {
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Fingerprint className="w-4 h-4 text-primary" />
+                Owner Intelligence
+              </CardTitle>
+              {intelligence?.score !== undefined && intelligence.score > 0 && (
+                <Badge variant={intelligence.score >= 70 ? "default" : "outline"} className="text-[10px]" data-testid="badge-intel-score">
+                  {intelligence.score}/100
+                </Badge>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {intelligence?.managingMember ? (
+                <>
+                  <DetailRow icon={User} label="Real Owner" value={
+                    <span className="font-semibold">{intelligence.managingMember}</span>
+                  } />
+                  {intelligence.managingMemberTitle && (
+                    <DetailRow icon={Briefcase} label="Role" value={intelligence.managingMemberTitle} />
+                  )}
+                  {intelligence.managingMemberPhone && (
+                    <DetailRow icon={Phone} label="Direct Phone" value={
+                      <a href={`tel:${intelligence.managingMemberPhone}`} className="text-primary hover:underline">{intelligence.managingMemberPhone}</a>
+                    } />
+                  )}
+                  {intelligence.managingMemberEmail && (
+                    <DetailRow icon={Mail} label="Direct Email" value={
+                      <a href={`mailto:${intelligence.managingMemberEmail}`} className="text-primary hover:underline">{intelligence.managingMemberEmail}</a>
+                    } />
+                  )}
+                  {intelligence.llcChain && intelligence.llcChain.length > 0 && (
+                    <div className="pt-1">
+                      <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><LinkIcon className="w-3 h-3" /> LLC Chain</p>
+                      {intelligence.llcChain.slice(0, 3).map((link, i) => (
+                        <div key={i} className="flex items-center gap-1 text-xs pl-3 py-0.5">
+                          <span className="text-muted-foreground">{i > 0 ? "  " : ""}</span>
+                          <span>{link.entityName}</span>
+                          {link.status && <Badge variant="outline" className="text-[8px] no-default-active-elevate">{link.status}</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {intelligence.sources && intelligence.sources.length > 0 && (
+                    <div className="flex gap-1 flex-wrap pt-1">
+                      {intelligence.sources.map(s => (
+                        <Badge key={s} variant="outline" className="text-[10px] no-default-active-elevate">{s}</Badge>
+                      ))}
+                    </div>
+                  )}
+                  {intelligence.generatedAt && (
+                    <p className="text-[10px] text-muted-foreground pt-1">
+                      Intel gathered: {new Date(intelligence.generatedAt).toLocaleDateString()}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-3">
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {intelligence?.generatedAt ? "No real owner found yet" : "Not investigated yet"}
+                  </p>
+                  {(lead.ownerType === "LLC" || lead.ownerType === "Corporation" || lead.ownerType === "LP") && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => runIntelMutation.mutate()}
+                      disabled={runIntelMutation.isPending}
+                      data-testid="button-run-intel"
+                    >
+                      {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
+                      Run 10-Agent Pipeline
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader className="pb-2">

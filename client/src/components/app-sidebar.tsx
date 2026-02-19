@@ -1,6 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio, Radar } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio, Radar, Fingerprint } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +21,7 @@ const mainNav = [
   { title: "Hot Leads", url: "/leads?minScore=80", icon: Flame },
   { title: "Map View", url: "/map", icon: MapPin },
   { title: "Hail Events", url: "/hail", icon: CloudLightning },
+  { title: "Owner Intel", url: "/intelligence", icon: Fingerprint },
 ];
 
 const stormNav = [

@@ -15,6 +15,7 @@ import { getHailTrackerData } from "./hail-tracker";
 import { startJobScheduler } from "./job-scheduler";
 import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMonitorStatus } from "./storm-monitor";
 import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweatherStatus, getActiveThreats } from "./xweather-hail";
+import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus } from "./owner-intelligence";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter } from "@shared/schema";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -709,6 +710,84 @@ export async function registerRoutes(
       res.json({ message: "Xweather monitor stopped" });
     } catch (error) {
       res.status(500).json({ message: "Failed to stop Xweather monitor" });
+    }
+  });
+
+  // Owner Intelligence (10-Agent Pipeline)
+  app.get("/api/intelligence/status", async (_req, res) => {
+    try {
+      const status = getIntelligenceStatus();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get intelligence status" });
+    }
+  });
+
+  app.post("/api/intelligence/run", async (req, res) => {
+    try {
+      const { marketId, batchSize } = req.body;
+      const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 10, 1), 50);
+
+      res.json({
+        message: "Owner intelligence pipeline started (10 agents)",
+        batchSize: parsedBatchSize,
+      });
+
+      runOwnerIntelligenceBatch(marketId, { batchSize: parsedBatchSize }).then((result) => {
+        console.log(`[Intelligence] Complete: ${result.enriched} enriched, ${result.skipped} skipped, ${result.errors} errors`);
+      }).catch((err) => {
+        console.error("[Intelligence] Failed:", err);
+      });
+    } catch (error) {
+      console.error("Intelligence pipeline error:", error);
+      res.status(500).json({ message: "Failed to start intelligence pipeline" });
+    }
+  });
+
+  app.post("/api/intelligence/run-single/:id", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const result = await runOwnerIntelligence(lead);
+
+      await storage.updateLead(lead.id, {
+        managingMember: result.managingMember,
+        managingMemberTitle: result.managingMemberTitle,
+        managingMemberPhone: result.managingMemberPhone,
+        managingMemberEmail: result.managingMemberEmail,
+        llcChain: result.llcChain,
+        ownerIntelligence: result.dossier,
+        intelligenceScore: result.score,
+        intelligenceSources: result.sources,
+        intelligenceAt: new Date(),
+      } as any);
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Single intelligence error:", error);
+      res.status(500).json({ message: "Failed to run intelligence", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/intelligence", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      res.json({
+        managingMember: lead.managingMember,
+        managingMemberTitle: lead.managingMemberTitle,
+        managingMemberPhone: lead.managingMemberPhone,
+        managingMemberEmail: lead.managingMemberEmail,
+        llcChain: lead.llcChain,
+        dossier: lead.ownerIntelligence,
+        score: lead.intelligenceScore,
+        sources: lead.intelligenceSources,
+        generatedAt: lead.intelligenceAt,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get intelligence data" });
     }
   });
 
