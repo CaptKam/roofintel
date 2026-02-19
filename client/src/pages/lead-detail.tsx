@@ -222,14 +222,22 @@ export default function LeadDetail() {
               <DetailRow icon={User} label="Owner" value={lead.ownerName} />
               <DetailRow icon={Building2} label="Owner Type" value={lead.ownerType} />
               {lead.llcName && <DetailRow icon={FileText} label="LLC Name" value={lead.llcName} />}
-              {lead.registeredAgent && <DetailRow icon={Shield} label="Registered Agent" value={lead.registeredAgent} />}
+              {lead.registeredAgent && <DetailRow icon={Shield} label="Entity Type" value={lead.registeredAgent} />}
               {lead.officerName && (
                 <DetailRow
                   icon={Briefcase}
-                  label="Officer / Director"
-                  value={lead.officerTitle ? `${lead.officerName} (${lead.officerTitle})` : lead.officerName}
+                  label="TX Filing Name"
+                  value={lead.officerName.replace(/^TX Filing:\s*/i, "")}
                 />
               )}
+              {lead.officerTitle && (
+                <DetailRow
+                  icon={FileText}
+                  label="Filing Status"
+                  value={lead.officerTitle}
+                />
+              )}
+              {lead.taxpayerId && <DetailRow icon={Hash} label="TX Taxpayer ID" value={lead.taxpayerId} />}
               {lead.sosFileNumber && <DetailRow icon={Hash} label="TX SOS File #" value={lead.sosFileNumber} />}
               <DetailRow icon={MapPin} label="Mailing Address" value={lead.ownerAddress} />
               <DetailRow icon={Phone} label="Phone" value={lead.ownerPhone} />

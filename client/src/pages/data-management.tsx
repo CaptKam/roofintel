@@ -22,7 +22,6 @@ import {
   Download,
   Building2,
   UserSearch,
-  AlertCircle,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -129,7 +128,7 @@ export default function DataManagement() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Contact enrichment started", description: "Looking up owner details via TX Comptroller. Results will appear shortly." });
+      toast({ title: "Contact enrichment started", description: "Looking up owner details via Texas Open Data Portal. Results will appear shortly." });
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
         queryClient.invalidateQueries({ queryKey: ["/api/import/runs"] });
@@ -362,27 +361,15 @@ export default function DataManagement() {
               <UserSearch className="w-4 h-4" />
               Contact Enrichment
             </CardTitle>
-            <Badge variant={enrichmentStatus?.apiKeySet ? "default" : "secondary"} className="text-[10px]">
-              {enrichmentStatus?.apiKeySet ? "API Ready" : "Needs Key"}
+            <Badge variant="default" className="text-[10px]">
+              Free Data Source
             </Badge>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              Enrich LLC/Corp owner contacts via TX Comptroller public records.
-              Finds registered agents, officers, directors, and filing details.
+              Enrich LLC/Corp owner contacts via Texas Open Data Portal.
+              Finds taxpayer addresses, SOS file numbers, and filing status.
             </p>
-            {!enrichmentStatus?.apiKeySet && (
-              <div className="flex items-start gap-2 p-2 rounded-md border border-amber-500/30 bg-amber-500/5">
-                <AlertCircle className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
-                <p className="text-[11px] text-muted-foreground">
-                  Free API key required. Register at{" "}
-                  <a href="https://data-secure.comptroller.texas.gov" target="_blank" rel="noopener" className="text-primary underline">
-                    TX Comptroller Developer Portal
-                  </a>
-                  , then add as TX_COMPTROLLER_API_KEY.
-                </p>
-              </div>
-            )}
             <div className="flex items-center gap-2 flex-wrap">
               <Button
                 size="sm"
@@ -390,7 +377,7 @@ export default function DataManagement() {
                   marketId: dfwMarket.id,
                   batchSize: 50,
                 })}
-                disabled={contactEnrichMutation.isPending || !dfwMarket || !enrichmentStatus?.apiKeySet}
+                disabled={contactEnrichMutation.isPending || !dfwMarket}
                 data-testid="button-enrich-contacts"
               >
                 {contactEnrichMutation.isPending ? (
@@ -398,16 +385,16 @@ export default function DataManagement() {
                 ) : (
                   <UserSearch className="w-3 h-3 mr-1" />
                 )}
-                Enrich Contacts
+                Enrich Contacts (50)
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => dfwMarket && contactEnrichMutation.mutate({
                   marketId: dfwMarket.id,
-                  batchSize: 200,
+                  batchSize: 500,
                 })}
-                disabled={contactEnrichMutation.isPending || !dfwMarket || !enrichmentStatus?.apiKeySet}
+                disabled={contactEnrichMutation.isPending || !dfwMarket}
                 data-testid="button-enrich-contacts-all"
               >
                 Enrich All Leads

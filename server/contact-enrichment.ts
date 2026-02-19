@@ -1,44 +1,30 @@
 import { storage } from "./storage";
 import type { Lead } from "@shared/schema";
 
-const TX_COMPTROLLER_API = "https://api.comptroller.texas.gov/public-data/v1/public";
+const TX_OPEN_DATA_API = "https://data.texas.gov/resource/9cir-efmm.json";
 
-interface FranchiseTaxRecord {
-  taxpayerId: string;
-  name: string;
-  fileNumber: string;
-}
-
-interface FranchiseTaxDetail {
-  taxpayerId: string;
-  feiNumber?: string;
-  name: string;
-  dbaName?: string;
-  mailingAddressStreet?: string;
-  mailingAddressCity?: string;
-  mailingAddressState?: string;
-  mailingAddressZip?: string;
-  sosFileNumber?: string;
-  registeredAgentName?: string;
-  registeredOfficeAddressStreet?: string;
-  registeredOfficeAddressCity?: string;
-  registeredOfficeAddressState?: string;
-  registeredOfficeAddressZip?: string;
-  officerInfo?: Array<{
-    AGNT_NM: string;
-    AGNT_TITL_TX: string;
-    AGNT_ACTV_YR: string;
-    AD_STR_POB_TX?: string;
-    CITY_NM?: string;
-    ST_CD?: string;
-    AD_ZP?: string;
-    SOURCE?: string;
-  }>;
+interface TxOpenDataRecord {
+  taxpayer_number: string;
+  taxpayer_name: string;
+  taxpayer_address: string;
+  taxpayer_city: string;
+  taxpayer_state: string;
+  taxpayer_zip: string;
+  taxpayer_county_code: string;
+  taxpayer_organizational_type: string;
+  record_type_code: string;
+  responsibility_beginning_date: string;
+  secretary_of_state_sos_or_coa_file_number: string;
+  sos_charter_date: string;
+  sos_status_date: string;
+  sos_status_code: string;
+  right_to_transact_business_code: string;
 }
 
 function cleanCompanyName(name: string): string {
   return name
-    .replace(/\s+(LLC|L\.L\.C\.|INC|INCORPORATED|CORP|CORPORATION|LP|L\.P\.|LTD|LIMITED)\.?\s*$/i, "")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+(LLC|L\.L\.C\.|INC|INCORPORATED|CORP|CORPORATION|LP|L\.P\.|LTD|LIMITED|LLP|L\.L\.P\.)\.?\s*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -46,68 +32,49 @@ function cleanCompanyName(name: string): string {
 function normalizeForSearch(name: string): string {
   return name
     .toUpperCase()
-    .replace(/[.,'"]/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/[.,'"&]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-async function searchFranchiseTax(name: string, apiKey: string): Promise<FranchiseTaxRecord[]> {
-  const searchName = name.substring(0, 50);
-  const url = `${TX_COMPTROLLER_API}/franchise-tax-list?name=${encodeURIComponent(searchName)}`;
+function buildSearchName(ownerName: string): string {
+  let cleaned = ownerName.replace(/&amp;/g, "&");
+  cleaned = cleanCompanyName(cleaned);
+  cleaned = cleaned.replace(/['"]/g, "").replace(/&/g, " ");
+  return cleaned.substring(0, 50).trim();
+}
 
-  const response = await fetch(url, {
-    headers: { "x-api-key": apiKey },
-  });
+async function searchTexasOpenData(name: string): Promise<TxOpenDataRecord[]> {
+  const searchName = buildSearchName(name);
+  const encodedSearch = encodeURIComponent(`taxpayer_name like '%${searchName.replace(/'/g, "''")}%'`);
+  const url = `${TX_OPEN_DATA_API}?$where=${encodedSearch}&$limit=10`;
+
+  const response = await fetch(url);
 
   if (!response.ok) {
     if (response.status === 429) {
-      throw new Error("TX Comptroller API rate limit exceeded. Try again later.");
+      throw new Error("Texas Open Data rate limit. Try again later.");
     }
-    if (response.status === 401 || response.status === 403) {
-      throw new Error("Invalid TX Comptroller API key. Register at https://data-secure.comptroller.texas.gov");
-    }
-    throw new Error(`TX Comptroller API error: ${response.status}`);
+    throw new Error(`Texas Open Data error: ${response.status}`);
   }
 
   const data = await response.json();
-  if (!data.success || !data.data) return [];
-  return data.data;
+  return Array.isArray(data) ? data : [];
 }
 
-async function getFranchiseTaxDetail(taxpayerId: string, apiKey: string): Promise<FranchiseTaxDetail | null> {
-  const url = `${TX_COMPTROLLER_API}/franchise-tax/${taxpayerId}`;
-
-  const response = await fetch(url, {
-    headers: { "x-api-key": apiKey },
-  });
-
-  if (!response.ok) {
-    if (response.status === 404) return null;
-    if (response.status === 429) {
-      await new Promise(r => setTimeout(r, 2000));
-      const retry = await fetch(url, { headers: { "x-api-key": apiKey } });
-      if (!retry.ok) return null;
-      const retryData = await retry.json();
-      return retryData.success ? retryData.data : null;
-    }
-    return null;
-  }
-
-  const data = await response.json();
-  return data.success ? data.data : null;
-}
-
-function findBestMatch(ownerName: string, records: FranchiseTaxRecord[]): FranchiseTaxRecord | null {
+function findBestMatch(ownerName: string, records: TxOpenDataRecord[]): TxOpenDataRecord | null {
   if (records.length === 0) return null;
   if (records.length === 1) return records[0];
 
   const normalized = normalizeForSearch(ownerName);
-  const exact = records.find(r => normalizeForSearch(r.name) === normalized);
+
+  const exact = records.find(r => normalizeForSearch(r.taxpayer_name) === normalized);
   if (exact) return exact;
 
   const cleaned = normalizeForSearch(cleanCompanyName(ownerName));
   const partial = records.find(r => {
-    const rClean = normalizeForSearch(cleanCompanyName(r.name));
+    const rClean = normalizeForSearch(cleanCompanyName(r.taxpayer_name));
     return rClean === cleaned || rClean.includes(cleaned) || cleaned.includes(rClean);
   });
   if (partial) return partial;
@@ -115,15 +82,24 @@ function findBestMatch(ownerName: string, records: FranchiseTaxRecord[]): Franch
   return records[0];
 }
 
+function formatOrgType(code: string): string {
+  const types: Record<string, string> = {
+    "CL": "Limited Liability Company",
+    "CI": "Limited Liability Company (Interstate)",
+    "CT": "Corporation (Texas)",
+    "CF": "Corporation (Foreign)",
+    "CP": "Professional Corporation",
+    "LP": "Limited Partnership",
+    "PA": "Professional Association",
+    "NP": "Nonprofit Corporation",
+  };
+  return types[code] || code;
+}
+
 export async function enrichLeadContacts(
   marketId?: string,
   options: { batchSize?: number; delayMs?: number } = {}
-): Promise<{ enriched: number; skipped: number; errors: number; noApiKey?: boolean }> {
-  const apiKey = process.env.TX_COMPTROLLER_API_KEY;
-  if (!apiKey) {
-    return { enriched: 0, skipped: 0, errors: 0, noApiKey: true };
-  }
-
+): Promise<{ enriched: number; skipped: number; errors: number; total: number }> {
   const allLeads = await storage.getLeads(marketId ? { marketId } : undefined);
   const eligibleLeads = allLeads.filter(lead =>
     !lead.contactEnrichedAt &&
@@ -132,11 +108,11 @@ export async function enrichLeadContacts(
   );
 
   if (eligibleLeads.length === 0) {
-    return { enriched: 0, skipped: allLeads.length, errors: 0 };
+    return { enriched: 0, skipped: allLeads.length, errors: 0, total: allLeads.length };
   }
 
   const batchSize = options.batchSize || 50;
-  const delayMs = options.delayMs || 500;
+  const delayMs = options.delayMs || 300;
   let enriched = 0;
   let skipped = 0;
   let errors = 0;
@@ -151,7 +127,7 @@ export async function enrichLeadContacts(
   const uniqueOwners = Array.from(ownerGroups.entries());
   const batch = uniqueOwners.slice(0, batchSize);
 
-  console.log(`[Contact Enrichment] Processing ${batch.length} unique owners (${eligibleLeads.length} leads) via TX Comptroller API`);
+  console.log(`[Contact Enrichment] Processing ${batch.length} unique owners (${eligibleLeads.length} eligible leads) via Texas Open Data Portal`);
 
   const importRun = await storage.createImportRun({
     type: "contact_enrichment",
@@ -160,7 +136,7 @@ export async function enrichLeadContacts(
     recordsProcessed: 0,
     recordsImported: 0,
     recordsSkipped: 0,
-    metadata: { source: "tx_comptroller", totalOwners: batch.length, totalLeads: eligibleLeads.length },
+    metadata: { source: "tx_open_data", totalOwners: batch.length, totalLeads: eligibleLeads.length },
   });
 
   for (let i = 0; i < batch.length; i++) {
@@ -168,7 +144,7 @@ export async function enrichLeadContacts(
     const ownerName = ownerLeads[0].ownerName;
 
     try {
-      const records = await searchFranchiseTax(ownerName, apiKey);
+      const records = await searchTexasOpenData(ownerName);
 
       if (records.length === 0) {
         for (const lead of ownerLeads) {
@@ -184,41 +160,25 @@ export async function enrichLeadContacts(
         continue;
       }
 
-      await new Promise(r => setTimeout(r, delayMs));
-
-      const detail = await getFranchiseTaxDetail(match.taxpayerId, apiKey);
-      if (!detail) {
-        skipped += ownerLeads.length;
-        continue;
-      }
-
-      const primaryOfficer = detail.officerInfo?.[0];
+      const sosFileNum = match.secretary_of_state_sos_or_coa_file_number;
+      const taxpayerAddr = [
+        match.taxpayer_address,
+        match.taxpayer_city,
+        match.taxpayer_state,
+        match.taxpayer_zip,
+      ].filter(Boolean).join(", ");
 
       const updates: Partial<Lead> = {
-        taxpayerId: match.taxpayerId,
-        sosFileNumber: detail.sosFileNumber || null,
+        taxpayerId: match.taxpayer_number,
+        sosFileNumber: sosFileNum || null,
+        registeredAgent: formatOrgType(match.taxpayer_organizational_type),
         contactEnrichedAt: new Date(),
       } as any;
 
-      if (detail.registeredAgentName) {
-        updates.registeredAgent = detail.registeredAgentName;
-      }
-
-      if (primaryOfficer) {
-        updates.officerName = primaryOfficer.AGNT_NM;
-        updates.officerTitle = primaryOfficer.AGNT_TITL_TX;
-      }
-
-      if (detail.registeredOfficeAddressStreet && !updates.ownerAddress) {
-        const agentAddr = [
-          detail.registeredOfficeAddressStreet,
-          detail.registeredOfficeAddressCity,
-          detail.registeredOfficeAddressState,
-          detail.registeredOfficeAddressZip,
-        ].filter(Boolean).join(", ");
-        if (agentAddr) {
-          updates.ownerAddress = agentAddr;
-        }
+      if (taxpayerAddr && taxpayerAddr.length > 5) {
+        const officerLine = `TX Filing: ${match.taxpayer_name}`;
+        updates.officerName = officerLine;
+        updates.officerTitle = match.right_to_transact_business_code === "A" ? "Active" : "Inactive";
       }
 
       for (const lead of ownerLeads) {
@@ -237,11 +197,8 @@ export async function enrichLeadContacts(
       errors += ownerLeads.length;
 
       if (err.message.includes("rate limit")) {
-        console.log("[Contact Enrichment] Rate limited, pausing for 10s...");
-        await new Promise(r => setTimeout(r, 10000));
-      }
-      if (err.message.includes("Invalid") && err.message.includes("API key")) {
-        break;
+        console.log("[Contact Enrichment] Rate limited, pausing for 5s...");
+        await new Promise(r => setTimeout(r, 5000));
       }
     }
   }
@@ -256,12 +213,12 @@ export async function enrichLeadContacts(
   });
 
   console.log(`[Contact Enrichment] Complete: ${enriched} enriched, ${skipped} skipped, ${errors} errors`);
-  return { enriched, skipped, errors };
+  return { enriched, skipped, errors, total: eligibleLeads.length };
 }
 
 export function getEnrichmentStatus(): { configured: boolean; apiKeySet: boolean } {
   return {
     configured: true,
-    apiKeySet: !!process.env.TX_COMPTROLLER_API_KEY,
+    apiKeySet: true,
   };
 }
