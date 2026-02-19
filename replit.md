@@ -12,7 +12,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **File Upload**: Multer (CSV property data uploads)
 
 ## Architecture
-- `client/src/pages/` - Page components (dashboard, leads, lead-detail, map-view, hail-events, export, data-management)
+- `client/src/pages/` - Page components (dashboard, leads, lead-detail, map-view, hail-events, export, data-management, owner-intelligence, storm-response, alert-config)
 - `client/src/components/` - Shared components (app-sidebar, score-badge, status-badge, theme-provider, theme-toggle)
 - `server/routes.ts` - API endpoints
 - `server/storage.ts` - Database storage layer with Drizzle ORM
@@ -28,6 +28,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/storm-monitor.ts` - Real-time NOAA SWDI hail radar + NWS alerts monitor with swath polygon generation
 - `server/xweather-hail.ts` - Xweather/Vaisala predictive hail service: polls /hail/threats API every 2 min, parses threat polygons, calculates ETAs, triggers pre-storm SMS alerts
 - `server/hail-tracker.ts` - Live hail radar tracker (NOAA SWDI nx3hail + NWS Alerts API for DFW region)
+- `server/owner-intelligence.ts` - 10-agent owner intelligence system (TX SOS Deep, LLC Chain, TX Comptroller, Property Tax, People Search, Email Discovery, Google Business, Court Records, Social Intelligence, Master Orchestrator)
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
 - `shared/schema.ts` - Drizzle schema definitions and Zod validation
 
