@@ -23,6 +23,7 @@ import {
   Building2,
   UserSearch,
   Phone,
+  Search,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -130,6 +131,14 @@ export default function DataManagement() {
     queryKey: ["/api/enrichment/phone-status"],
   });
 
+  const { data: webResearchStatus } = useQuery<{
+    googlePlacesAvailable: boolean;
+    serperAvailable: boolean;
+    capabilities: string[];
+  }>({
+    queryKey: ["/api/enrichment/web-research-status"],
+  });
+
   const phoneEnrichMutation = useMutation({
     mutationFn: async ({ marketId, batchSize }: { marketId: string; batchSize?: number }) => {
       const res = await apiRequest("POST", "/api/enrichment/phones", { marketId, batchSize });
@@ -146,6 +155,24 @@ export default function DataManagement() {
     onError: (err: any) => {
       const message = err?.message || "Could not start phone enrichment.";
       toast({ title: "Phone enrichment failed", description: message, variant: "destructive" });
+    },
+  });
+
+  const webResearchMutation = useMutation({
+    mutationFn: async ({ marketId, batchSize }: { marketId: string; batchSize?: number }) => {
+      const res = await apiRequest("POST", "/api/enrichment/web-research", { marketId, batchSize });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Web research agent started", description: "Scanning business websites for facility managers and contact details." });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/import/runs"] });
+      }, 15000);
+    },
+    onError: (err: any) => {
+      const message = err?.message || "Could not start web research.";
+      toast({ title: "Web research failed", description: message, variant: "destructive" });
     },
   });
 
@@ -485,6 +512,64 @@ export default function DataManagement() {
                 data-testid="button-enrich-phones-all"
               >
                 Find All Phones
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Search className="w-4 h-4" />
+              Web Research Agent
+            </CardTitle>
+            <Badge variant={webResearchStatus?.googlePlacesAvailable ? "default" : "secondary"} className="text-[10px]">
+              {webResearchStatus?.googlePlacesAvailable ? "Active" : "Needs API Key"}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Scans business websites to find facility managers, property managers, and decision-makers.
+              Extracts their phone numbers and emails from staff directories and contact pages.
+            </p>
+            {webResearchStatus?.capabilities && (
+              <div className="space-y-1">
+                {webResearchStatus.capabilities.map((cap) => (
+                  <div key={cap} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                    <span className="text-xs text-muted-foreground">{cap}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                onClick={() => dfwMarket && webResearchMutation.mutate({
+                  marketId: dfwMarket.id,
+                  batchSize: 25,
+                })}
+                disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable}
+                data-testid="button-web-research"
+              >
+                {webResearchMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Search className="w-3 h-3 mr-1" />
+                )}
+                Research 25 Leads
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => dfwMarket && webResearchMutation.mutate({
+                  marketId: dfwMarket.id,
+                  batchSize: 100,
+                })}
+                disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable}
+                data-testid="button-web-research-all"
+              >
+                Research 100 Leads
               </Button>
             </div>
           </CardContent>

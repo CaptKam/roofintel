@@ -23,6 +23,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/property-importer.ts` - County appraisal district CSV property importer (manual fallback)
 - `server/contact-enrichment.ts` - TX Open Data Portal contact enrichment agent (taxpayer IDs, SOS file numbers, filing status)
 - `server/phone-enrichment.ts` - Cascading phone number enrichment (Google Places → OpenCorporates → Serper web search)
+- `server/web-research-agent.ts` - Web research agent: finds business websites via Google Places, scrapes contact/team pages for facility managers and decision-makers, extracts phone/email, optional Serper web search fallback
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
 - `shared/schema.ts` - Drizzle schema definitions and Zod validation
 
@@ -36,6 +37,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **Data Management**: Import controls for NOAA hail data, property CSV upload, contact enrichment, phone enrichment, background job monitoring, import history
 - **Contact Enrichment**: TX Open Data Portal-based owner lookup for LLC/Corp entities - finds taxpayer IDs, SOS file numbers, filing status (free, no API key)
 - **Phone Enrichment**: Cascading phone number lookup using Google Places API, OpenCorporates, and Serper web search - stops at first match to minimize cost
+- **Web Research Agent**: Scans business websites to find facility managers, property managers, and decision-makers with their phone numbers and emails
 
 ## Data Sources
 - **NOAA Storm Events**: Real hail event data fetched from NOAA's public CSV files (2020-present), 912+ events for DFW region
@@ -72,6 +74,8 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `POST /api/enrichment/contacts` - Trigger TX Open Data Portal contact enrichment (marketId, batchSize)
 - `GET /api/enrichment/phone-status` - Check phone enrichment provider availability
 - `POST /api/enrichment/phones` - Trigger cascading phone number enrichment (marketId, batchSize)
+- `GET /api/enrichment/web-research-status` - Check web research agent status/capabilities
+- `POST /api/enrichment/web-research` - Trigger web research agent (marketId, batchSize)
 - `POST /api/jobs/:id/run` - Trigger a background job
 
 ## Lead Scoring (0-100)

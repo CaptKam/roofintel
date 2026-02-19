@@ -32,6 +32,8 @@ import {
   FileText,
   Briefcase,
   Hash,
+  Globe,
+  Search,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -262,6 +264,78 @@ export default function LeadDetail() {
               )}
             </CardContent>
           </Card>
+
+          {(lead.businessName || lead.contactName || lead.businessWebsite || lead.webResearchedAt) && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Search className="w-4 h-4 text-primary" />
+                  Business & Decision Maker
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                {lead.businessName && (
+                  <DetailRow icon={Building2} label="Business Name" value={lead.businessName} />
+                )}
+                {lead.businessWebsite && (
+                  <DetailRow
+                    icon={Globe}
+                    label="Website"
+                    value={
+                      <a href={lead.businessWebsite} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
+                        {lead.businessWebsite.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                      </a>
+                    }
+                  />
+                )}
+                {lead.contactName && (
+                  <DetailRow
+                    icon={User}
+                    label="Key Contact"
+                    value={
+                      <span>
+                        {lead.contactName}
+                        {lead.contactTitle && (
+                          <span className="text-muted-foreground text-xs ml-1">({lead.contactTitle})</span>
+                        )}
+                      </span>
+                    }
+                  />
+                )}
+                {lead.contactPhone && (
+                  <DetailRow
+                    icon={Phone}
+                    label="Contact Phone"
+                    value={
+                      <a href={`tel:${lead.contactPhone}`} className="text-primary hover:underline">{lead.contactPhone}</a>
+                    }
+                  />
+                )}
+                {lead.contactEmail && (
+                  <DetailRow
+                    icon={Mail}
+                    label="Contact Email"
+                    value={
+                      <a href={`mailto:${lead.contactEmail}`} className="text-primary hover:underline">{lead.contactEmail}</a>
+                    }
+                  />
+                )}
+                {lead.contactSource && (
+                  <Badge variant="outline" className="text-[10px] mt-1">
+                    via {lead.contactSource}
+                  </Badge>
+                )}
+                {lead.webResearchedAt && !lead.contactName && !lead.businessWebsite && (
+                  <p className="text-xs text-muted-foreground py-2">Researched - no website or staff found</p>
+                )}
+                {lead.webResearchedAt && (
+                  <p className="text-[10px] text-muted-foreground pt-1">
+                    Researched: {new Date(lead.webResearchedAt).toLocaleDateString()}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="pb-2">

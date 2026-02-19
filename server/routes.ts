@@ -9,6 +9,7 @@ import { importDcadProperties } from "./dcad-agent";
 import { correlateHailToLeads } from "./hail-correlator";
 import { enrichLeadContacts, getEnrichmentStatus } from "./contact-enrichment";
 import { enrichLeadPhones, getPhoneEnrichmentStatus } from "./phone-enrichment";
+import { runWebResearch, getWebResearchStatus } from "./web-research-agent";
 import { startJobScheduler } from "./job-scheduler";
 import { updateLeadSchema, type LeadFilter } from "@shared/schema";
 
@@ -381,6 +382,55 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Phone enrichment error:", error);
       res.status(500).json({ message: "Failed to start phone enrichment" });
+    }
+  });
+
+  app.get("/api/enrichment/web-research-status", async (_req, res) => {
+    try {
+      const status = getWebResearchStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Web research status error:", error);
+      res.status(500).json({ message: "Failed to get web research status" });
+    }
+  });
+
+  app.post("/api/enrichment/web-research", async (req, res) => {
+    try {
+      const { marketId, batchSize } = req.body;
+
+      if (!marketId || typeof marketId !== "string") {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      const status = getWebResearchStatus();
+      if (!status.googlePlacesAvailable) {
+        return res.status(400).json({
+          message: "Google Places API key is required for web research. It is used to find business websites at property addresses.",
+        });
+      }
+
+      const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 25, 1), 100);
+
+      res.json({
+        message: "Web research agent started",
+        batchSize: parsedBatchSize,
+        capabilities: status.capabilities,
+      });
+
+      runWebResearch(marketId, { batchSize: parsedBatchSize }).then((result) => {
+        console.log(`Web research complete: ${result.found} contacts found, ${result.skipped} skipped, ${result.errors} errors`);
+      }).catch((err) => {
+        console.error("Web research failed:", err);
+      });
+    } catch (error) {
+      console.error("Web research error:", error);
+      res.status(500).json({ message: "Failed to start web research" });
     }
   });
 
