@@ -37,6 +37,8 @@ export const leads = pgTable("leads", {
   ownerType: text("owner_type").notNull(),
   ownerAddress: text("owner_address"),
   ownerPhone: text("owner_phone"),
+  phoneSource: text("phone_source"),
+  phoneEnrichedAt: timestamp("phone_enriched_at"),
   ownerEmail: text("owner_email"),
   llcName: text("llc_name"),
   registeredAgent: text("registered_agent"),

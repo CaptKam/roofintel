@@ -22,6 +22,7 @@ import {
   Download,
   Building2,
   UserSearch,
+  Phone,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -120,6 +121,32 @@ export default function DataManagement() {
 
   const { data: enrichmentStatus } = useQuery<{ configured: boolean; apiKeySet: boolean }>({
     queryKey: ["/api/enrichment/status"],
+  });
+
+  const { data: phoneStatus } = useQuery<{
+    providers: { name: string; available: boolean }[];
+    totalAvailable: number;
+  }>({
+    queryKey: ["/api/enrichment/phone-status"],
+  });
+
+  const phoneEnrichMutation = useMutation({
+    mutationFn: async ({ marketId, batchSize }: { marketId: string; batchSize?: number }) => {
+      const res = await apiRequest("POST", "/api/enrichment/phones", { marketId, batchSize });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const providerNames = data.providers?.join(", ") || "available sources";
+      toast({ title: "Phone enrichment started", description: `Searching ${providerNames} for business phone numbers.` });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/import/runs"] });
+      }, 15000);
+    },
+    onError: (err: any) => {
+      const message = err?.message || "Could not start phone enrichment.";
+      toast({ title: "Phone enrichment failed", description: message, variant: "destructive" });
+    },
   });
 
   const contactEnrichMutation = useMutation({
@@ -406,6 +433,66 @@ export default function DataManagement() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Phone className="w-4 h-4" />
+              Phone Number Enrichment
+            </CardTitle>
+            <Badge variant={phoneStatus?.totalAvailable ? "default" : "secondary"} className="text-[10px]">
+              {phoneStatus?.totalAvailable || 0} Provider{(phoneStatus?.totalAvailable || 0) !== 1 ? "s" : ""} Active
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Cascading phone lookup: tries Google Places, OpenCorporates, and web search in order.
+              Stops at first match to minimize cost.
+            </p>
+            {phoneStatus?.providers && (
+              <div className="space-y-1">
+                {phoneStatus.providers.map((p) => (
+                  <div key={p.name} className="flex items-center justify-between gap-2" data-testid={`phone-provider-${p.name}`}>
+                    <span className="text-xs text-muted-foreground">{p.name}</span>
+                    <Badge variant={p.available ? "default" : "outline"} className="text-[10px]">
+                      {p.available ? "Ready" : "Needs API Key"}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                onClick={() => dfwMarket && phoneEnrichMutation.mutate({
+                  marketId: dfwMarket.id,
+                  batchSize: 50,
+                })}
+                disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable}
+                data-testid="button-enrich-phones"
+              >
+                {phoneEnrichMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Phone className="w-3 h-3 mr-1" />
+                )}
+                Find Phones (50)
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => dfwMarket && phoneEnrichMutation.mutate({
+                  marketId: dfwMarket.id,
+                  batchSize: 500,
+                })}
+                disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable}
+                data-testid="button-enrich-phones-all"
+              >
+                Find All Phones
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4" />
               Property Data Import
             </CardTitle>
@@ -540,7 +627,8 @@ export default function DataManagement() {
                         {run.type === "noaa_hail" ? "NOAA Hail Import" :
                          run.type === "property_csv" ? "Property CSV Import" :
                          run.type === "dcad_api" ? "DCAD Property Import" :
-                         run.type === "contact_enrichment" ? "Contact Enrichment" : run.type}
+                         run.type === "contact_enrichment" ? "Contact Enrichment" :
+                         run.type === "phone_enrichment" ? "Phone Enrichment" : run.type}
                         {(run.metadata as any)?.year && ` (${(run.metadata as any).year})`}
                       </p>
                       <p className="text-xs text-muted-foreground">

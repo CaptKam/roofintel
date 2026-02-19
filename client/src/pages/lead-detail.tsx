@@ -45,7 +45,7 @@ function DetailRow({
 }: {
   icon: React.ElementType;
   label: string;
-  value: string | number | null | undefined;
+  value: React.ReactNode;
 }) {
   if (!value && value !== 0) return null;
   return (
@@ -240,11 +240,24 @@ export default function LeadDetail() {
               {lead.taxpayerId && <DetailRow icon={Hash} label="TX Taxpayer ID" value={lead.taxpayerId} />}
               {lead.sosFileNumber && <DetailRow icon={Hash} label="TX SOS File #" value={lead.sosFileNumber} />}
               <DetailRow icon={MapPin} label="Mailing Address" value={lead.ownerAddress} />
-              <DetailRow icon={Phone} label="Phone" value={lead.ownerPhone} />
+              <DetailRow
+                icon={Phone}
+                label="Phone"
+                value={lead.ownerPhone ? (
+                  <span className="flex items-center gap-2">
+                    <a href={`tel:${lead.ownerPhone}`} className="text-primary hover:underline">{lead.ownerPhone}</a>
+                    {lead.phoneSource && (
+                      <Badge variant="outline" className="text-[10px]">via {lead.phoneSource}</Badge>
+                    )}
+                  </span>
+                ) : null}
+              />
               <DetailRow icon={Mail} label="Email" value={lead.ownerEmail} />
-              {lead.contactEnrichedAt && (
+              {(lead.contactEnrichedAt || lead.phoneEnrichedAt) && (
                 <p className="text-[10px] text-muted-foreground pt-1">
-                  Enriched: {new Date(lead.contactEnrichedAt).toLocaleDateString()}
+                  {lead.contactEnrichedAt && `Contact enriched: ${new Date(lead.contactEnrichedAt).toLocaleDateString()}`}
+                  {lead.contactEnrichedAt && lead.phoneEnrichedAt && " | "}
+                  {lead.phoneEnrichedAt && `Phone searched: ${new Date(lead.phoneEnrichedAt).toLocaleDateString()}`}
                 </p>
               )}
             </CardContent>

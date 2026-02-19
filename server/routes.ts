@@ -8,6 +8,7 @@ import { importPropertyCsv, generateSampleCsv } from "./property-importer";
 import { importDcadProperties } from "./dcad-agent";
 import { correlateHailToLeads } from "./hail-correlator";
 import { enrichLeadContacts, getEnrichmentStatus } from "./contact-enrichment";
+import { enrichLeadPhones, getPhoneEnrichmentStatus } from "./phone-enrichment";
 import { startJobScheduler } from "./job-scheduler";
 import { updateLeadSchema, type LeadFilter } from "@shared/schema";
 
@@ -330,6 +331,56 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Contact enrichment error:", error);
       res.status(500).json({ message: "Failed to start contact enrichment" });
+    }
+  });
+
+  app.get("/api/enrichment/phone-status", async (_req, res) => {
+    try {
+      const status = getPhoneEnrichmentStatus();
+      res.json(status);
+    } catch (error) {
+      console.error("Phone enrichment status error:", error);
+      res.status(500).json({ message: "Failed to get phone enrichment status" });
+    }
+  });
+
+  app.post("/api/enrichment/phones", async (req, res) => {
+    try {
+      const { marketId, batchSize } = req.body;
+
+      if (!marketId || typeof marketId !== "string") {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 50, 1), 500);
+
+      const status = getPhoneEnrichmentStatus();
+      if (status.totalAvailable === 0) {
+        return res.status(400).json({
+          message: "No phone enrichment providers configured. Add GOOGLE_PLACES_API_KEY or SERPER_API_KEY to enable phone lookups.",
+          providers: status.providers,
+        });
+      }
+
+      res.json({
+        message: "Phone enrichment started",
+        batchSize: parsedBatchSize,
+        providers: status.providers.filter(p => p.available).map(p => p.name),
+      });
+
+      enrichLeadPhones(marketId, { batchSize: parsedBatchSize }).then((result) => {
+        console.log(`Phone enrichment complete: ${result.enriched} found, ${result.skipped} skipped, ${result.errors} errors`);
+      }).catch((err) => {
+        console.error("Phone enrichment failed:", err);
+      });
+    } catch (error) {
+      console.error("Phone enrichment error:", error);
+      res.status(500).json({ message: "Failed to start phone enrichment" });
     }
   });
 
