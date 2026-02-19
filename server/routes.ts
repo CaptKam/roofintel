@@ -10,6 +10,7 @@ import { correlateHailToLeads } from "./hail-correlator";
 import { enrichLeadContacts, getEnrichmentStatus } from "./contact-enrichment";
 import { enrichLeadPhones, getPhoneEnrichmentStatus } from "./phone-enrichment";
 import { runWebResearch, getWebResearchStatus } from "./web-research-agent";
+import { getHailTrackerData } from "./hail-tracker";
 import { startJobScheduler } from "./job-scheduler";
 import { updateLeadSchema, type LeadFilter } from "@shared/schema";
 
@@ -209,6 +210,18 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Jobs error:", error);
       res.status(500).json({ message: "Failed to load jobs" });
+    }
+  });
+
+  app.get("/api/hail-tracker", async (req, res) => {
+    try {
+      const parsed = Number(req.query.daysBack);
+      const daysBack = Number.isFinite(parsed) && parsed >= 1 ? Math.min(Math.round(parsed), 30) : 7;
+      const data = await getHailTrackerData(daysBack);
+      res.json(data);
+    } catch (error) {
+      console.error("Hail tracker error:", error);
+      res.status(500).json({ message: "Failed to fetch hail tracker data" });
     }
   });
 

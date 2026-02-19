@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
   UserSearch,
   Phone,
   Search,
+  Radar,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -358,6 +360,34 @@ export default function DataManagement() {
                 )}
                 Match to Leads
               </Button>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Radar className="w-4 h-4" />
+              Live Hail Tracker
+            </CardTitle>
+            <Badge variant="default" className="text-[10px]">Live Radar</Badge>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Real-time NEXRAD radar hail detections and NWS severe weather alerts for
+              the DFW region. View live data on the Map View page.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Link href="/map">
+                <Button size="sm" data-testid="button-open-hail-map">
+                  <Radar className="w-3 h-3 mr-1" />
+                  Open Map with Hail Tracker
+                </Button>
+              </Link>
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p>Sources: NOAA SWDI (NEXRAD L3 hail signatures), NWS Alerts API</p>
+              <p>Coverage: 50-mile radius around DFW center</p>
+              <p>Data is fetched live and not stored — no database cost.</p>
             </div>
           </CardContent>
         </Card>
