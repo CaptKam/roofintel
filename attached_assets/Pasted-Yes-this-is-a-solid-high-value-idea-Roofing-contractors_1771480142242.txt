@@ -1,0 +1,89 @@
+Yes, this is a solid, high-value idea. Roofing contractors (especially commercial or large-residential) pay premium for hyper-qualified leads tied to objective data like roof age + hail exposure. Targeting buildings ≥2,500 sq ft shifts you toward higher-ticket commercial/multi-family jobs where average roof replacements run $50k–$500k+. Your core loop (permits for last roof replacement + hail history + owner/mgmt contact) is already strong.
+Additional Public Information You Can Gather (All Free or Low-Cost)
+Beyond your three pillars, here’s what’s reliably public and automatable:
+
+Property fundamentals (from county appraisal districts / CADs): Year built, # of stories/units, construction type (frame, masonry, etc.), improvement value, land use code (commercial vs multi-family), sometimes roof material or # of layers.
+Ownership & transaction history: Mailing address of owner (often an LLC), recent sales/deeds, tax delinquencies/liens (flags motivated sellers), exemptions.
+Management company / registered agent: For LLC-owned commercial buildings, state Secretary of State (SOS) business filings give registered agent name/address/phone (public, searchable). Many counties list property manager on commercial records.
+Code enforcement / violations: Open records on building violations, roof-related complaints, or failed inspections.
+Zoning / hazard overlays: Flood zones, wind/hail zones (FEMA + local GIS), which amplify hail risk scoring.
+Historical changes: Public aerial imagery archives (county GIS or Google Earth historical) to visually confirm roof age/replacement (or feed into a cheap vision model).
+Related activity: Solar/HVAC/structural permits on the same building (signals overall maintenance budget).
+
+TX-specific goldmine (since you’re in Dallas):
+
+DCAD / Tarrant / Collin / Denton CADs offer free bulk CSV + GIS downloads with sq ft, owner, year built, etc.
+TxGIO statewide parcel layer (free standardized GIS from appraisal districts).
+Dallas OpenData / Socrata APIs for permits & violations.
+Harris County (Houston) example shows similar open bulk downloads.
+
+Nationwide you can layer in free NOAA bulk data or open county portals; for scale, paid aggregators (ATTOM, BatchData) are basically repackaged public records but normalized.
+Recommended Lead-Scoring Logic (What Makes a “Hot” Lead)
+Roof replacement permit >10–15 years ago
+
+Hail event ≥1" within 5-mile radius in last 7 years (or since last roof)
+Building ≥2,500 sq ft + commercial/multi-family zoning
+Owner is LLC or property mgmt company (easier to reach)
+Bonus: Tax delinquency or recent sale
+→ Score 80+ = immediate outreach candidate.
+
+How I Would Build the System (Behind-the-Scenes Agent Architecture)
+I’d make this a SaaS platform with autonomous AI agents that run 24/7, not a one-off script. Contractors log in, pick their service radius, and get a live dashboard of scored leads with one-click export (CSV, CRM push, or direct-mail list).
+Core Tech Stack (MVP in 8–12 weeks for one dev + you):
+
+Orchestration: CrewAI or LangGraph (multi-agent framework). Each agent has specific tools + memory.
+Data Layer: PostgreSQL + PostGIS (for spatial hail matching). Redis for queues.
+Ingestion: Apache Airflow or Prefect for scheduled jobs + event triggers.
+Agents (run in parallel behind the scenes):
+Geo-Filter Agent: Loads parcels ≥2,500 sq ft from CAD GIS/CSV in target counties.
+Permit Agent: Queries county permit portals (Dallas uses Accela/Socrata – API-friendly) or ATTOM bulk for “roof replacement” keywords + date.
+Hail Agent: Downloads/processes NOAA Storm Events CSV (free, updated monthly) or hooks Xweather/HailStrike API for real-time alerts. Does spatial join (building lat/long vs hail reports).
+Owner/Mgmt Researcher Agent:
+Pulls owner from CAD.
+If LLC → hits TX SOS public search (or OpenCorporates API) for registered agent/contact.
+Google/Bing search “[address] property management” + LinkedIn-style enrichment (ethical, public only).
+
+Scorer & Enricher Agent: Calculates score, generates one-page PDF profile (roof age, hail hits, owner details, map).
+Monitor Agent: Daily/after-storm trigger — scans new permits or hail events and pushes alerts.
+
+Frontend: Streamlit or Next.js dashboard with Leaflet map (pins colored by score), filters, export.
+Automation triggers:
+Daily cron for new permits.
+Webhook or poll after major hail (NOAA or paid alert service).
+User-requested full-market scan.
+
+
+MVP Roadmap:
+
+Week 1–2: DFW-only using DCAD bulk + Dallas open data + NOAA CSV. Manual CSV → scored leads.
+Week 3–4: Wrap in CrewAI agents (start with 3 agents).
+Week 5–6: Add TX SOS lookup + dashboard.
+Week 7+: Add paid API fallbacks (ATTOM for nationwide, EagleView/Roofr reports for roof measurements if user pays extra).
+Compliance layer: Rate-limiting, user-agent rotation, logging (so you can prove you only used public records).
+
+Legal / Ethical Notes (non-negotiable):
+
+Stick to bulk/open-data downloads and official APIs whenever possible → zero CFAA risk.
+Do not scrape aggressively against ToS.
+When selling leads, provide only public-record data; let the contractor handle outreach (they already know TCPA/CAN-SPAM rules).
+Consult a Texas attorney before launching paid service (data-resale nuances).
+
+Monetization — Industry Standards & Your Model
+Current market benchmarks (2025–2026):
+
+Generic roofing leads: $45–$150 shared, $100–$300+ exclusive.
+Commercial/high-ticket leads: $200–$500+.
+Property-intel platforms (EagleView, Convex, etc.): Contractors pay $20–$100 per detailed roof report or $200–$1,500/mo subscriptions.
+
+Recommended models for your system (you’ll beat generic lead sellers because yours are data-proven):
+
+Tiered SaaS Subscription (primary — recurring & scalable):
+Starter: $199/mo — 1 county, 500 leads/mo, basic dashboard.
+Pro: $499/mo — statewide TX, unlimited scans, agent alerts, PDF reports, CRM export.
+Enterprise: $999–$2,500/mo — multi-state, white-label, API access, priority support.
+
+Pay-Per-Lead add-on: $15–$45 per “hot” lead (with full profile + owner contact).
+One-time market reports: $499–$1,999 for a full city scan delivered as CSV + maps.
+
+Pricing psychology: Position as “insurance against cold-calling” — one closed $80k commercial roof pays for a year of your service. Offer 14-day free trial with 50 leads in their zip codes.
+Competitive edge: Most lead services are blind (just “someone needs a roof”). Yours says “this exact 12,000 sq ft office building had its roof done in 2009, took 2" hail in 2023, owner is LLC XYZ with registered agent John Doe at this address.” That’s massive.
