@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,13 +31,33 @@ import {
 import type { Lead } from "@shared/schema";
 
 export default function Leads() {
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+
   const [search, setSearch] = useState("");
-  const [county, setCounty] = useState<string>("");
-  const [minScore, setMinScore] = useState<string>("");
-  const [zoning, setZoning] = useState<string>("");
-  const [status, setStatus] = useState<string>("");
-  const [hasPhone, setHasPhone] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [county, setCounty] = useState<string>(urlParams.get("county") || "");
+  const [minScore, setMinScore] = useState<string>(urlParams.get("minScore") || "");
+  const [zoning, setZoning] = useState<string>(urlParams.get("zoning") || "");
+  const [status, setStatus] = useState<string>(urlParams.get("status") || "");
+  const [hasPhone, setHasPhone] = useState(urlParams.get("hasPhone") === "true");
+  const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true");
+
+  useEffect(() => {
+    const fresh = new URLSearchParams(searchString);
+    const newMinScore = fresh.get("minScore") || "";
+    const newCounty = fresh.get("county") || "";
+    const newZoning = fresh.get("zoning") || "";
+    const newStatus = fresh.get("status") || "";
+    const newHasPhone = fresh.get("hasPhone") === "true";
+    setMinScore(newMinScore);
+    setCounty(newCounty);
+    setZoning(newZoning);
+    setStatus(newStatus);
+    setHasPhone(newHasPhone);
+    if (newMinScore || newCounty || newZoning || newStatus || newHasPhone) {
+      setShowFilters(true);
+    }
+  }, [searchString]);
 
   const params = new URLSearchParams();
   if (search) params.set("search", search);

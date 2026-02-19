@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Leads", url: "/leads", icon: Building2 },
+  { title: "Hot Leads", url: "/leads?minScore=80", icon: Flame },
   { title: "Map View", url: "/map", icon: MapPin },
   { title: "Hail Events", url: "/hail", icon: CloudLightning },
 ];
@@ -56,7 +57,9 @@ export function AppSidebar() {
                     isActive={
                       item.url === "/"
                         ? location === "/"
-                        : location.startsWith(item.url)
+                        : item.url.includes("?")
+                          ? location === item.url.split("?")[0] && window.location.search === "?" + item.url.split("?")[1]
+                          : location.startsWith(item.url) && !window.location.search
                     }
                   >
                     <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
