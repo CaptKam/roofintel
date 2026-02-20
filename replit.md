@@ -28,9 +28,10 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/storm-monitor.ts` - Real-time NOAA SWDI hail radar + NWS alerts monitor with swath polygon generation
 - `server/xweather-hail.ts` - Xweather/Vaisala predictive hail service: polls /hail/threats API every 2 min, parses threat polygons, calculates ETAs, triggers pre-storm SMS alerts
 - `server/hail-tracker.ts` - Live hail radar tracker (NOAA SWDI nx3hail + NWS Alerts API for DFW region)
-- `server/owner-intelligence.ts` - 11-agent owner intelligence system (TX SOS Deep, LLC Chain, TX Comptroller, Property Tax, People Search, Email Discovery, Google Business, Court Records, Social Intelligence, Building Contacts, Master Orchestrator)
+- `server/owner-intelligence.ts` - 12-agent owner intelligence system (TX SOS Deep, LLC Chain, TX Comptroller, Property Tax, People Search, Email Discovery, Google Business, Court Records, Social Intelligence, Building Contacts, Skip Trace, Master Orchestrator)
+- `server/skip-trace-agent.ts` - Skip Trace Agent: 7 free official-records-first lookups (DFW building permits via Socrata, TX Comptroller sales tax, OpenCorporates officers, TCEQ environmental permits, WHOIS/RDAP, email pattern generation with MX verification, reverse address cross-reference)
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
-- `shared/schema.ts` - Drizzle schema definitions and Zod validation
+- `shared/schema.ts` - Drizzle schema definitions and Zod validation (includes intelligenceClaims table for provenance tracking)
 
 ## Key Features
 - **Dashboard**: Stats overview (total leads, hot leads, avg score, hail events), score distribution chart, county distribution pie chart, top scoring leads
@@ -60,6 +61,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `data_sources` table: Configured data source connections
 - `import_runs` table: Import history with status, counts, timestamps
 - `jobs` table: Background job definitions and scheduling
+- `intelligence_claims` table: Provenance tracking for skip trace findings (leadId, agentName, fieldName, fieldValue, sourceUrl, confidence, parsingMethod, licenseFlag, retrievedAt)
 
 ## API Endpoints
 - `GET /api/markets` - List markets
@@ -93,6 +95,8 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `POST /api/xweather/scan` - Trigger manual Xweather prediction scan
 - `POST /api/xweather/monitor/start` - Start Xweather polling (2-minute interval)
 - `POST /api/xweather/monitor/stop` - Stop Xweather polling
+- `GET /api/leads/:id/claims` - Provenance claims for a lead (skip trace source evidence)
+- `GET /api/intelligence/skip-trace-status` - Skip Trace agent source availability
 
 ## Lead Scoring (0-100)
 - Roof age: up to 30 points (2 pts per year since last replacement, 15 pts default if unknown)

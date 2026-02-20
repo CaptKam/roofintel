@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import {
   leads, hailEvents, markets, dataSources, importRuns, jobs,
-  stormAlertConfigs, stormRuns, alertHistory, responseQueue,
+  stormAlertConfigs, stormRuns, alertHistory, responseQueue, intelligenceClaims,
   type Lead, type InsertLead, type HailEvent, type InsertHailEvent,
   type LeadFilter, type Market, type InsertMarket,
   type DataSource, type InsertDataSource,
@@ -13,6 +13,7 @@ import {
   type StormRun, type InsertStormRun,
   type AlertHistoryRecord, type InsertAlertHistory,
   type ResponseQueueItem, type InsertResponseQueue,
+  type IntelligenceClaim, type InsertIntelligenceClaim,
 } from "@shared/schema";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -83,6 +84,10 @@ export interface IStorage {
   updateResponseQueueItem(id: string, updates: Partial<ResponseQueueItem>): Promise<ResponseQueueItem | undefined>;
 
   getLeadsInBounds(west: number, south: number, east: number, north: number, marketId?: string): Promise<Lead[]>;
+
+  createIntelligenceClaims(claims: InsertIntelligenceClaim[]): Promise<number>;
+  getClaimsForLead(leadId: string): Promise<IntelligenceClaim[]>;
+  deleteClaimsForLead(leadId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -473,6 +478,28 @@ export class DatabaseStorage implements IStorage {
       countyDistribution,
       recentLeads: allLeads.slice(0, 8),
     };
+  }
+
+  async createIntelligenceClaims(claims: InsertIntelligenceClaim[]): Promise<number> {
+    if (claims.length === 0) return 0;
+    const batchSize = 50;
+    let total = 0;
+    for (let i = 0; i < claims.length; i += batchSize) {
+      const batch = claims.slice(i, i + batchSize);
+      await db.insert(intelligenceClaims).values(batch);
+      total += batch.length;
+    }
+    return total;
+  }
+
+  async getClaimsForLead(leadId: string): Promise<IntelligenceClaim[]> {
+    return db.select().from(intelligenceClaims)
+      .where(eq(intelligenceClaims.leadId, leadId))
+      .orderBy(desc(intelligenceClaims.confidence));
+  }
+
+  async deleteClaimsForLead(leadId: string): Promise<void> {
+    await db.delete(intelligenceClaims).where(eq(intelligenceClaims.leadId, leadId));
   }
 }
 

@@ -16,6 +16,7 @@ import { startJobScheduler } from "./job-scheduler";
 import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMonitorStatus } from "./storm-monitor";
 import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweatherStatus, getActiveThreats } from "./xweather-hail";
 import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus } from "./owner-intelligence";
+import { getSkipTraceStatus } from "./skip-trace-agent";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter } from "@shared/schema";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -713,7 +714,7 @@ export async function registerRoutes(
     }
   });
 
-  // Owner Intelligence (10-Agent Pipeline)
+  // Owner Intelligence (12-Agent Pipeline)
   app.get("/api/intelligence/status", async (_req, res) => {
     try {
       const status = getIntelligenceStatus();
@@ -729,7 +730,7 @@ export async function registerRoutes(
       const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 10, 1), 50);
 
       res.json({
-        message: "Owner intelligence pipeline started (11 agents)",
+        message: "Owner intelligence pipeline started (12 agents)",
         batchSize: parsedBatchSize,
       });
 
@@ -790,6 +791,24 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to get intelligence data" });
+    }
+  });
+
+  app.get("/api/leads/:id/claims", async (req, res) => {
+    try {
+      const claims = await storage.getClaimsForLead(req.params.id);
+      res.json(claims);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get provenance claims" });
+    }
+  });
+
+  app.get("/api/intelligence/skip-trace-status", async (_req, res) => {
+    try {
+      const status = getSkipTraceStatus();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get skip trace status" });
     }
   });
 

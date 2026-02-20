@@ -41,6 +41,8 @@ import {
   Loader2,
   HardHat,
   UserCheck,
+  Database,
+  ExternalLink,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -464,7 +466,7 @@ export default function LeadDetail() {
                       data-testid="button-run-intel"
                     >
                       {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
-                      Run 11-Agent Pipeline
+                      Run 12-Agent Pipeline
                     </Button>
                   )}
                 </div>
@@ -512,6 +514,42 @@ export default function LeadDetail() {
                       <span className="text-[10px] text-muted-foreground" data-testid={`text-building-contact-source-${i}`}>{contact.source}</span>
                     </div>
                     {i < intelligence.buildingContacts!.length - 1 && i < 7 && <Separator className="mt-2" />}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {intelligence?.dossier?.skipTraceHits && intelligence.dossier.skipTraceHits.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Database className="w-4 h-4 text-primary" />
+                  Skip Trace / Provenance
+                </CardTitle>
+                <Badge variant="outline" className="text-[10px] no-default-active-elevate" data-testid="badge-skip-trace-count">
+                  {intelligence.dossier.skipTraceHits.length} claims
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {intelligence.dossier.skipTraceHits.slice(0, 12).map((hit: any, i: number) => (
+                  <div key={i} className="border rounded-md p-2 space-y-1" data-testid={`skip-trace-hit-${i}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium">{hit.fieldName}</span>
+                      <Badge variant={hit.confidence >= 70 ? "default" : "outline"} className="text-[10px] no-default-active-elevate" data-testid={`badge-skip-confidence-${i}`}>
+                        {hit.confidence}%
+                      </Badge>
+                    </div>
+                    <p className="text-sm font-mono truncate" data-testid={`text-skip-value-${i}`}>{hit.fieldValue}</p>
+                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                      <span>{hit.source}</span>
+                      {hit.parsingMethod && <span>via {hit.parsingMethod}</span>}
+                      {hit.sourceUrl && (
+                        <a href={hit.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-0.5" data-testid={`link-skip-source-${i}`}>
+                          <ExternalLink className="w-2.5 h-2.5" /> source
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ))}
               </CardContent>

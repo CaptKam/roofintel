@@ -48,6 +48,7 @@ function AgentIcon({ name }: { name: string }) {
     case "Court Records": return <Scale className="w-3.5 h-3.5" />;
     case "Social Intelligence": return <Users className="w-3.5 h-3.5" />;
     case "Building Contacts": return <Building2 className="w-3.5 h-3.5" />;
+    case "Skip Trace": return <Fingerprint className="w-3.5 h-3.5" />;
     case "Master Orchestrator": return <Bot className="w-3.5 h-3.5" />;
     default: return <Bot className="w-3.5 h-3.5" />;
   }
@@ -128,7 +129,7 @@ export default function OwnerIntelligence() {
             <Fingerprint className="w-5 h-5 text-primary" />
             Owner Intelligence
           </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">11-agent pipeline to unmask the real people behind LLCs and find building contacts</p>
+          <p className="text-sm text-muted-foreground mt-0.5">12-agent pipeline to unmask the real people behind LLCs, skip-trace owners, and find building contacts</p>
         </div>
         <Button
           onClick={() => runPipelineMutation.mutate()}

@@ -186,6 +186,23 @@ export const responseQueue = pgTable("response_queue", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const intelligenceClaims = pgTable("intelligence_claims", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  agentName: text("agent_name").notNull(),
+  claimType: text("claim_type").notNull(),
+  fieldName: text("field_name").notNull(),
+  fieldValue: text("field_value").notNull(),
+  sourceUrl: text("source_url"),
+  sourceDocId: text("source_doc_id"),
+  retrievedAt: timestamp("retrieved_at").defaultNow(),
+  effectiveDate: text("effective_date"),
+  confidence: integer("confidence").notNull().default(50),
+  parsingMethod: text("parsing_method").notNull().default("regex"),
+  licenseFlag: text("license_flag").default("public_record"),
+  metadata: jsonb("metadata"),
+});
+
 export const insertMarketSchema = createInsertSchema(markets).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
 export const insertHailEventSchema = createInsertSchema(hailEvents).omit({ id: true });
@@ -196,6 +213,7 @@ export const insertStormAlertConfigSchema = createInsertSchema(stormAlertConfigs
 export const insertStormRunSchema = createInsertSchema(stormRuns).omit({ id: true });
 export const insertAlertHistorySchema = createInsertSchema(alertHistory).omit({ id: true });
 export const insertResponseQueueSchema = createInsertSchema(responseQueue).omit({ id: true, createdAt: true });
+export const insertIntelligenceClaimSchema = createInsertSchema(intelligenceClaims).omit({ id: true });
 
 export type Market = typeof markets.$inferSelect;
 export type InsertMarket = z.infer<typeof insertMarketSchema>;
@@ -217,6 +235,8 @@ export type AlertHistoryRecord = typeof alertHistory.$inferSelect;
 export type InsertAlertHistory = z.infer<typeof insertAlertHistorySchema>;
 export type ResponseQueueItem = typeof responseQueue.$inferSelect;
 export type InsertResponseQueue = z.infer<typeof insertResponseQueueSchema>;
+export type IntelligenceClaim = typeof intelligenceClaims.$inferSelect;
+export type InsertIntelligenceClaim = z.infer<typeof insertIntelligenceClaimSchema>;
 
 export const leadFilterSchema = z.object({
   marketId: z.string().optional(),

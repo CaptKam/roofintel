@@ -1,6 +1,7 @@
 import { storage } from "./storage";
-import type { Lead } from "@shared/schema";
+import type { Lead, InsertIntelligenceClaim } from "@shared/schema";
 import * as cheerio from "cheerio";
+import { runSkipTraceAgent } from "./skip-trace-agent";
 
 // ============================================================
 // TYPES
@@ -37,6 +38,16 @@ export interface BuildingContact {
   confidence: number;
 }
 
+export interface SkipTraceHit {
+  fieldName: string;
+  fieldValue: string;
+  source: string;
+  sourceUrl?: string;
+  confidence: number;
+  parsingMethod: string;
+  retrievedAt: string;
+}
+
 export interface OwnerDossier {
   realPeople: PersonRecord[];
   buildingContacts: BuildingContact[];
@@ -59,6 +70,7 @@ export interface OwnerDossier {
   }>;
   emails: Array<{ email: string; source: string; verified: boolean }>;
   phones: Array<{ phone: string; source: string; type: string }>;
+  skipTraceHits: SkipTraceHit[];
   agentResults: Array<{ agent: string; status: string; found: number; detail?: string }>;
   generatedAt: string;
 }
@@ -1147,6 +1159,9 @@ function calculateIntelligenceScore(dossier: OwnerDossier): number {
   if (dossier.buildingContacts && dossier.buildingContacts.length > 0) score += 5;
   if (dossier.buildingContacts && dossier.buildingContacts.some(c => c.phone || c.email)) score += 5;
 
+  if (dossier.skipTraceHits && dossier.skipTraceHits.length > 0) score += 5;
+  if (dossier.skipTraceHits && dossier.skipTraceHits.some(h => h.confidence >= 70)) score += 5;
+
   return Math.min(100, score);
 }
 
@@ -1160,7 +1175,7 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   let discoveredEmails: Array<{ email: string; source: string; verified: boolean }> = [];
   let sources: string[] = [];
 
-  console.log(`[Intelligence] Running 11-agent pipeline for: ${lead.ownerName} (${lead.address})`);
+  console.log(`[Intelligence] Running 12-agent pipeline for: ${lead.ownerName} (${lead.address})`);
 
   // Stage 1: TX SOS Deep Agent
   const sosResult = await txSosDeepAgent(lead);
@@ -1239,6 +1254,23 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   agentResults.push({ agent: "Building Contacts", status: buildingResult.contacts.length > 0 ? "found" : "empty", found: buildingResult.contacts.length, detail: buildingResult.agentDetail });
   if (buildingResult.contacts.length > 0) sources.push("Building Contacts");
 
+  // Stage 11: Skip Trace Agent (7 free official-records-first sources)
+  const skipTraceResult = await runSkipTraceAgent(lead, allPeople);
+  allPeople.push(...skipTraceResult.people);
+  buildingContacts.push(...skipTraceResult.buildingContacts);
+  agentResults.push({ agent: "Skip Trace", status: (skipTraceResult.people.length + skipTraceResult.buildingContacts.length) > 0 ? "found" : "empty", found: skipTraceResult.people.length + skipTraceResult.buildingContacts.length, detail: skipTraceResult.agentDetail });
+  if (skipTraceResult.people.length > 0 || skipTraceResult.buildingContacts.length > 0) sources.push("Skip Trace");
+
+  // Store provenance claims (always clear old ones, even if no new claims)
+  try {
+    await storage.deleteClaimsForLead(lead.id);
+    if (skipTraceResult.claims.length > 0) {
+      await storage.createIntelligenceClaims(skipTraceResult.claims);
+    }
+  } catch (err) {
+    console.error(`[Intelligence] Failed to store claims for ${lead.id}:`, err);
+  }
+
   // Final deduplication
   allPeople = deduplicatePeople(allPeople);
 
@@ -1265,6 +1297,33 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
     allPhones.push({ phone: googleResult.profile.phone, source: "Google Business", type: "business" });
   }
 
+  // Build skip trace hits for provenance display
+  const skipTraceHits: SkipTraceHit[] = skipTraceResult.claims.map(c => ({
+    fieldName: c.fieldName,
+    fieldValue: c.fieldValue,
+    source: c.agentName,
+    sourceUrl: c.sourceUrl || undefined,
+    confidence: c.confidence ?? 50,
+    parsingMethod: c.parsingMethod ?? "unknown",
+    retrievedAt: c.retrievedAt ? new Date(c.retrievedAt).toISOString() : new Date().toISOString(),
+  }));
+
+  // Deduplicate building contacts after merging skip trace results
+  const seenBldgContacts = new Map<string, BuildingContact>();
+  for (const c of buildingContacts) {
+    const key = c.name.toUpperCase().replace(/\s+/g, " ").trim();
+    const existing = seenBldgContacts.get(key);
+    if (!existing || c.confidence > existing.confidence) {
+      if (existing) {
+        c.phone = c.phone || existing.phone;
+        c.email = c.email || existing.email;
+        c.company = c.company || existing.company;
+      }
+      seenBldgContacts.set(key, c);
+    }
+  }
+  buildingContacts = Array.from(seenBldgContacts.values()).sort((a, b) => b.confidence - a.confidence).slice(0, 20);
+
   // Build dossier
   const dossier: OwnerDossier = {
     realPeople: allPeople.slice(0, 10),
@@ -1274,6 +1333,7 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
     courtRecords,
     emails: discoveredEmails,
     phones: allPhones,
+    skipTraceHits,
     agentResults,
     generatedAt: new Date().toISOString(),
   };
@@ -1341,7 +1401,7 @@ export async function runOwnerIntelligenceBatch(
     recordsProcessed: 0,
     recordsImported: 0,
     recordsSkipped: 0,
-    metadata: { source: "10_agent_pipeline", totalOwners: batch.length, totalLeads: eligibleLeads.length },
+    metadata: { source: "12_agent_pipeline", totalOwners: batch.length, totalLeads: eligibleLeads.length },
   });
 
   for (let i = 0; i < batch.length; i++) {
@@ -1422,7 +1482,8 @@ export function getIntelligenceStatus(): {
     { name: "Court Records", available: !!process.env.SERPER_API_KEY, description: "Searches public court filings and building permits" },
     { name: "Social Intelligence", available: !!process.env.SERPER_API_KEY, description: "BBB profiles, LinkedIn companies, and business registrations" },
     { name: "Building Contacts", available: !!process.env.SERPER_API_KEY || !!process.env.GOOGLE_PLACES_API_KEY, description: "Finds property managers, tenants, contractors, and permit filers connected to the building" },
-    { name: "Master Orchestrator", available: true, description: "Chains all agents, deduplicates, and scores confidence" },
+    { name: "Skip Trace", available: true, description: "7-source free lookup: DFW permits, TX sales tax, OpenCorporates officers, TCEQ contacts, WHOIS, email patterns, reverse address" },
+    { name: "Master Orchestrator", available: true, description: "Chains all agents, deduplicates, scores confidence, and stores provenance claims" },
   ];
 
   return { agents, totalAvailable: agents.filter(a => a.available).length };
