@@ -76,29 +76,125 @@ function estimateSqft(impValue: number | null): number {
   return Math.round(impValue / 100);
 }
 
-function inferCity(address: string, zip: string | null): string {
-  const ZIP_TO_CITY: Record<string, string> = {
-    "75201": "Dallas", "75202": "Dallas", "75203": "Dallas", "75204": "Dallas", "75205": "Dallas",
-    "75206": "Dallas", "75207": "Dallas", "75208": "Dallas", "75209": "Dallas", "75210": "Dallas",
-    "75211": "Dallas", "75212": "Dallas", "75214": "Dallas", "75215": "Dallas", "75216": "Dallas",
-    "75217": "Dallas", "75218": "Dallas", "75219": "Dallas", "75220": "Dallas", "75223": "Dallas",
-    "75224": "Dallas", "75225": "Dallas", "75226": "Dallas", "75227": "Dallas", "75228": "Dallas",
-    "75229": "Dallas", "75230": "Dallas", "75231": "Dallas", "75232": "Dallas", "75233": "Dallas",
-    "75234": "Farmers Branch", "75235": "Dallas", "75236": "Dallas", "75237": "Dallas",
-    "75238": "Dallas", "75240": "Dallas", "75241": "Dallas", "75243": "Dallas", "75244": "Dallas",
-    "75246": "Dallas", "75247": "Dallas", "75248": "Dallas", "75249": "Dallas", "75250": "Dallas",
-    "75251": "Dallas", "75252": "Dallas", "75253": "Dallas", "75254": "Dallas",
-    "75006": "Carrollton", "75007": "Carrollton", "75010": "Carrollton",
-    "75019": "Coppell", "75038": "Irving", "75039": "Irving", "75060": "Irving", "75061": "Irving", "75062": "Irving",
-    "75040": "Garland", "75041": "Garland", "75042": "Garland", "75043": "Garland", "75044": "Garland",
-    "75080": "Richardson", "75081": "Richardson", "75082": "Richardson",
-    "75150": "Mesquite", "75149": "Mesquite", "75180": "Balch Springs",
-    "75104": "Cedar Hill", "75115": "DeSoto", "75116": "Duncanville",
-    "75134": "Lancaster", "75146": "Lancaster",
-    "75159": "Seagoville", "75172": "Wilmer",
-  };
-  if (zip && ZIP_TO_CITY[zip]) return ZIP_TO_CITY[zip];
-  return "Dallas";
+const DALLAS_COUNTY_ZIP_REGIONS: Array<{ zip: string; city: string; latMin: number; latMax: number; lngMin: number; lngMax: number }> = [
+  { zip: "75201", city: "Dallas", latMin: 32.785, latMax: 32.800, lngMin: -96.810, lngMax: -96.790 },
+  { zip: "75202", city: "Dallas", latMin: 32.775, latMax: 32.790, lngMin: -96.815, lngMax: -96.795 },
+  { zip: "75204", city: "Dallas", latMin: 32.790, latMax: 32.810, lngMin: -96.800, lngMax: -96.780 },
+  { zip: "75205", city: "Dallas", latMin: 32.820, latMax: 32.845, lngMin: -96.810, lngMax: -96.780 },
+  { zip: "75206", city: "Dallas", latMin: 32.810, latMax: 32.835, lngMin: -96.780, lngMax: -96.760 },
+  { zip: "75207", city: "Dallas", latMin: 32.775, latMax: 32.795, lngMin: -96.830, lngMax: -96.805 },
+  { zip: "75208", city: "Dallas", latMin: 32.745, latMax: 32.775, lngMin: -96.845, lngMax: -96.815 },
+  { zip: "75209", city: "Dallas", latMin: 32.830, latMax: 32.850, lngMin: -96.830, lngMax: -96.810 },
+  { zip: "75210", city: "Dallas", latMin: 32.760, latMax: 32.785, lngMin: -96.790, lngMax: -96.760 },
+  { zip: "75211", city: "Dallas", latMin: 32.730, latMax: 32.760, lngMin: -96.880, lngMax: -96.845 },
+  { zip: "75212", city: "Dallas", latMin: 32.770, latMax: 32.800, lngMin: -96.870, lngMax: -96.840 },
+  { zip: "75214", city: "Dallas", latMin: 32.810, latMax: 32.840, lngMin: -96.760, lngMax: -96.730 },
+  { zip: "75215", city: "Dallas", latMin: 32.740, latMax: 32.770, lngMin: -96.790, lngMax: -96.755 },
+  { zip: "75216", city: "Dallas", latMin: 32.700, latMax: 32.740, lngMin: -96.800, lngMax: -96.760 },
+  { zip: "75217", city: "Dallas", latMin: 32.700, latMax: 32.740, lngMin: -96.750, lngMax: -96.700 },
+  { zip: "75218", city: "Dallas", latMin: 32.830, latMax: 32.860, lngMin: -96.730, lngMax: -96.690 },
+  { zip: "75219", city: "Dallas", latMin: 32.800, latMax: 32.830, lngMin: -96.820, lngMax: -96.795 },
+  { zip: "75220", city: "Dallas", latMin: 32.850, latMax: 32.875, lngMin: -96.870, lngMax: -96.830 },
+  { zip: "75223", city: "Dallas", latMin: 32.770, latMax: 32.800, lngMin: -96.760, lngMax: -96.730 },
+  { zip: "75224", city: "Dallas", latMin: 32.700, latMax: 32.740, lngMin: -96.850, lngMax: -96.800 },
+  { zip: "75225", city: "Dallas", latMin: 32.845, latMax: 32.870, lngMin: -96.800, lngMax: -96.770 },
+  { zip: "75226", city: "Dallas", latMin: 32.775, latMax: 32.800, lngMin: -96.780, lngMax: -96.755 },
+  { zip: "75227", city: "Dallas", latMin: 32.760, latMax: 32.800, lngMin: -96.730, lngMax: -96.690 },
+  { zip: "75228", city: "Dallas", latMin: 32.800, latMax: 32.840, lngMin: -96.720, lngMax: -96.680 },
+  { zip: "75229", city: "Dallas", latMin: 32.880, latMax: 32.910, lngMin: -96.870, lngMax: -96.830 },
+  { zip: "75230", city: "Dallas", latMin: 32.890, latMax: 32.920, lngMin: -96.810, lngMax: -96.770 },
+  { zip: "75231", city: "Dallas", latMin: 32.870, latMax: 32.900, lngMin: -96.770, lngMax: -96.740 },
+  { zip: "75232", city: "Dallas", latMin: 32.660, latMax: 32.700, lngMin: -96.870, lngMax: -96.830 },
+  { zip: "75233", city: "Dallas", latMin: 32.700, latMax: 32.730, lngMin: -96.870, lngMax: -96.840 },
+  { zip: "75234", city: "Farmers Branch", latMin: 32.910, latMax: 32.940, lngMin: -96.920, lngMax: -96.870 },
+  { zip: "75235", city: "Dallas", latMin: 32.845, latMax: 32.870, lngMin: -96.855, lngMax: -96.830 },
+  { zip: "75236", city: "Dallas", latMin: 32.660, latMax: 32.700, lngMin: -96.920, lngMax: -96.870 },
+  { zip: "75237", city: "Dallas", latMin: 32.640, latMax: 32.670, lngMin: -96.870, lngMax: -96.830 },
+  { zip: "75238", city: "Dallas", latMin: 32.860, latMax: 32.890, lngMin: -96.730, lngMax: -96.690 },
+  { zip: "75240", city: "Dallas", latMin: 32.920, latMax: 32.950, lngMin: -96.810, lngMax: -96.770 },
+  { zip: "75241", city: "Dallas", latMin: 32.640, latMax: 32.680, lngMin: -96.790, lngMax: -96.740 },
+  { zip: "75243", city: "Dallas", latMin: 32.890, latMax: 32.920, lngMin: -96.770, lngMax: -96.730 },
+  { zip: "75244", city: "Dallas", latMin: 32.930, latMax: 32.960, lngMin: -96.860, lngMax: -96.820 },
+  { zip: "75246", city: "Dallas", latMin: 32.785, latMax: 32.810, lngMin: -96.790, lngMax: -96.770 },
+  { zip: "75247", city: "Dallas", latMin: 32.810, latMax: 32.840, lngMin: -96.870, lngMax: -96.840 },
+  { zip: "75248", city: "Dallas", latMin: 32.950, latMax: 32.980, lngMin: -96.830, lngMax: -96.790 },
+  { zip: "75006", city: "Carrollton", latMin: 32.950, latMax: 32.980, lngMin: -96.920, lngMax: -96.870 },
+  { zip: "75007", city: "Carrollton", latMin: 32.980, latMax: 33.010, lngMin: -96.920, lngMax: -96.870 },
+  { zip: "75019", city: "Coppell", latMin: 32.940, latMax: 32.980, lngMin: -96.990, lngMax: -96.940 },
+  { zip: "75038", city: "Irving", latMin: 32.860, latMax: 32.890, lngMin: -96.970, lngMax: -96.930 },
+  { zip: "75039", city: "Irving", latMin: 32.870, latMax: 32.900, lngMin: -96.960, lngMax: -96.920 },
+  { zip: "75060", city: "Irving", latMin: 32.810, latMax: 32.840, lngMin: -96.970, lngMax: -96.930 },
+  { zip: "75061", city: "Irving", latMin: 32.830, latMax: 32.860, lngMin: -96.960, lngMax: -96.920 },
+  { zip: "75062", city: "Irving", latMin: 32.850, latMax: 32.880, lngMin: -96.990, lngMax: -96.950 },
+  { zip: "75040", city: "Garland", latMin: 32.890, latMax: 32.930, lngMin: -96.660, lngMax: -96.620 },
+  { zip: "75041", city: "Garland", latMin: 32.850, latMax: 32.890, lngMin: -96.680, lngMax: -96.640 },
+  { zip: "75042", city: "Garland", latMin: 32.880, latMax: 32.920, lngMin: -96.700, lngMax: -96.660 },
+  { zip: "75043", city: "Garland", latMin: 32.840, latMax: 32.880, lngMin: -96.640, lngMax: -96.590 },
+  { zip: "75044", city: "Garland", latMin: 32.930, latMax: 32.970, lngMin: -96.670, lngMax: -96.630 },
+  { zip: "75080", city: "Richardson", latMin: 32.930, latMax: 32.960, lngMin: -96.760, lngMax: -96.720 },
+  { zip: "75081", city: "Richardson", latMin: 32.940, latMax: 32.970, lngMin: -96.730, lngMax: -96.690 },
+  { zip: "75082", city: "Richardson", latMin: 32.960, latMax: 32.990, lngMin: -96.730, lngMax: -96.680 },
+  { zip: "75150", city: "Mesquite", latMin: 32.750, latMax: 32.790, lngMin: -96.660, lngMax: -96.610 },
+  { zip: "75149", city: "Mesquite", latMin: 32.740, latMax: 32.780, lngMin: -96.630, lngMax: -96.580 },
+  { zip: "75180", city: "Balch Springs", latMin: 32.710, latMax: 32.750, lngMin: -96.660, lngMax: -96.610 },
+  { zip: "75104", city: "Cedar Hill", latMin: 32.570, latMax: 32.620, lngMin: -96.980, lngMax: -96.920 },
+  { zip: "75115", city: "DeSoto", latMin: 32.580, latMax: 32.620, lngMin: -96.880, lngMax: -96.830 },
+  { zip: "75116", city: "Duncanville", latMin: 32.630, latMax: 32.670, lngMin: -96.920, lngMax: -96.880 },
+  { zip: "75134", city: "Lancaster", latMin: 32.580, latMax: 32.620, lngMin: -96.790, lngMax: -96.750 },
+  { zip: "75146", city: "Lancaster", latMin: 32.560, latMax: 32.600, lngMin: -96.810, lngMax: -96.760 },
+  { zip: "75159", city: "Seagoville", latMin: 32.620, latMax: 32.660, lngMin: -96.560, lngMax: -96.510 },
+  { zip: "75172", city: "Wilmer", latMin: 32.580, latMax: 32.620, lngMin: -96.710, lngMax: -96.670 },
+  { zip: "76092", city: "Southlake", latMin: 32.920, latMax: 32.960, lngMin: -97.160, lngMax: -97.100 },
+  { zip: "76034", city: "Colleyville", latMin: 32.870, latMax: 32.910, lngMin: -97.180, lngMax: -97.130 },
+  { zip: "76001", city: "Arlington", latMin: 32.660, latMax: 32.710, lngMin: -97.130, lngMax: -97.070 },
+  { zip: "76010", city: "Arlington", latMin: 32.720, latMax: 32.760, lngMin: -97.120, lngMax: -97.060 },
+  { zip: "76011", city: "Arlington", latMin: 32.750, latMax: 32.790, lngMin: -97.140, lngMax: -97.080 },
+  { zip: "76012", city: "Arlington", latMin: 32.730, latMax: 32.770, lngMin: -97.160, lngMax: -97.100 },
+  { zip: "76013", city: "Arlington", latMin: 32.700, latMax: 32.740, lngMin: -97.170, lngMax: -97.120 },
+  { zip: "76014", city: "Arlington", latMin: 32.680, latMax: 32.720, lngMin: -97.090, lngMax: -97.030 },
+  { zip: "76015", city: "Arlington", latMin: 32.690, latMax: 32.730, lngMin: -97.150, lngMax: -97.090 },
+  { zip: "76016", city: "Arlington", latMin: 32.710, latMax: 32.750, lngMin: -97.200, lngMax: -97.140 },
+  { zip: "76017", city: "Arlington", latMin: 32.670, latMax: 32.710, lngMin: -97.190, lngMax: -97.130 },
+  { zip: "76018", city: "Arlington", latMin: 32.650, latMax: 32.690, lngMin: -97.120, lngMax: -97.060 },
+  { zip: "76019", city: "Arlington", latMin: 32.710, latMax: 32.750, lngMin: -97.070, lngMax: -97.010 },
+  { zip: "75050", city: "Grand Prairie", latMin: 32.730, latMax: 32.770, lngMin: -97.000, lngMax: -96.950 },
+  { zip: "75051", city: "Grand Prairie", latMin: 32.700, latMax: 32.740, lngMin: -97.010, lngMax: -96.960 },
+  { zip: "75052", city: "Grand Prairie", latMin: 32.660, latMax: 32.700, lngMin: -97.020, lngMax: -96.960 },
+  { zip: "75054", city: "Grand Prairie", latMin: 32.640, latMax: 32.680, lngMin: -97.050, lngMax: -96.990 },
+];
+
+const DFW_BOUNDS = { latMin: 32.50, latMax: 33.10, lngMin: -97.30, lngMax: -96.45 };
+
+export function inferCityFromCoords(lat: number, lng: number): { city: string; zip: string } {
+  if (lat < DFW_BOUNDS.latMin || lat > DFW_BOUNDS.latMax || lng < DFW_BOUNDS.lngMin || lng > DFW_BOUNDS.lngMax) {
+    return { city: "Dallas", zip: "75201" };
+  }
+
+  let bestMatch: { city: string; zip: string; dist: number } | null = null;
+
+  for (const region of DALLAS_COUNTY_ZIP_REGIONS) {
+    const centerLat = (region.latMin + region.latMax) / 2;
+    const centerLng = (region.lngMin + region.lngMax) / 2;
+    const dist = Math.sqrt(Math.pow(lat - centerLat, 2) + Math.pow(lng - centerLng, 2));
+
+    if (lat >= region.latMin && lat <= region.latMax && lng >= region.lngMin && lng <= region.lngMax) {
+      return { city: region.city, zip: region.zip };
+    }
+
+    if (!bestMatch || dist < bestMatch.dist) {
+      bestMatch = { city: region.city, zip: region.zip, dist };
+    }
+  }
+
+  if (bestMatch && bestMatch.dist > 0.1) {
+    return { city: "Dallas", zip: "75201" };
+  }
+
+  return bestMatch ? { city: bestMatch.city, zip: bestMatch.zip } : { city: "Dallas", zip: "75201" };
+}
+
+function isDallasCountyZip(zip: string): boolean {
+  return DALLAS_COUNTY_ZIP_REGIONS.some(r => r.zip === zip);
 }
 
 async function fetchDcadPage(offset: number, minImpValue: number): Promise<{ features: DcadFeature[]; hasMore: boolean }> {
@@ -230,8 +326,9 @@ export async function importDcadProperties(
           const sqft = a.BLDGAREA || estimateSqft(impValue);
           const yearBuilt = a.RESYRBLT || 1995;
           const zoning = inferZoning(classDesc);
-          const city = a.PSTLCITY || inferCity(a.SITEADDRESS, a.PSTLZIP5);
           const llcName = ownerType === "LLC" ? a.OWNERNME1 : undefined;
+
+          const propertyLocation = inferCityFromCoords(lat, lng);
 
           const ownerAddress = a.PSTLADDRESS
             ? `${a.PSTLADDRESS}, ${a.PSTLCITY || ""} ${a.PSTLSTATE || "TX"} ${a.PSTLZIP5 || ""}`
@@ -240,10 +337,10 @@ export async function importDcadProperties(
           const leadData: InsertLead = {
             marketId,
             address: a.SITEADDRESS,
-            city,
+            city: propertyLocation.city,
             county: "Dallas",
             state: "TX",
-            zipCode: a.PSTLZIP5 || "75201",
+            zipCode: propertyLocation.zip,
             latitude: lat,
             longitude: lng,
             sqft,

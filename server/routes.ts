@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { seedDatabase } from "./seed";
 import { importNoaaHailData, importNoaaMultiYear } from "./noaa-importer";
 import { importPropertyCsv, generateSampleCsv } from "./property-importer";
-import { importDcadProperties } from "./dcad-agent";
+import { importDcadProperties, inferCityFromCoords } from "./dcad-agent";
 import { correlateHailToLeads } from "./hail-correlator";
 import { enrichLeadContacts, getEnrichmentStatus } from "./contact-enrichment";
 import { enrichLeadPhones, getPhoneEnrichmentStatus } from "./phone-enrichment";
@@ -304,6 +304,41 @@ export async function registerRoutes(
     res.setHeader("Content-Type", "text/csv");
     res.setHeader("Content-Disposition", 'attachment; filename="sample-property-data.csv"');
     res.send(csv);
+  });
+
+  app.post("/api/data/fix-locations", async (_req, res) => {
+    res.json({ message: "Location fix started in background" });
+
+    (async () => {
+      try {
+        const batchSize = 500;
+        let offset = 0;
+        let fixed = 0;
+        let totalChecked = 0;
+
+        while (true) {
+          const { leads } = await storage.getLeads({ limit: batchSize, offset });
+          if (leads.length === 0) break;
+
+          for (const lead of leads) {
+            if (!lead.latitude || !lead.longitude || lead.sourceType !== "dcad_api") continue;
+            const location = inferCityFromCoords(lead.latitude, lead.longitude);
+            const currentCity = (lead.city || "").trim();
+            if (currentCity !== location.city || lead.zipCode !== location.zip) {
+              await storage.updateLead(lead.id, { city: location.city, zipCode: location.zip });
+              fixed++;
+            }
+          }
+          totalChecked += leads.length;
+          offset += batchSize;
+          if (leads.length < batchSize) break;
+        }
+
+        console.log(`[Data Fix] Complete: Fixed ${fixed} leads out of ${totalChecked} checked`);
+      } catch (error: any) {
+        console.error("[Data Fix] Location fix error:", error);
+      }
+    })();
   });
 
   app.post("/api/correlate/hail", async (req, res) => {
