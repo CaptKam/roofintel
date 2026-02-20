@@ -1,0 +1,437 @@
+Making BoringToolRadar Production-Ready: A Data Engineer’s Technical Plan
+Executive summary
+A data engineer would harden “BoringToolRadar” by turning it from an LLM prompt that “scans stuff” into a metadata-driven, idempotent, observable data pipeline with: (a) compliant ingestion, (b) immutable raw storage + normalized curated tables, (c) deterministic dedup/canonicalization, (d) a versioned extraction + embeddings pipeline, (e) incremental clustering + hybrid search, and (f) production ops (monitoring, alerting, backups, CI/CD, security). 
+
+The single biggest overlooked risk is source compliance and retention—especially for Reddit: approval requirements, strict expectations around rate limits, and explicit warnings that retaining deleted content (even “anonymized”) violates terms/policies, plus requirements to re-run queries to reflect deletions. 
+
+The second major gap is reliability engineering: without watermarks, retries with backoff/jitter, idempotency keys, and connector-specific throttling based on official headers, the system will become flaky, expensive, and untrustworthy (which kills your “rapid idea → MVP” loop). 
+
+Expected daily volume is unspecified, so the plan below gives low/medium/high scenarios and a stack that can start on Replit (fast iteration) and graduate to cloud services when throughput and reliability demands rise. 
+
+Reference architecture and minimal tech stack
+A production-ready scanner should explicitly separate three planes:
+
+Data plane (pipelines + storage): ingestion → raw → extraction → embeddings → clustering.
+Query plane: keyword + semantic retrieval over curated + vector indices.
+Ops plane: scheduling, observability, cost controls, security, backups.
+
+Replit-specific constraint: scheduled deployments are designed for periodic jobs that start, run, and terminate, not long-running services; therefore you want short, incremental jobs with strong idempotency and checkpointing. 
+
+Minimal recommended stack
+Baseline (fastest path on Replit, low/medium volume):
+
+Language/runtime: Python (pandas + async HTTP) or Node/TypeScript (if your team is already TS-heavy).
+DB: Postgres (use pgvector extension for semantic retrieval).
+Vector: Postgres + pgvector initially; add a dedicated vector DB only when scale demands it. 
+Search: Postgres full-text search (tsvector/tsquery + GIN) + vector similarity (hybrid rank). 
+Orchestration: Replit Scheduled Deployments for ingestion/extract/embed/cluster jobs; Autoscale Deployment for the web UI/API. 
+LLM extraction + embeddings: OpenAI embeddings + batch option for cost control (or swap to local for high volume). 
+Observability: structured logs (JSON), metrics (Prometheus-style or hosted), error aggregation (Sentry or similar).
+When you outgrow Replit constraints (high volume or stronger SLAs):
+
+Orchestration: a real scheduler (Cloud Scheduler) + container runtime (Cloud Run) or a workflow engine (Prefect/Dagster).
+Storage: managed Postgres (e.g., Neon/Supabase) + object storage for raw payload archives where permitted.
+Vector DB: Qdrant/Pinecone/Weaviate for higher QPS, filtered ANN, and horizontal scaling. 
+Ingestion-to-processing flow diagram
+mermaid
+Copy
+flowchart LR
+  A[Source Registry\n(connectors + ToS notes + auth)] --> B[Ingestion Workers\nrate limit + backoff + watermark]
+  B --> C[Raw Store (immutable)\nraw_items + raw_payloads]
+  C --> D[Canonicalization + Dedup\nurl canon + hashes + simhash]
+  D --> E[Extraction\nPain Card JSON + QA flags]
+  E --> F[Curated Store\npain_cards + themes + memberships]
+  E --> G[Embeddings Job\nbatch + caching + versioning]
+  G --> H[Vector Index\npgvector or vector DB]
+  F --> I[Clustering\nincremental assign + periodic recluster]
+  I --> F
+  F --> J[Hybrid Search API\nkeyword + semantic]
+  J --> K[Dashboard + Alerts\nweekly report + anomalies]
+Ingestion and compliance
+A data engineer will treat ingestion as a connector framework, not one-off scripts. Every connector must declare: auth, endpoints, rate limits/headers, watermark strategy, paging strategy, retry semantics, and ToS constraints (including retention, attribution, and prohibited uses). 
+
+Connector framework requirements
+APIs, auth, and compliance
+
+Use official / primary APIs whenever available and record that in a “source registry.”
+Track ToS restrictions in code (not in someone’s memory), especially retention constraints and deletion propagation.
+For Reddit specifically: approval requirements and additional restrictions require you to bake a deletion compliance path into the pipeline (tombstones and re-checks). 
+Rate limits, backoff, retries
+
+Implement per-connector token buckets + exponential backoff with jitter.
+Respect platform-provided headers:
+Reddit: X-Ratelimit-Used, X-Ratelimit-Remaining, X-Ratelimit-Reset and the documented 100 QPM per OAuth client id for free access. 
+GitHub: primary unauthenticated limit 60 requests/hour, and use conditional requests to avoid consuming rate limit when content is unchanged (304). 
+Prefer conditional GET (ETag / Last-Modified) where supported; GitHub explicitly recommends this and notes 304 responses can avoid counting against the primary limit when properly authorized. 
+Watermarks and incremental ingestion
+
+Every connector should maintain a watermark of “last successfully processed” (e.g., timestamp, cursor, or latest ID).
+Store watermarks in DB (connector_state) and update only after successful commit of a batch.
+Source connectors table (official-first, with explicit legal notes)
+Source connector	Official access method	Auth method	Rate limits / quotas	Data format	Legal/ToS notes
+Google Trends	Google Trends API (alpha)	Unspecified publicly on the overview page; alpha access application required	Unspecified publicly; API provides rolling 5-year window; data up to ~2 days old	Likely JSON (API), details gated by alpha	Alpha-only access for limited testers; design for 2-day data latency and 5-year rolling window. 
+Reddit Data API	Reddit Data API	OAuth; approval required before API access	Free access: 100 QPM per OAuth client id; monitor X-Ratelimit headers; window averaged (10 min)	JSON	Approval required; must not circumvent limits. Retention of deleted content is explicitly flagged as a violation; policy expects re-running queries to reflect deletions. Data API Terms restrict use and require deletion on termination. 
+GitHub API	GitHub REST API	PAT / OAuth / GitHub App (varies)	Unauthenticated: 60 req/hour; conditional requests with ETag can return 304 and avoid primary rate consumption when authorized	JSON	Use ETag/Last-Modified conditional requests to reduce rate usage; don’t poll blindly. 
+Google Ads keyword signals	Google Ads API	OAuth + developer token	Basic access: 15,000 operations/day (developer token level); additional quotas apply	JSON / protobuf-style API responses	Legit signal source, but onboarding overhead is real (tokens, access levels). Use only if you can operationalize compliance and quotas. 
+Search intent SERP sampling (Google)	Custom Search JSON API (legacy)	API key	100 queries/day free; $5/1,000 queries up to 10k/day; service discontinuation Jan 1, 2027; not available for new customers	JSON	High risk as a foundation: this endpoint is being discontinued and is closed to new customers. Prefer alternative compliant sources (RSS/APIs) or legal-reviewed providers. 
+Search Console internal intent	Search Console API	OAuth	Quotas: up to ~1,200 QPM (examples given); Search Analytics method max 50K rows/day per search type	JSON	Only useful if you control properties; excellent for validating demand for niches you already have sites for. 
+G2 reviews	G2 API	API token (generated in portal)	Global rate limit 100 requests/second; block for 60 seconds if exceeded	JSON:API	Compliant alternative to scraping reviews—requires access/token permissions. 
+Capterra reviews	No clearly documented public reviews API in official pages found here	N/A	N/A	HTML	Treat as “legal review required”; use only with explicit permission/partner access; otherwise you’re pushed toward scraping, which is typically a ToS minefield. 
+Apple App Store reviews (your apps)	App Store Connect API “customerReviews”	App Store Connect auth (for your account)	Unspecified here	JSON	This is for reviews of your apps (App Store Connect). It’s not a general web-wide reviews feed. Useful later once you own distribution via an app/extension. 
+
+Sources requiring explicit legal review or more specification: anything that implies scraping non-API pages (many forums/review sites), and anything where the official API scope does not cover your intended use (e.g., trying to ingest “all reviews” from platforms where the API is only for your own account). 
+
+Backoff and throttling pseudocode (connector-agnostic)
+python
+Copy
+def backoff_delay(attempt, reset_seconds=None):
+    # Prefer server-provided reset hints (e.g. Reddit X-Ratelimit-Reset)
+    if reset_seconds is not None:
+        return max(1.0, float(reset_seconds))
+    # Exponential backoff with jitter
+    base = 0.5 * (2 ** attempt)
+    jitter = random.uniform(0, 0.25 * base)
+    return min(60.0, base + jitter)
+
+async def fetch_with_limits(http, req, limiter, retries=5):
+    for attempt in range(retries + 1):
+        await limiter.acquire()  # token bucket per connector
+        resp = await http(req)
+
+        if resp.status in (429, 503):
+            reset = resp.headers.get("x-ratelimit-reset")  # e.g., Reddit
+            await sleep(backoff_delay(attempt, reset_seconds=reset))
+            continue
+
+        resp.raise_for_status()
+        return resp
+
+    raise RuntimeError("retries_exhausted")
+For GitHub specifically: use ETags and If-None-Match to get 304 when unchanged; GitHub states conditional GETs can avoid consuming primary rate limit under the conditions described. 
+
+Storage and data modeling
+A production system needs two layers:
+
+Raw (immutable, append-only): “what we saw” (subject to ToS retention constraints—especially deletions). 
+Curated/normalized: “what we derived” (Pain Cards, themes, scores), fully versioned.
+Raw storage schema (immutable “landing zone”)
+Key design goals:
+
+Idempotency: re-running ingestion for the same time window should not duplicate rows.
+Forensics: keep enough metadata to debug (headers, status codes, payload hash).
+Compliance: ability to delete or expire raw payloads when required (e.g., deleted posts). 
+Normalized schema for Pain Cards + Themes
+Key design goals:
+
+Version everything: model versions, prompts, embedding model, extraction schema version.
+Traceability: every Pain Card links back to raw item(s).
+Incremental clustering: efficient “assign new cards to existing themes” path, plus periodic re-cluster.
+Schema table (raw items + normalized Pain Card)
+Layer	Table	Purpose	Key columns (recommended)
+Raw	source_registry	Metadata-driven connector config	source_id, name, base_url, auth_type, tos_url, retention_policy_days, allowed_use_notes, rate_limit_qpm, supports_etag, notes
+Raw	ingestion_runs	Lineage + observability anchor	run_id, source_id, started_at, ended_at, status, records_fetched, records_inserted, http_429_count, error_count, code_version, config_hash
+Raw	raw_items	Immutable index of collected items	raw_id, source_id, source_item_id, canonical_url, published_at, fetched_at, author_ref (hashed), title, body_text (optional; see PII policy), lang, raw_hash, etag, last_modified, http_status, run_id
+Raw	raw_payloads	Optional: encrypted original payload	raw_id, payload_encrypted, encryption_key_id, expires_at
+Curated	pain_cards	Extracted structured pain objects	pain_id, raw_id, extracted_at, extractor_model, extractor_version, persona, job_to_be_done, pain, workaround, stakes_json, frequency_signal, urgency_signal, wtp_signal, keywords_json, qa_flags_json, schema_version
+Curated	themes	Canonical grouped pains	theme_id, theme_statement, buyer, created_at, updated_at, status (active/merged/deprecated), centroid_embedding (optional), theme_hash
+Curated	theme_memberships	Many-to-many mapping	theme_id, pain_id, assigned_at, method (ann
+Curated	scores_weekly	Trend + scoring over time	week_start, theme_id, mentions, source_diversity, growth_rate, score_total, score_components_json
+
+Why this is overlooked: most agent prompts produce transient output; without reproducible storage, you cannot compare weeks, validate performance, or build a reliable “idea radar.” 
+
+Deduplication and canonicalization
+You need three levels of duplicate defense:
+
+URL canonicalization (exact duplicates)
+
+Normalize hostname + scheme, strip tracking params (utm_*, gclid, etc.), sort query params.
+Store canonical_url and enforce uniqueness per (source_id, canonical_url).
+Content hashing (exact/near-exact duplicates)
+
+Compute raw_hash = sha256(normalize_text(title + body)).
+Add unique constraint (source_id, raw_hash) to catch mirrored posts and re-ingest.
+Near-duplicate detection (semantic duplicates)
+
+Use SimHash/MinHash over normalized text for cheap near-dup detection.
+Use embedding similarity as a final arbiter when hash-based methods collide.
+A simple canonical-insert pattern (idempotent):
+
+sql
+Copy
+-- Enforce idempotency
+CREATE UNIQUE INDEX IF NOT EXISTS ux_raw_source_item
+ON raw_items(source_id, source_item_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_raw_source_hash
+ON raw_items(source_id, raw_hash);
+Data quality checks and lineage
+At minimum, add pipeline contracts:
+
+raw_items.source_item_id not null for API sources.
+raw_items.published_at <= now() (allow small clock skew).
+pain_cards must reference an existing raw_id.
+theme_memberships must reference existing theme_id and pain_id, and (theme_id, pain_id) unique.
+Operationally, run DQ checks at the end of each job and fail the run if:
+
+Inserted rows = 0 when fetched rows > 0 (signals parse break / schema drift).
+Duplicate rate > threshold (e.g., >20% duplicates in a run may indicate a bad watermark).
+Null-rate spikes for critical fields (title/body/published_at) above baseline.
+Lineage fields that matter in practice:
+
+run_id, connector_version, extractor_version, embedding_model, cluster_version, plus config_hash.
+Embeddings, clustering, and search
+Embeddings pipeline
+Model choices (practical)
+
+Fast start: OpenAI embeddings (text-embedding-3-small) for cost-effective throughput, with batch pricing available. 
+Upgrade path: local embeddings (e.g., e5/bge families) when volume is high and you want predictable infra cost (trade-off: you own GPU/CPU ops).
+Batching and caching
+
+Batch embeddings by token count (e.g., 128–512 texts per call depending on max tokens) and use a caching key:
+embedding_key = sha256(embedding_model + schema_version + canonical_text)
+Skip embedding if already present with the same key.
+Vector storage options
+
+Postgres + pgvector: simplest, one system to run; index types like IVFFlat/HNSW exist depending on your environment and scale needs. 
+Dedicated vector DB (Qdrant/Pinecone/Weaviate): better at high QPS, filtered ANN, horizontal scaling; extra operational surface area and cost. Qdrant markets a free tier and managed scaling options. 
+Embedding update strategies
+You need an explicit policy, because “re-embed everything” is expensive.
+
+Recommended:
+
+Add embedding_model_version and embedding_dim.
+Maintain two columns: embedding_current and embedding_next (or separate table).
+Re-embed only when:
+extraction schema changes materially (fields used change), or
+embedding model changes, or
+canonical text changes after a dedupe merge/human correction.
+Clustering and incremental clustering
+Incremental assignment (daily)
+
+For each new Pain Card, compute embedding.
+ANN query existing theme centroids.
+If similarity ≥ threshold, assign to that theme; else create a new theme candidate.
+Update weekly aggregates.
+Periodic reclustering (weekly or biweekly)
+
+Recompute centroids.
+Re-run clustering algorithm on “active” Pain Cards from the last N weeks.
+Merge/split themes; track theme.status and create redirects (so links don’t break).
+Incremental clustering timeline diagram:
+
+Feb 20
+Feb 20
+Feb 21
+Feb 21
+Feb 22
+Feb 22
+Feb 23
+Feb 23
+Feb 24
+Feb 24
+Feb 25
+Feb 25
+Feb 26
+Ingest new items
+Extract Pain Cards
+Embed new Pain Cards (cached)
+Assign to existing themes (ANN)
+Recompute centroids + stats
+Recluster recent window (e.g., 8w)
+Merge/split + update redirects
+Daily jobs
+Weekly jobs
+Incremental clustering lifecycle
+
+
+Show code
+Search/indexing (semantic + keyword)
+Keyword search
+
+Use Postgres full-text search: tsvector indexes and tsquery matching are first-class; PostgreSQL documents the core requirement of creating tsvector from text and tsquery from user query. 
+Semantic search
+
+Use pgvector (or vector DB) to search Pain Cards and Themes.
+Hybrid ranking
+
+Retrieve top-k from keyword and top-k from semantic, then fuse ranks (weighted sum or reciprocal rank fusion).
+Store both scores plus the combined score for debugging.
+Example hybrid query pattern (conceptual):
+
+sql
+Copy
+-- Conceptual: compute keyword rank + vector sim, then combine.
+SELECT
+  pain_id,
+  ts_rank_cd(pain_tsv, websearch_to_tsquery('english', :q)) AS kw_score,
+  1 - (embedding <=> :q_embedding) AS sem_score
+FROM pain_cards_search
+WHERE pain_tsv @@ websearch_to_tsquery('english', :q)
+ORDER BY (0.6 * kw_score + 0.4 * sem_score) DESC
+LIMIT 50;
+(Implement details depend on your chosen pgvector operator/class and text search configuration.) 
+
+Reliability, observability, security, and operations
+Alerting and monitoring
+Because this is “scanner → ranked opportunities,” silent failures are fatal (you’ll think markets went quiet when your connector broke).
+
+Minimum recommended monitoring (with alert thresholds):
+
+Ingestion health
+
+ingestion.success_rate_by_source (target ≥ 99% per week)
+ingestion.http_429_rate (warn at >2% of requests; page at >10%)
+ingestion.lag_seconds = now − latest_published_at_ingested (warn if >24h for sources expected to update daily)
+ingestion.duplicate_rate (warn at >20% in a run; suggests watermark/cursor bug)
+ingestion.zero_insert_run when fetched>0 and inserted=0 (page immediately)
+Rate-limit alerts should be connector-aware:
+
+Reddit: use X-Ratelimit-Remaining to start throttling before 0, and treat X-Ratelimit-Reset as a backoff hint. 
+Pipeline quality
+
+% of Pain Cards failing schema validation (warn >2%, page >10%)
+Null rate for persona/pain fields (warn if sudden spike)
+Theme churn: number of merges/splits per week (if too high, your clustering threshold is unstable)
+Cost observability
+
+embeddings tokens/day and $/day estimate from pricing tables. 
+compute time + DB active hours (especially on serverless DBs)
+Cost-control strategies
+Only embed what you must
+
+Dedup before LLM calls and embeddings.
+Cache embeddings by hash. 
+Use batch pricing where supported
+
+OpenAI embeddings show explicit “batch cost” for embedding models. 
+Use conditional requests where supported
+
+GitHub explicitly recommends conditional requests; 304 responses can avoid consuming the primary rate limit as described. 
+Avoid foundations with known deprecations
+
+Google Custom Search JSON API is not available to new customers and has a discontinuation date; don’t base your system on it. 
+Security/privacy: PII handling, token hashing, access controls
+PII scope
+
+Public data can still contain personal data (names, handles). Your system should treat author identifiers as PII-like and minimize retention.
+Recommended policies
+
+Store author_ref = sha256(source + author_id) (salted) instead of raw usernames.
+Keep raw payloads encrypted and short-lived where ToS requires or where you want to minimize risk.
+Implement “tombstone propagation”: if an item is deleted upstream, delete or scrub it locally (especially important for Reddit’s explicit retention warning). 
+Secrets
+
+Never store API tokens in DB; store in secret manager / Replit Secrets.
+Hash any public request tokens or signed links stored in DB (store hash, not the token itself).
+Access control
+
+Role-based access: operator vs viewer.
+Restrict access to raw payloads to operators only; most users only need derived Pain Cards and theme summaries.
+Scheduling and orchestration (cron vs scheduler, idempotency)
+On Replit:
+
+Use Scheduled Deployments for periodic tasks; they run and terminate and include monitoring/error alerts. 
+Keep each job bounded by a timeout and design for slower scheduled-job performance. 
+Idempotency
+
+Every job should be re-runnable without damage:
+unique indexes for raw items
+“upsert” patterns for curated tables keyed by (raw_id, extractor_version)
+checkpoint connector_state only after successful transaction commit
+Backups and disaster recovery
+Replit’s docs indicate Postgres storage and compute are billed and that databases can suspend when idle; you should assume you need:
+
+daily logical backups (pg_dump) to external storage
+weekly restore test
+RPO/RTO targets defined (for a scanner, you might accept RPO 24h and RTO 4–8h) 
+Testing and CI/CD for data pipelines
+Minimum data-pipeline CI:
+
+unit tests for canonicalization, hash stability, watermark logic
+contract tests using recorded API fixtures (VCR pattern)
+migration tests (apply schema from scratch)
+end-to-end “mini run” on small fixture data
+Deploy gates:
+
+do not deploy connector changes unless DQ checks pass on fixture + last successful run can be replayed.
+Deployment options (Replit constraints vs cloud)
+Replit strengths
+
+Fast iteration; built-in scheduled jobs and autoscale deployments. 
+Serverless Postgres behavior (active hours + suspends after idle) can be cost-efficient. 
+Replit constraints
+
+Scheduled jobs are not meant for long-running workloads; you’ll need small batches and strong checkpointing. 
+DB storage limits are explicit (10 GiB per database in the billing doc), which can matter if you store raw payloads and embeddings aggressively. 
+Cloud migration triggers
+
+100k raw items/day sustained
+
+embedding throughput requires dedicated GPU instances
+need independent infra controls (VPC, custom observability stack)
+Engineering roadmap and cost model
+Expected daily volume is unspecified. Use these planning bands:
+
+Low volume: up to ~10k raw items/day; ~2k Pain Cards/day.
+Medium volume: up to ~100k raw items/day; ~20k Pain Cards/day.
+High volume: 300k–1M raw items/day; 50k–200k Pain Cards/day.
+Thirty-day deliverables
+Deliverables
+
+Connector framework + source_registry, connector_state, ingestion_runs.
+Two compliant connectors (suggested: Reddit Data API + GitHub REST API).
+Raw store + canonicalization + exact dedupe (URL + hash).
+Pain Card extraction pipeline with strict JSON schema validation.
+Basic dashboard: last run time, inserted counts, 429 rates, lag.
+Acceptance criteria
+
+≥ 7 consecutive days of runs with:
+success rate ≥ 99% per source
+duplicate rate stable and explainable
+zero silent failures (failed runs alert)
+Full replay test: re-run last 24h ingestion without duplicating raw_items.
+(Critical compliance acceptance: documented retention approach and deletion handling plan for Reddit.) 
+
+Sixty-day deliverables
+Deliverables
+
+Embeddings pipeline with caching and batching; store embeddings in pgvector.
+Incremental clustering (ANN assignment) + weekly recluster job.
+Hybrid search endpoint (keyword + semantic) over Pain Cards and Themes.
+Weekly “Top 10 opportunities” report generated from DB, not from a one-off LLM run.
+Acceptance criteria
+
+Embedding job cost tracked daily; batch/caching reduces embedding spend vs naïve baseline (measure tokens/day). 
+Clustering stability: <20% of themes churn week-to-week unless you change clustering params.
+Search latency: p95 < 500ms at low/medium volume on Postgres+pgvector (target; validate with load test).
+Ninety-day deliverables
+Deliverables
+
+Add one “licensed/official reviews” connector (e.g., G2 API) and one “keyword intent” connector (Google Ads API or Search Console API if applicable).
+Full observability: metrics dashboards + alert routing + runbook.
+Backup/restore automation + quarterly DR test.
+Optional: migrate vector search to Qdrant/Pinecone if Postgres performance/scale becomes limiting.
+Acceptance criteria
+
+Mean time to detect (MTTD) pipeline break < 15 minutes (alerts).
+Restore test passes: full DB restore + re-run last day of pipelines.
+Clear migration criteria doc and successful canary deployment of the new vector/search layer.
+Cost estimate ranges (key components)
+Costs depend heavily on volume, retention, and whether you keep raw payloads. Ranges below illustrate typical order-of-magnitude planning using publicly stated pricing/limits; treat as planning numbers, not quotes.
+
+Component	Low volume (monthly)	Medium volume (monthly)	High volume (monthly)	Notes / cost controls
+Embeddings (OpenAI text-embedding-3-small)	$1–$20	$20–$200	$200–$2,000+	$0.02 / 1M tokens (batch $0.01). Cache by hash; batch. 
+Managed Postgres (external option: Neon)	$0–$30	$30–$200	$200–$1,000+	Pricing examples include $0.106/CU-hr and $0.35/GB-month on Launch plan; actual depends on active hours + storage. 
+Managed Postgres (Supabase)	$0–$25+	$25–$250	$250–$2,000+	Starts from $10/month; scales with compute; plan specifics vary by workload. 
+Vector DB (Qdrant Cloud)	$0–$50	$50–$300	$300–$3,000+	Qdrant advertises 1GB free cluster and paid scaling; use when pgvector QPS/latency becomes limiting. 
+SERP sampling via Google Custom Search JSON API	Avoid as foundation	Avoid as foundation	Avoid as foundation	Not available for new customers; discontinuation Jan 1, 2027; also capped to 10k/day. 
+Replit compute/DB (if staying on Replit)	Often within plan credits	Pay-as-you-go	Pay-as-you-go	Core includes monthly credits; compute units and serverless DB behavior described; exact overage pricing varies. DB suspends after 5 min idle; storage cap 10 GiB. 
+
+If you want this to be implementable immediately, the next engineering artifact to produce is a repo skeleton with:
+
+/connectors/* (each connector exports fetch_page(watermark) -> raw_items, next_watermark)
+/pipelines/extract.py, /pipelines/embed.py, /pipelines/cluster.py
+/sql/migrations/*
+/dq_checks/*
+/ops/metrics/* (Prometheus endpoint or log-based metrics)
+Replit Scheduled Deployments configured as: ingest -> extract -> embed -> cluster -> report (each idempotent) 
