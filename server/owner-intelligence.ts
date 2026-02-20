@@ -129,11 +129,26 @@ function extractPhones(text: string): string[] {
 
 function isPersonName(name: string): boolean {
   if (!name || name.length < 3 || name.length > 80) return false;
-  const upper = name.toUpperCase();
+  const cleaned = name.replace(/[\n\r\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  if (cleaned.length < 3) return false;
+  const upper = cleaned.toUpperCase();
   const llcWords = ["LLC", "INC", "CORP", "LP", "LTD", "TRUST", "HOLDING", "PROPERTIES", "INVESTMENTS", "MANAGEMENT", "VENTURES", "PARTNERS", "CAPITAL", "FUND", "ENTERPRISES", "ASSOCIATES", "GROUP", "DEVELOPMENT"];
   if (llcWords.some(w => upper.includes(w))) return false;
-  const parts = name.trim().split(/\s+/);
-  return parts.length >= 2 && parts.length <= 5 && /^[A-Z]/i.test(parts[0]);
+  const junkPatterns = [
+    /statewide/i, /links/i, /navigation/i, /menu/i, /footer/i, /header/i,
+    /click here/i, /read more/i, /learn more/i, /sign in/i, /log in/i, /sign up/i,
+    /contact us/i, /about us/i, /home page/i, /skip to/i, /toggle/i,
+    /cookie/i, /privacy/i, /terms of/i, /copyright/i, /all rights/i,
+    /subscribe/i, /follow us/i, /powered by/i, /page \d/i,
+    /^\s*us\s/i, /^the\s/i, /^a\s/i, /^an\s/i,
+  ];
+  if (junkPatterns.some(p => p.test(cleaned))) return false;
+  if (/[<>{}|\\]/.test(cleaned)) return false;
+  if ((cleaned.match(/[^a-zA-Z\s.\-']/g) || []).length > 2) return false;
+  const parts = cleaned.split(/\s+/);
+  if (parts.length < 2 || parts.length > 5) return false;
+  if (!parts.every(p => /^[A-Z]/i.test(p) && p.length >= 2)) return false;
+  return true;
 }
 
 function deduplicatePeople(people: PersonRecord[]): PersonRecord[] {
