@@ -268,6 +268,11 @@ export default function Leads() {
                         {lead.ownerType === "LLC" && (
                           <Badge variant="outline" className="text-[10px]">{lead.llcName || "LLC"}</Badge>
                         )}
+                        {(lead as any).ownershipFlag && (
+                          <Badge variant="destructive" className="text-[10px]" data-testid={`badge-ownership-${lead.id}`}>
+                            {(lead as any).ownershipFlag}
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">

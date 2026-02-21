@@ -444,11 +444,23 @@ export default function LeadDetail() {
                 <Fingerprint className="w-4 h-4 text-primary" />
                 Owner Intelligence
               </CardTitle>
-              {intelligence?.score !== undefined && intelligence.score > 0 && (
-                <Badge variant={intelligence.score >= 70 ? "default" : "outline"} className="text-[10px]" data-testid="badge-intel-score">
-                  {intelligence.score}/100
-                </Badge>
-              )}
+              <div className="flex items-center gap-1.5">
+                {(lead as any).ownershipFlag && (
+                  <Badge
+                    variant="destructive"
+                    className="text-[10px]"
+                    data-testid="badge-ownership-flag"
+                  >
+                    <ShieldAlert className="w-3 h-3 mr-0.5" />
+                    {(lead as any).ownershipFlag}
+                  </Badge>
+                )}
+                {intelligence?.score !== undefined && intelligence.score > 0 && (
+                  <Badge variant={intelligence.score >= 70 ? "default" : "outline"} className="text-[10px]" data-testid="badge-intel-score">
+                    {intelligence.score}/100
+                  </Badge>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-2">
               {intelligence?.managingMember ? (

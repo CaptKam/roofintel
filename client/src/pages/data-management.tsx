@@ -28,6 +28,7 @@ import {
   Phone,
   Search,
   Radar,
+  ShieldAlert,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -209,6 +210,21 @@ export default function DataManagement() {
     },
     onError: (err: any) => {
       toast({ title: "Roof type estimation failed", description: err?.message || "Could not estimate roof types.", variant: "destructive" });
+    },
+  });
+
+  const ownershipFlagMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/leads/flag-ownership", {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const b = data.breakdown || {};
+      toast({ title: "Ownership flagging complete", description: `${data.flagged} leads flagged: ${b.deepHolding || 0} deep holdings, ${b.multiLayer || 0} multi-layer, ${b.corpShield || 0} corp shields.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ownership flagging failed", description: err?.message || "Could not flag ownership structures.", variant: "destructive" });
     },
   });
 
@@ -870,6 +886,19 @@ export default function DataManagement() {
                   <Building2 className="w-3 h-3 mr-1" />
                 )}
                 Estimate Roof & Construction Types
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => ownershipFlagMutation.mutate()}
+                disabled={ownershipFlagMutation.isPending}
+                data-testid="button-flag-ownership"
+              >
+                {ownershipFlagMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <ShieldAlert className="w-3 h-3 mr-1" />
+                )}
+                Flag Holding Companies
               </Button>
             </div>
           </CardContent>

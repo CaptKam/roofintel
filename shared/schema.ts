@@ -71,6 +71,7 @@ export const leads = pgTable("leads", {
   intelligenceSources: text("intelligence_sources").array(),
   buildingContacts: jsonb("building_contacts"),
   intelligenceAt: timestamp("intelligence_at"),
+  ownershipFlag: text("ownership_flag"),
   improvementValue: integer("improvement_value"),
   landValue: integer("land_value"),
   totalValue: integer("total_value"),

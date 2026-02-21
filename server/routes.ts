@@ -793,6 +793,31 @@ export async function registerRoutes(
 
       const result = await runOwnerIntelligence(lead);
 
+      const chainLength = (result.llcChain || []).length;
+      const hasOffshoreEntity = (result.llcChain || []).some((link: any) => {
+        const state = (link.entityType || "").toUpperCase();
+        const addr = (link.registeredAgentAddress || "").toUpperCase();
+        return state.includes("SG") || state.includes("KY") || state.includes("BVI") ||
+               state.includes("SINGAPORE") || state.includes("CAYMAN") || state.includes("BERMUDA") ||
+               addr.includes("SINGAPORE") || addr.includes("CAYMAN") || addr.includes("BERMUDA");
+      });
+      const hasCorpService = (result.llcChain || []).some((link: any) => {
+        const ra = (link.registeredAgent || "").toUpperCase();
+        return ra.includes("CSC") || ra.includes("CORPORATION SERVICE") || ra.includes("CT CORPORATION") ||
+               ra.includes("REGISTERED AGENTS") || ra.includes("NATIONAL REGISTERED") || ra.includes("COGENCY");
+      });
+      const noRealPeople = !result.managingMember;
+      let ownershipFlag: string | null = null;
+      if (chainLength >= 3 || (chainLength >= 2 && hasOffshoreEntity)) {
+        ownershipFlag = "Deep Holding Structure";
+      } else if (chainLength >= 2 && noRealPeople) {
+        ownershipFlag = "Multi-Layer Holding";
+      } else if (chainLength >= 2) {
+        ownershipFlag = "Multi-Layer Holding";
+      } else if (hasCorpService && noRealPeople) {
+        ownershipFlag = "Corp Service Shield";
+      }
+
       await storage.updateLead(lead.id, {
         managingMember: result.managingMember,
         managingMemberTitle: result.managingMemberTitle,
@@ -804,6 +829,7 @@ export async function registerRoutes(
         intelligenceScore: result.score,
         intelligenceSources: result.sources,
         intelligenceAt: new Date(),
+        ownershipFlag,
       } as any);
 
       res.json(result);
@@ -1080,6 +1106,65 @@ export async function registerRoutes(
       res.json({ totalRoofingPermits: roofingPermits.rows.length, leadsUpdated: updated });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to scan roofing permits", error: error.message });
+    }
+  });
+
+  app.post("/api/leads/flag-ownership", async (req, res) => {
+    try {
+      const { leads: allLeads } = await storage.getLeads({ limit: 50000 });
+      let flagged = 0;
+      let deepHolding = 0;
+      let multiLayer = 0;
+      let corpShield = 0;
+
+      for (const lead of allLeads) {
+        const chain: any[] = Array.isArray(lead.llcChain) ? lead.llcChain : [];
+        const intel: any = lead.ownerIntelligence || {};
+        const chainLength = chain.length;
+
+        const hasOffshoreEntity = chain.some((link: any) => {
+          const state = (link.entityType || "").toUpperCase();
+          const addr = (link.registeredAgentAddress || "").toUpperCase();
+          const officerAddr = (link.officers || []).some((o: any) => {
+            const a = (o.address || "").toUpperCase();
+            return a.includes("SINGAPORE") || a.includes("CAYMAN") || a.includes("BERMUDA") || a.includes("BRITISH VIRGIN");
+          });
+          return state.includes("SG") || state.includes("KY") || state.includes("BVI") ||
+                 state.includes("SINGAPORE") || state.includes("CAYMAN") || state.includes("BERMUDA") ||
+                 addr.includes("SINGAPORE") || addr.includes("CAYMAN") || addr.includes("BERMUDA") || officerAddr;
+        });
+        const hasCorpService = chain.some((link: any) => {
+          const ra = (link.registeredAgent || "").toUpperCase();
+          return ra.includes("CSC") || ra.includes("CORPORATION SERVICE") || ra.includes("CT CORPORATION") ||
+                 ra.includes("REGISTERED AGENTS") || ra.includes("NATIONAL REGISTERED") || ra.includes("COGENCY");
+        });
+        const noRealPeople = !lead.managingMember;
+
+        let ownershipFlag: string | null = null;
+        if (chainLength >= 3 || (chainLength >= 2 && hasOffshoreEntity)) {
+          ownershipFlag = "Deep Holding Structure";
+          deepHolding++;
+        } else if (chainLength >= 2) {
+          ownershipFlag = "Multi-Layer Holding";
+          multiLayer++;
+        } else if (hasCorpService && noRealPeople && chainLength >= 1) {
+          ownershipFlag = "Corp Service Shield";
+          corpShield++;
+        }
+
+        if (ownershipFlag !== (lead as any).ownershipFlag) {
+          await storage.updateLead(lead.id, { ownershipFlag } as any);
+          flagged++;
+        }
+      }
+
+      res.json({
+        totalScanned: allLeads.length,
+        flagged,
+        breakdown: { deepHolding, multiLayer, corpShield },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to flag ownership", error: error.message });
     }
   });
 
