@@ -1,0 +1,221 @@
+Executive Summary
+Identifying property/building managers (on-site or outsourced) requires triangulating public records, directories and indirect clues. A practical pipeline starts by linking the company to any known property assets (via deeds, tax rolls or news) and then searching government databases for associated names (permit applicants, licensees, agents). We prioritize official sources (appraisal districts, city permit portals, state registries) and then enrich with business directories and social traces. Throughout, compliance is critical: only freely available, non-sensitive data is used and outreach must observe TCPA/Spam rules. We propose a stepwise approach: gather ownership and permit records, extract candidate manager names, resolve duplicates with NLP/linkage, verify via licenses/registries, then cross-check contacts. The system architecture will be modular (ingestion, extraction, matching, storage, scoring) with logging and opt-out handling. Diagrams (below) outline the data flow.
+
+The key trade-offs: official vs. scraped data – e.g. state/county APIs are authoritative but may require fees or manual steps (e.g. Texas SOS costs $1/query
+), whereas web scraping (Google, LinkedIn) is rich but legally murky (see hiQ v. LinkedIn, which affirmed public scraping is not per se illegal
+). We treat site TOS as strong advice but stop on anti-bot blocks (e.g. CAPTCHAs). The plan assumes Dallas/DFW emphasis but notes general US methods. Where possible we cite public docs: e.g. Dallas permit and Texas business sites.
+
+1. Public Sources & Key Fields
+Government Land & Property Records: County appraisal districts and recorder’s offices are primary for ownership. In Texas, the Dallas Central Appraisal District (DCAD) yields parcel IDs, owner names/types, mailing addresses, and property details (area, value, zoning)
+. Similar open data exist for many counties (often CSV/API exports). County deeds (recording instrument books) may list grantee/grantor but rarely management contracts. Assumed name/DBA filings at county clerks can reveal operating names of property firms; e.g. Dallas County Clerk provides a public search portal
+. Access: Most appraisal data are free (online/search portal or bulk CSV), as are recorded deed indices (usually searchable by name/address). Fees may apply for copies. Coverage: Highly reliable for DFW counties, varies by state.
+
+Building Permits & Certificates: City permit/inspection systems often record the permit applicant, contractor or project manager. For example, the City of Dallas publishes its Issued Building Permits dataset (via Socrata) including permit type, contractor name/contact, and permitholder
+. Fort Worth similarly provides “Issued Building Permits – Full Data Download” (ArcGIS/OpenData) with permit details
+. These datasets typically list the licensed contractor/agent who applied. Certificates of Occupancy and inspection records may also show the responsible agent. Access: City open-data portals (CSV/API) or Permits portals (Accela, etc). Coverage: City-level (Dallas/FW have open data, many others publish via Socrata/ArcGIS)
+. Reliability is high for recent records but may lag.
+
+Business Registries & Licenses: State-level corporate filings and license databases help identify responsible officers or agents. The Texas SOS (SOSDirect) holds corporate filings (LLC/Corp) where Registered Agent and officers appear (a paid search, $1 per query
+). Many states allow automated API or bulk pulls (or scraping of open databases). State licensure databases are critical: e.g. Texas Real Estate Commission (TREC) lists brokers and agents; as one guide notes, TREC “has a public directory of every license-holder in the state”
+. The Texas Dept. of Licensing & Regulation (TDLR) covers trades (including property managers under some categories) and publishes bulk “All Licenses” data
+. Professional licenses (e.g. plumbing, electrical) may reveal contractors at the address. Business licenses (city/county) and assumed business names (DBAs) can also list owners/managers. Access: Online search tools or open data portals (e.g. [TREC search]
+, [TDLR data portal]…). Coverage: statewide for entities, but companies operating in multiple states require repeating per jurisdiction. Reliability: high for official data, but some data (like license status) may not be up-to-date in open feeds.
+
+Real Estate & Property Listings: Commercial property or rental listings sometimes identify management contacts. Zillow, LoopNet, apartments.com, etc., often list property managers or leasing contacts. Google Places and Maps can reveal “at this address” businesses: the Places API returns business name, address, phone, website
+. Reviews pages may show owner replies (hinting at management). Access: Use Google Places API (paid key) or web search. Coverage: varies by address; national. Reliability: Good for presence of businesses; contact data may be stale.
+
+Housing Associations & HOA: HOA/condo associations register board members/managers with the county in some states; minutes or membership lists (sometimes online) can yield manager names. Less accessible, but worth checking if the property is part of an association.
+
+Court, FOIA, Claims Records: As a last resort, litigation records or FOIA requests (city council minutes, housing authority filings, insurance claims) might contain manager names. For instance, public housing authorities or HUD uses (see HUD databases below) might list on-site managers. Access: Varies, often by formal request.
+
+The table below summarizes key sources:
+
+Source Category	Example Data & Fields	Access & Coverage	Notes (Reliability)
+County Appraisal/Tax Records	Parcel ID, owner name, mailing, land & improvement values
+Free portals/APIs/bulk by county. (e.g. DCAD for Dallas)	Authoritative for legal owner; includes whether owned by LLC (owner type)
+.
+Deed & Recorded Docs	Grantor/grantee, deed type, some property descriptors	County Clerk search (often free indexed DB)	Usually lacks “manager” info (private contracts not recorded). Ownership chain is reliable.
+City Permit/CO Data	Permit applicant, contractor, site address, permit use
+City Open Data/Socrata (Dallas, FW, etc), Permits portal	Reveals contractor or applicant. High coverage for new projects.
+Business Registry (SOS)	Entity officers, registered agent, filing status	SOSDirect search ($1/query
+) or state data portals	Official; includes LLC hierarchies. Fee required per query in TX.
+Trade/Real Estate Licenses	Licensed brokers/agents, contact info	State license lookup (TREC, TDLR)	Public search tools (e.g. TREC website
+). Useful if manager is licensed.
+DBA/Assumed Name Records	Registered business names, owner names	County Clerk/State DBA search	Available online (e.g. Dallas Assumed Names portal
+). Identifies business aliases.
+HOA/Condo Records	Association contacts/managers	HOA websites or county records (varies)	Unofficial; may require contacting association.
+Property Listings (Real estate sites)	Manager/leasing agent names/contacts	Web search of known listing sites	Often outdated; must verify.
+Google Places/Maps	Business name, address, phone, website, reviews	Google Maps API or web	Good for presence of property manager business. See documentation
+.
+HUD Multifamily Database	Property name/address, project manager	HUD website (Excel downloads)
+Government data on subsidized properties – may list owner/agent. Updated monthly
+.
+
+2. Crawling & Scraping Strategies
+Targeted portals & APIs: Identify agency data portals and use their APIs: e.g. DallasOpenData (Socrata API) or FortWorthTexas.gov (ArcGIS). Socrata APIs (JSON/CSV) allow SoQL queries. For static documents or portals, use headless browsers or requests to fetch content. Sites often have sitemaps or search APIs (e.g. county GIS/parcel search can be queried by address). Always check robots.txt and use reasonable rate limiting.
+
+Permits/Planning Portals: Many cities use Accela or EcoNet. For Dallas, the VGOV link (dallascityhall.com) is used for permits/inspections (see multi-tenant registration). For Fort Worth, the above “Issued Permits Full Data Download” indicates open data feeds. If raw data aren’t exposed, a script may navigate permit search forms via Selenium or parse HTML. Use form queries (e.g. address, permit number). For maps or geoportals, the specific Experience.ArcGIS map could be scraped or accessed via ArcGIS REST API.
+
+County Clerk Document Search: County clerk websites (e.g. Dallas Co. PublicSearch
+) often have case-sensitive search of recorded docs. Automation usually requires form submission or API (if available). Bulk downloads rarely exist for deeds, but indexes (grantor/grantee) can be scraped. Use OCR on PDFs (from some counties) to find keywords like “management” or company names.
+
+PDF/Image OCR: Many records (permits, plats, HOA docs) are only in PDF or image form. Use OCR (Tesseract or Google Vision) on downloaded PDFs/photographs to extract text. Document images (e.g. scanned deeds, building permits) may contain typed names. Also use signage and logo extraction: e.g. query Google Street View or Bing Maps static images at the address and OCR any visible signage for property management company names. Tools like Google Cloud Vision can detect text in images.
+
+Reverse Address Lookups: Query multi-tenant or parcel databases for the address to find other businesses co-located. For example, the platform’s “Reverse Address Cross-Reference” matches other businesses at the property. Use business directories (InfoGroup, Census DB, local tax rolls) to get all entities at an address. This can reveal the management firm name.
+
+Sitemaps and Web Search: Scrape company or property manager directories. Many property management companies list their portfolio or managers online. Use Google (or the Serper API) for queries like "property manager" "Company Name" Dallas or search social media for company posts about properties managed.
+
+Handling JavaScript: If portal pages load via JS, use headless Chrome/Playwright. Socrata data endpoints often bypass JS since JSON/CSV endpoints exist. For React-based sites (e.g. many modern gov sites), simulate API calls or wait-for-DOM.
+
+Politeness: Honor rate limits and robots.txt. Use rotating IPs/proxies for large crawls. Incorporate random delays. For sites with anti-bot measures (CAPTCHA), respect it as a stop sign – do not attempt to bypass as that could trigger legal issues.
+
+3. Data Extraction & Entity Resolution
+Once text is gathered, use NLP to extract names/organizations. Regex & NER: Apply regular expressions for phone numbers, emails, and addresses. Use spaCy (or HuggingFace transformers) to label PERSON and ORG entities
+. SpaCy’s pretrained models can tag names (e.g. “John Doe”, “ABC Management LLC”
+). For specialized text (forms, scraped code), custom NER models or pattern dictionaries may be needed.
+
+Address Parsing: Normalize addresses via libpostal (a fast open-source parser
+). Libpostal breaks addresses into components (street, city, zip), enabling fuzzy matching and geocoding.
+
+Record Linkage: Many sources will yield overlapping or inconsistent records. Use deduplication/linkage libraries (e.g. RecordLinkage or Dedupe) to cluster records that likely refer to the same person/address. Compute confidence scores based on field matches (name similarity, exact address match, shared phone). Maintain provenance by tagging each extracted name with its source and confidence.
+
+Ambiguity Handling: If multiple names appear (e.g. owner vs. manager), rank by context: “Manager”, “Agent”, “Leasing” in surrounding text suggest a role. Compute trust score: official records (government sites) get higher weight than unverified scraped sites. Flag ambiguous cases (common names) for manual review or further disambiguation (e.g. cross-check company email domains).
+
+4. Enrichment & Verification
+After candidate names are identified, enrich with external checks:
+
+License Lookups: Cross-check candidate manager against professional licenses. For instance, if “John Smith” is a property manager, look up TREC (for licensed brokers)
+ or TDLR (e.g. community association manager license). Contractor licenses (e.g. roofing contractors) at TDLR can tie a person to an address. APIs (some states) or bulk license datasets can automate these lookups. If a match is found, record license number/status to increase confidence.
+
+Business Filings: Use SOS data to verify corporate officers. If a property is owned by XYZ LLC, query SOSDirect for its officers/agents
+. The registered agent may be a lawyer or a company, but officer names (managers, directors) are often listed.
+
+Google/Places/Maps: Query Google’s Place Details for any business at the address to get phone/email/website. The “Reviews” section sometimes shows replies by an owner/manager (e.g. “Thanks for your feedback – John, Property Manager”). Scrape “People Also Ask” or Q&A sections which sometimes contain names.
+
+LinkedIn/Facebook: While scraping full sites is risky, manual or partnered queries can confirm a manager’s identity. For example, if candidate John Smith is found, a LinkedIn search might show him as “Property Manager at [Company Name]”. (Automated LinkedIn scraping violates terms; rely on provided APIs or refrain.)
+
+Phone/Email Verification: Use SMTP/MX lookups to verify emails constructed from name+domain (e.g. j.smith@company.com). Reverse phone lookup APIs (e.g. Twilio or Nexmo) can sometimes confirm an individual/label. These get a Contact Confidence Score.
+
+Cross-Referencing: Match findings across sources. If a name appears on a permit and also on a corporate registration, that boosts confidence. Compare against tax account holders (e.g. Texas Comptroller sales tax records) to see if a person holds permits at that address. Contractors on permits + corporate officers + LinkedIn = strong indication.
+
+Photographic Evidence: In some cases, visuals help: a sign on the building (“XYZ Properties – John Doe”) extracted via street-view OCR, or a LinkedIn photo matching signage at the address, can be unique proof.
+
+5. Operational Playbook
+Query Workflow: Start broad then narrow. For each target company: (a) Find all owned properties (via tax parcels, news of acquisitions, or corporate filings). (b) For each property, query appraisal records (owner name, property class) and permit databases for recent permit applicant names. (c) Meanwhile, search state business registries for related assumed names or subsidiary LLCs. (d) Scrape any known management company directory (e.g. “Dallas property managers”) to see if company is listed with property names. (e) Perform Google/LinkedIn searches combining company and address. Each step yields candidate names to feed into step (f) linking/verification.
+
+Sampling Heuristics: For MVP (one city), use targeted lookups (few addresses). For DFW (multi-county), systematically loop through each county’s open data. For statewide, use aggregated datasets (like state tax-appraisal bulk downloads). Always test on a few known cases to refine queries.
+
+Rate Limits & Proxies: Most government APIs/panels do not have strict rate limits but login-based portals (SOSDirect) will block. Use institutional accounts and spread queries. For web scraping (Maps, Google, etc.), use modest parallelism (<5 QPS), random delays, and rotate IPs to avoid bans.
+
+Handling Paywalls and CAPTCHAs: Paid data (e.g. SOSDirect) requires budgeting. The $1 fee per search
+ means batch queries should be selective (use the API for bulk where available). Respect CAPTCHAs as a signal to pause or back off. If critical, consider manual retrieval or legal request (FOIA) instead of breaking them.
+
+Cost & Effort Estimates:
+
+MVP (Single City): Focus Dallas-Fort Worth only. Use open data (free) and a few paid SOS searches. ~2-4 weeks dev for scraping Dallas OpData, County apps, building permit API; minimal proxy use; cost ~$100 for SOS queries + API keys.
+Regional (Multi-County DFW): Scale queries across Dallas, Tarrant, Collin, Denton, etc. Each has separate systems (some use Tyler tech open data). Team effort to handle each. Possibly hire local contractors for any non-digitized counties. ~$500-$1000 query costs.
+Statewide: Automate via bulk datasets (e.g. state open data for licenses, VRO tax, etc.) plus SOSDirect. High compute/storage for linking. Might use cloud resources ($$$).
+Tools: Use Python libraries: requests/Selenium for crawling; pandas/SQLAlchemy for storage; NLP libs (spaCy, HuggingFace); address tools (postal, usaddress); record linkage (recordlinkage or Splink); and mapping (geopandas if needed). For monitoring: incorporate logging, queue metrics, retry logic.
+
+6. Privacy, Legal and Ethical Considerations
+Lawful Basis: Under GDPR/UK GDPR, any processing must have a lawful basis (e.g. legitimate interest or consent). Since we only use public info about businesses/agents, we rely on “publicly available” exception. Still, minimize storing sensitive data. The ICO stresses identifying a lawful basis before data use
+. In the US, CCPA requires similar considerations for “sensitive personal data” (avoid collecting SSNs, DOBs beyond business scope).
+TCPA/CAN-SPAM: If contacts (phone/email) are collected for outreach, do not contact without opt-out compliance. The FCC/TCPA prohibits autodialed marketing to cell numbers without prior consent
+ (no text spam). CAN-SPAM requires opt-out links in emails. Use phone/email scrubbing tools against DNC lists. Maintain “do-not-call/email” flags for unsubscribes.
+Scraping Terms of Service: The hiQ v. LinkedIn case clarified that scraping publicly accessible data is generally lawful under the CFAA
+. However, violating a site’s ToS remains a contract issue (unproven in court), so treat blocked access (CAPTCHA, firewall) as off-limits. Focus on data clearly in the public domain.
+Sensitive Data: Never scrape or log personal identifiers not pertinent to the search (e.g. SSNs or credit info, which should already be redacted by official sources
+). Only gather names/contacts that are business-related.
+Data Minimization: Store only what is needed for the manager identification task. E.g., if multiple emails found for John Smith, keep the one linked to the company’s domain.
+Logging & Audit: Log access and data lineage for traceability (which source yielded which name). Keep audit trails for compliance reviews.
+California Delete Act: Note that if operating in California, use of “broker” data is governed by the California Data Broker Registry (SB 1202/SB 362) and soon the Delete Request & Opt-Out Platform (DROP)
+. A Texas-based operation may still need to honor deletion requests from Californians if aggregated data falls under their registry.
+Ethical: Do not pretend to be anyone (no phishing). If sensitive personal info inadvertently found, delete it. Ensure marketing communications (if any) are contextually relevant and respectful.
+7. Deliverables & Outputs
+Data Schema: We recommend storing the final results in a structured table such as:
+
+Field	Description	Example
+company_name	Parent company name (input)	“ABC Realty Holdings”
+property_address	Full address of property	“123 Main St, Dallas”
+manager_name	Identified manager/building manager	“John Doe”
+manager_title	Title (if known: Property Manager, Director)	“Property Manager”
+source	Source of this info (e.g. “TREC”, “Permit DB”)	“Dallas Building Permits”
+confidence	Score (0–1) of confidence in match	0.85
+notes	Additional context (e.g. “Listed on site sign”)	“Found via Google Places”
+contact_phone	Phone number if found	“214-555-1234”
+contact_email	Email if found (or pattern)	“jdoe@abc-mgmt.com”
+verif_date	Date verified/checked	“2026-02-15”
+
+The confidence could be derived from multiple signals: official source (higher), match quality (name+address exact match + license found), etc. notes can cite e.g. “TREC #12345678 active broker” or “reply to 5-star review”.
+
+Comparison Table (Methods/Sources):
+
+Method/Source	Type	Yield (Mgr Info)	Coverage	Legal/Risk Notes
+County Appraisal (DCAD)	Parcel records	Owner name (entity or individual)	Dallas Co (TX)	Very reliable owner info; no contact detail.
+City Permits (Dallas)	Public DB/API	Contractor/Agent names on permits	Dallas city	Public info; scrape via API/OD.
+TREC License Search	Online tool	Agent/Broker names & status	Texas	Public directory
+. Free access; non-owners.
+SOSDirect (Texas)	Paid search	Registered agent, managers	Texas	$1 per search
+; official records.
+Google Places API	Web API	Business name/phones/websites	Global, incl. DFW	Easy to obtain; watch Google ToS (use API key).
+LinkedIn (manual)	Web directory	Person’s professional title/org	Global	Must be manual/partner; scraping ToS risk.
+HOA/Condo records	Local gov site	Management company/agent name	Varies (TX HOA)	Hard to find; may require request.
+
+Implementation Checklist:
+
+30 Days: Inventory local sources (Dallas, FW, adjacent). Prototype permit and appraisal data fetch (via Socrata/CSV) and basic parsing. Identify key fields (owner name, address). Gather example company→property (use known large property owners as test cases).
+60 Days: Build scraping scripts for permit portals and county clerk (e.g. Dallas tax records). Integrate NLP extraction (spaCy) and address parsing (libpostal). Start simple matching on addresses/names. Begin license lookups (e.g. TREC API or scrape). Develop database schema and ingest test results.
+90+ Days: Expand to all DFW counties. Implement deduplication and scoring. Add enrichment (Google Places API, email generators). Test end-to-end on several companies. Add monitoring, CAPTCHAs handling (possibly slowing). Finalize output schema and report format.
+Mermaid Diagrams:
+
+mermaid
+Copy
+flowchart LR
+    subgraph Ingestion
+        A[Appraisal/Property Data] -->|API/CSV| B[Parser/Extractor]
+        C[Permits/CO APIs] -->|API/HTML| B
+        D[Business Registries (SOS/TREC)] -->|API/Scrape| B
+        E[Web Scraping (Sites/Maps)] -->|HTTP| B
+    end
+    subgraph Processing
+        B --> F[NLP Extraction (names, phones)]
+        F --> G[Entity Resolution & Linking]
+        G --> H[Verification Checks (Licenses/Google)]
+        H --> I[Scoring & Deduplication]
+    end
+    subgraph Storage/Output
+        I --> J[(Leads DB with Provenance)]
+        J --> K[APIs / CRM Integration / Reports]
+    end
+    style A fill:#f9f,stroke:#333,stroke-width:1px
+    style B fill:#ff9,stroke:#333,stroke-width:1px
+    style F fill:#9ff,stroke:#333,stroke-width:1px
+    style G fill:#9f9,stroke:#333,stroke-width:1px
+    style H fill:#f99,stroke:#333,stroke-width:1px
+    style I fill:#ff6,stroke:#333,stroke-width:1px
+    style J fill:#cfc,stroke:#333,stroke-width:1px
+mermaid
+Copy
+flowchart TD
+    subgraph Data Sources
+      A1[Land Records (Appraisal/Deeds)]
+      A2[Permits/Inspections Portals]
+      A3[State Business & License DBs]
+      A4[Web/Maps (Google, Sites)]
+    end
+    subgraph Processing Pipeline
+      B1[Data Acquisition]
+      B2[Text/Image Parsing]
+      B3[Entity Extraction (NLP)]
+      B4[Record Linkage (Dedupe)]
+      B5[Enrichment & Validation]
+      B6[Store & Serve Data]
+    end
+    A1 --> B1
+    A2 --> B1
+    A3 --> B1
+    A4 --> B1
+    B1 --> B2 --> B3 --> B4 --> B5 --> B6
+Each arrow may include API endpoints or tools in actual implementation.
+
+In summary, this approach leverages primary official sources first (land records, SOS, permits) and then secondary web intelligence (Google, directories). It combines automated extraction with human oversight on ambiguous matches, all under strict compliance with privacy laws and terms of service. The result is a high-confidence list of property/building managers with provenance and confidence scores.
