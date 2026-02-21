@@ -1145,6 +1145,113 @@ export async function registerRoutes(
   });
 
   // ============================================================
+  // Roof Type & Construction Type Estimation Endpoint
+  // ============================================================
+
+  app.post("/api/leads/estimate-roof-type", async (req, res) => {
+    try {
+      const marketId = req.body.marketId as string | undefined;
+      const overwrite = req.body.overwrite === true;
+      const filter: any = { limit: 50000 };
+      if (marketId) filter.marketId = marketId;
+      const { leads: allLeads } = await storage.getLeads(filter);
+
+      let updatedRoof = 0;
+      let updatedConstruction = 0;
+      let skipped = 0;
+
+      for (const lead of allLeads) {
+        const yearBuilt = lead.yearBuilt || 1995;
+        const hasRealYearBuilt = yearBuilt !== 1995;
+        const zoning = (lead.zoning || "").toLowerCase();
+        const sqft = lead.sqft || 0;
+        const stories = lead.stories || 1;
+        const roofArea = lead.estimatedRoofArea || Math.round(sqft / stories);
+        const impValue = lead.improvementValue || 0;
+        const impPerSqft = sqft > 0 ? impValue / sqft : 0;
+        const updates: any = {};
+
+        if (!lead.roofType || overwrite) {
+          let roofType: string | null = null;
+
+          if (zoning.includes("industrial") || zoning.includes("warehouse")) {
+            if (roofArea >= 80000) roofType = "Metal";
+            else if (roofArea >= 30000) roofType = "TPO";
+            else if (impPerSqft > 120) roofType = "TPO";
+            else roofType = "Metal";
+          } else if (zoning.includes("multi-family") || zoning.includes("apartment")) {
+            if (stories <= 2) roofType = "Shingle";
+            else if (stories >= 4) roofType = "TPO";
+            else if (hasRealYearBuilt && yearBuilt >= 2010) roofType = "TPO";
+            else roofType = "Modified Bitumen";
+          } else {
+            if (hasRealYearBuilt) {
+              if (yearBuilt >= 2010) roofType = "TPO";
+              else if (yearBuilt >= 2000) roofType = "EPDM";
+              else if (yearBuilt >= 1985) roofType = "Modified Bitumen";
+              else roofType = "Built-Up (BUR)";
+            } else {
+              if (stories >= 6) roofType = "TPO";
+              else if (impPerSqft > 180) roofType = "TPO";
+              else if (impPerSqft > 130) roofType = "EPDM";
+              else if (roofArea >= 50000) roofType = "TPO";
+              else if (roofArea >= 20000) roofType = "EPDM";
+              else if (roofArea >= 10000) roofType = "Modified Bitumen";
+              else roofType = "Built-Up (BUR)";
+            }
+          }
+
+          if (roofType) {
+            updates.roofType = roofType;
+            updatedRoof++;
+          }
+        }
+
+        const currentConstruction = (lead.constructionType || "").toLowerCase();
+        if (currentConstruction === "masonry" || currentConstruction === "unass" || !lead.constructionType || overwrite) {
+          let constructionType = "Masonry";
+
+          if (zoning.includes("industrial") || zoning.includes("warehouse")) {
+            if (sqft >= 100000) constructionType = "Pre-Engineered Metal";
+            else if (sqft >= 30000) constructionType = "Tilt-Wall Concrete";
+            else constructionType = "Metal Building";
+          } else if (zoning.includes("multi-family")) {
+            if (stories >= 4) constructionType = "Steel Frame";
+            else if (yearBuilt >= 2000) constructionType = "Wood Frame";
+            else constructionType = "Masonry / Wood Frame";
+          } else {
+            if (stories >= 6) constructionType = "Steel Frame";
+            else if (stories >= 3) constructionType = "Steel / Masonry";
+            else if (sqft >= 50000) constructionType = "Tilt-Wall Concrete";
+            else constructionType = "Masonry";
+          }
+
+          if (constructionType !== (lead.constructionType || "")) {
+            updates.constructionType = constructionType;
+            updatedConstruction++;
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await storage.updateLead(lead.id, updates);
+        } else {
+          skipped++;
+        }
+      }
+
+      res.json({
+        message: "Roof type & construction estimation complete",
+        totalLeads: allLeads.length,
+        roofTypesUpdated: updatedRoof,
+        constructionTypesUpdated: updatedConstruction,
+        unchanged: skipped,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to estimate roof types", error: error.message });
+    }
+  });
+
+  // ============================================================
   // Compliance / Consent Endpoints
   // ============================================================
 

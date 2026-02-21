@@ -198,6 +198,20 @@ export default function DataManagement() {
     },
   });
 
+  const roofTypeEstimateMutation = useMutation({
+    mutationFn: async ({ marketId }: { marketId: string }) => {
+      const res = await apiRequest("POST", "/api/leads/estimate-roof-type", { marketId });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Roof type estimation complete", description: `Roof types: ${data.roofTypesUpdated} updated. Construction types: ${data.constructionTypesUpdated} updated. ${data.unchanged} unchanged.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Roof type estimation failed", description: err?.message || "Could not estimate roof types.", variant: "destructive" });
+    },
+  });
+
   const { data: pipelineStats, isLoading: pipelineLoading } = useQuery<{
     total: number;
     withOwner: number;
@@ -821,14 +835,14 @@ export default function DataManagement() {
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Building2 className="w-4 h-4" />
-              Story & Roof Area Estimation
+              Building & Roof Intelligence
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              Estimates building stories based on property type, total sqft, and zoning classification.
-              Multi-family properties get 2-4 stories, large commercial buildings get 2-10 stories.
-              Recalculates roof area as sqft ÷ stories for more accurate job sizing.
+              Estimates building stories, roof type, and construction type using property characteristics.
+              Roof types are inferred from year built (when available), building size, improvement value, and zoning.
+              Construction types estimated from zoning, stories, and size (industrial: tilt-wall/metal, high-rise: steel frame).
             </p>
             <div className="flex items-center gap-2 flex-wrap">
               <Button
@@ -842,7 +856,20 @@ export default function DataManagement() {
                 ) : (
                   <Building2 className="w-3 h-3 mr-1" />
                 )}
-                Estimate Stories & Roof Areas
+                Estimate Stories
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => dfwMarket && roofTypeEstimateMutation.mutate({ marketId: dfwMarket.id })}
+                disabled={roofTypeEstimateMutation.isPending || !dfwMarket}
+                data-testid="button-estimate-roof-type"
+              >
+                {roofTypeEstimateMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Building2 className="w-3 h-3 mr-1" />
+                )}
+                Estimate Roof & Construction Types
               </Button>
             </div>
           </CardContent>
