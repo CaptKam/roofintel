@@ -36,31 +36,23 @@ function StatCard({
   value,
   icon: Icon,
   subtitle,
-  trend,
 }: {
   title: string;
   value: string | number;
   icon: React.ElementType;
   subtitle?: string;
-  trend?: string;
 }) {
   return (
     <Card>
-      <CardContent className="p-5">
+      <CardContent className="p-6">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-            <p className="text-2xl font-bold mt-1 tracking-tight" data-testid={`stat-${title.toLowerCase().replace(/\s/g, "-")}`}>{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
-            {trend && (
-              <div className="flex items-center gap-1 mt-1.5">
-                <TrendingUp className="w-3 h-3 text-emerald-500" />
-                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{trend}</span>
-              </div>
-            )}
+            <p className="text-3xl font-bold mt-2 tracking-tight" data-testid={`stat-${title.toLowerCase().replace(/\s/g, "-")}`}>{value}</p>
+            {subtitle && <p className="text-xs text-muted-foreground mt-1.5">{subtitle}</p>}
           </div>
-          <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <Icon className="w-5 h-5 text-primary" />
+          <div className="w-10 h-10 rounded-full bg-primary/8 flex items-center justify-center flex-shrink-0">
+            <Icon className="w-4.5 h-4.5 text-primary/70" />
           </div>
         </div>
       </CardContent>
@@ -71,9 +63,9 @@ function StatCard({
 function StatCardSkeleton() {
   return (
     <Card>
-      <CardContent className="p-5">
-        <Skeleton className="h-3 w-20 mb-2" />
-        <Skeleton className="h-8 w-16 mb-1" />
+      <CardContent className="p-6">
+        <Skeleton className="h-3 w-20 mb-3" />
+        <Skeleton className="h-9 w-16 mb-2" />
         <Skeleton className="h-3 w-28" />
       </CardContent>
     </Card>
@@ -81,11 +73,11 @@ function StatCardSkeleton() {
 }
 
 const CHART_COLORS = [
-  "hsl(205, 90%, 48%)",
-  "hsl(160, 65%, 42%)",
-  "hsl(35, 92%, 52%)",
-  "hsl(280, 60%, 55%)",
-  "hsl(345, 75%, 50%)",
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
 ];
 
 export default function Dashboard() {
@@ -95,17 +87,17 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-8 space-y-8">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Dashboard</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Overview of your lead intelligence pipeline</p>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-sm text-muted-foreground mt-1">Overview of your lead intelligence pipeline</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {[...Array(5)].map((_, i) => <StatCardSkeleton key={i} />)}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card><CardContent className="p-6"><Skeleton className="h-48 w-full" /></CardContent></Card>
-          <Card><CardContent className="p-6"><Skeleton className="h-48 w-full" /></CardContent></Card>
+          <Card><CardContent className="p-6"><Skeleton className="h-56 w-full" /></CardContent></Card>
+          <Card><CardContent className="p-6"><Skeleton className="h-56 w-full" /></CardContent></Card>
         </div>
       </div>
     );
@@ -114,14 +106,14 @@ export default function Dashboard() {
   if (!stats) return null;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-8 space-y-8">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Dashboard</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Overview of your lead intelligence pipeline</p>
+          <h2 className="text-2xl font-bold tracking-tight">Dashboard</h2>
+          <p className="text-sm text-muted-foreground mt-1">Overview of your lead intelligence pipeline</p>
         </div>
         <Link href="/leads">
-          <Button data-testid="button-view-all-leads">
+          <Button variant="ghost" className="text-primary transition-colors" data-testid="button-view-all-leads">
             View All Leads
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
@@ -140,7 +132,6 @@ export default function Dashboard() {
           value={stats.hotLeads}
           icon={Target}
           subtitle="Score 80+"
-          trend="Ready for outreach"
         />
         <StatCard
           title="Avg Score"
@@ -164,55 +155,55 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium">Score Distribution</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-0">
+            <CardTitle className="text-base font-semibold">Score Distribution</CardTitle>
           </CardHeader>
-          <CardContent className="pb-4">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={stats.scoreDistribution} barSize={28}>
+          <CardContent className="p-6 pt-4">
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={stats.scoreDistribution} barSize={32}>
                 <XAxis
                   dataKey="range"
-                  tick={{ fontSize: 11, fill: "hsl(215, 10%, 45%)" }}
+                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: "hsl(215, 10%, 45%)" }}
+                  tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={false}
                   tickLine={false}
-                  width={30}
+                  width={32}
                 />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: "hsl(var(--card))",
                     border: "1px solid hsl(var(--border))",
-                    borderRadius: "6px",
-                    fontSize: "12px",
+                    borderRadius: "8px",
+                    fontSize: "13px",
                   }}
                 />
-                <Bar dataKey="count" fill="hsl(205, 90%, 48%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-sm font-medium">Leads by County</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-0">
+            <CardTitle className="text-base font-semibold">Leads by County</CardTitle>
           </CardHeader>
-          <CardContent className="pb-4">
-            <div className="flex items-center gap-6">
-              <ResponsiveContainer width="50%" height={220}>
+          <CardContent className="p-6 pt-4">
+            <div className="flex items-center gap-8">
+              <ResponsiveContainer width="45%" height={240}>
                 <PieChart>
                   <Pie
                     data={stats.countyDistribution}
                     cx="50%"
                     cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
+                    innerRadius={55}
+                    outerRadius={85}
                     dataKey="count"
                     nameKey="county"
-                    paddingAngle={3}
+                    paddingAngle={2}
                     stroke="none"
                   >
                     {stats.countyDistribution.map((_entry, index) => (
@@ -223,23 +214,23 @@ export default function Dashboard() {
                     contentStyle={{
                       backgroundColor: "hsl(var(--card))",
                       border: "1px solid hsl(var(--border))",
-                      borderRadius: "6px",
-                      fontSize: "12px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
                     }}
                   />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="flex-1 space-y-2">
+              <div className="flex-1 space-y-3">
                 {stats.countyDistribution.map((entry, i) => (
-                  <div key={entry.county} className="flex items-center justify-between gap-2 text-sm">
-                    <div className="flex items-center gap-2">
+                  <div key={entry.county} className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
                       <div
                         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                         style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
                       />
-                      <span className="text-foreground">{entry.county}</span>
+                      <span className="text-sm text-foreground">{entry.county}</span>
                     </div>
-                    <span className="text-muted-foreground font-mono text-xs">{entry.count}</span>
+                    <span className="text-sm text-muted-foreground font-mono">{entry.count}</span>
                   </div>
                 ))}
               </div>
@@ -249,26 +240,26 @@ export default function Dashboard() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <CardTitle className="text-sm font-medium">Top Scoring Leads</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="text-base font-semibold">Top Scoring Leads</CardTitle>
           <Link href="/leads">
-            <Button variant="ghost" size="sm" data-testid="button-see-all-leads">
+            <Button variant="ghost" className="text-primary transition-colors" data-testid="button-see-all-leads">
               See all
-              <ArrowRight className="w-3 h-3 ml-1" />
+              <ArrowRight className="w-3.5 h-3.5 ml-1" />
             </Button>
           </Link>
         </CardHeader>
         <CardContent>
-          <div className="space-y-1">
+          <div className="divide-y divide-border">
             {stats.recentLeads.map((lead) => (
               <Link key={lead.id} href={`/leads/${lead.id}`}>
                 <div
-                  className="flex items-center gap-4 p-3 rounded-md hover-elevate cursor-pointer"
+                  className="flex items-center gap-4 py-3.5 px-2 rounded-md transition-colors cursor-pointer hover:bg-muted/50"
                   data-testid={`lead-row-${lead.id}`}
                 >
                   <ScoreDot score={lead.leadScore} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-medium truncate">{lead.address}</p>
                       {lead.managingMember && lead.intelligenceScore >= 70 && (
                         <div className="flex items-center gap-1 flex-shrink-0">
@@ -277,7 +268,7 @@ export default function Dashboard() {
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <MapPin className="w-3 h-3" />
                         {lead.city}, {lead.county}

@@ -585,46 +585,45 @@ export default function Admin() {
   const isIntelStatsLoading = marketsLoading || violationsLoading || permitsLoading || floodLoading || complianceLoading;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-8 space-y-6">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight" data-testid="text-page-title">Admin</h2>
-        <p className="text-sm text-muted-foreground mt-0.5">
+        <h2 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Admin</h2>
+        <p className="text-sm text-muted-foreground mt-1">
           Manage data sources, enrichment pipelines, and system configuration
         </p>
       </div>
 
-      <Tabs defaultValue="property-sources" className="space-y-4">
-        <TabsList className="flex flex-wrap gap-1">
-          <TabsTrigger value="property-sources" data-testid="tab-property-sources">Property Sources</TabsTrigger>
-          <TabsTrigger value="storm-data" data-testid="tab-storm-data">Storm Data</TabsTrigger>
-          <TabsTrigger value="contact-enrichment" data-testid="tab-contact-enrichment">Contact Enrichment</TabsTrigger>
-          <TabsTrigger value="intelligence" data-testid="tab-intelligence">Intelligence</TabsTrigger>
-          <TabsTrigger value="roofing-permits" data-testid="tab-roofing-permits">Roofing Permits</TabsTrigger>
-          <TabsTrigger value="system" data-testid="tab-system">System</TabsTrigger>
+      <Tabs defaultValue="property-sources" className="space-y-6">
+        <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">
+          <TabsTrigger value="property-sources" className="rounded-lg text-[13px] font-medium" data-testid="tab-property-sources">Property Sources</TabsTrigger>
+          <TabsTrigger value="storm-data" className="rounded-lg text-[13px] font-medium" data-testid="tab-storm-data">Storm Data</TabsTrigger>
+          <TabsTrigger value="contact-enrichment" className="rounded-lg text-[13px] font-medium" data-testid="tab-contact-enrichment">Contact Enrichment</TabsTrigger>
+          <TabsTrigger value="intelligence" className="rounded-lg text-[13px] font-medium" data-testid="tab-intelligence">Intelligence</TabsTrigger>
+          <TabsTrigger value="roofing-permits" className="rounded-lg text-[13px] font-medium" data-testid="tab-roofing-permits">Roofing Permits</TabsTrigger>
+          <TabsTrigger value="system" className="rounded-lg text-[13px] font-medium" data-testid="tab-system">System</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="property-sources" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
+        <TabsContent value="property-sources" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Building2 className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   DCAD Property Agent
                 </CardTitle>
-                <Badge variant="default" className="text-[10px]">Live API</Badge>
+                <Badge variant="outline" className="text-[10px] font-normal">Live API</Badge>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Fetch real commercial property data from Dallas Central Appraisal District
-                  via ArcGIS REST API. Already-imported properties are automatically skipped (no reprocessing costs).
+                  via ArcGIS REST API. Already-imported properties are automatically skipped.
                 </p>
                 {dataSources?.filter((ds) => ds.type === "dcad_api").map((ds) => (
                   <div key={ds.id} className="text-xs text-muted-foreground">
                     Last fetched: {formatDate(ds.lastFetchedAt as any)}
                   </div>
                 ))}
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="space-y-1">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
                     <Label htmlFor="dcad-min-value" className="text-xs text-muted-foreground">Min Building Value</Label>
                     <Input
                       id="dcad-min-value"
@@ -635,7 +634,7 @@ export default function Admin() {
                       data-testid="input-dcad-min-value"
                     />
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <Label htmlFor="dcad-min-sqft" className="text-xs text-muted-foreground">Min Sq Ft</Label>
                     <Input
                       id="dcad-min-sqft"
@@ -646,7 +645,7 @@ export default function Admin() {
                       data-testid="input-dcad-min-sqft"
                     />
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <Label htmlFor="dcad-max-records" className="text-xs text-muted-foreground">Max Records</Label>
                     <Input
                       id="dcad-max-records"
@@ -671,28 +670,27 @@ export default function Admin() {
                     data-testid="button-import-dcad"
                   >
                     {dcadImportMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Building2 className="w-3 h-3 mr-1" />
+                      <Building2 className="w-3 h-3" />
                     )}
                     Import Properties
                   </Button>
                 </div>
-                <p className="text-[10px] text-muted-foreground">
-                  Duplicates are automatically skipped - only new properties are added.
+                <p className="text-[11px] text-muted-foreground">
+                  Duplicates are automatically skipped — only new properties are added.
                 </p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Property Data Import
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Upload county appraisal district CSV files to import commercial properties.
                   Auto-detects column headers. Filters by minimum 2,000 sqft for commercial leads.
                 </p>
@@ -712,9 +710,9 @@ export default function Admin() {
                     data-testid="button-upload-csv"
                   >
                     {csvUploadMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Upload className="w-3 h-3 mr-1" />
+                      <Upload className="w-3 h-3" />
                     )}
                     Upload CSV
                   </Button>
@@ -724,14 +722,14 @@ export default function Admin() {
                     onClick={() => window.open("/api/import/sample-csv", "_blank")}
                     data-testid="button-download-sample"
                   >
-                    <Download className="w-3 h-3 mr-1" />
+                    <Download className="w-3 h-3" />
                     Sample CSV
                   </Button>
                 </div>
                 {uploadResult && (
-                  <div className="p-3 rounded-md border space-y-1" data-testid="upload-result">
+                  <div className="p-4 rounded-md border space-y-1" data-testid="upload-result">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
                       <span className="text-sm font-medium">Import Complete</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
@@ -746,18 +744,16 @@ export default function Admin() {
               </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2">
+            <Card className="lg:col-span-2 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Building2 className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Building & Roof Intelligence
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Estimates building stories, roof type, and construction type using property characteristics.
-                  Roof types are inferred from year built (when available), building size, improvement value, and zoning.
-                  Construction types estimated from zoning, stories, and size (industrial: tilt-wall/metal, high-rise: steel frame).
+                  Roof types are inferred from year built, building size, improvement value, and zoning.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
@@ -767,9 +763,9 @@ export default function Admin() {
                     data-testid="button-estimate-stories"
                   >
                     {storyEstimateMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Building2 className="w-3 h-3 mr-1" />
+                      <Building2 className="w-3 h-3" />
                     )}
                     Estimate Stories
                   </Button>
@@ -780,9 +776,9 @@ export default function Admin() {
                     data-testid="button-estimate-roof-type"
                   >
                     {roofTypeEstimateMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Building2 className="w-3 h-3 mr-1" />
+                      <Building2 className="w-3 h-3" />
                     )}
                     Estimate Roof & Construction Types
                   </Button>
@@ -793,9 +789,9 @@ export default function Admin() {
                     data-testid="button-flag-ownership"
                   >
                     {ownershipFlagMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <ShieldAlert className="w-3 h-3 mr-1" />
+                      <ShieldAlert className="w-3 h-3" />
                     )}
                     Flag Holding Companies
                   </Button>
@@ -805,17 +801,16 @@ export default function Admin() {
           </div>
         </TabsContent>
 
-        <TabsContent value="storm-data" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
+        <TabsContent value="storm-data" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <CloudLightning className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   NOAA Hail Data Import
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Import real hail storm event data from NOAA Storm Events Database.
                   Data includes event date, location, hail size, and source.
                 </p>
@@ -836,9 +831,9 @@ export default function Admin() {
                     data-testid="button-import-noaa-current"
                   >
                     {noaaImportMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                      <RefreshCw className="w-3 h-3" />
                     )}
                     Import {currentYear}
                   </Button>
@@ -859,23 +854,22 @@ export default function Admin() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Radar className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Live Hail Tracker
                 </CardTitle>
-                <Badge variant="default" className="text-[10px]">Live Radar</Badge>
+                <Badge variant="outline" className="text-[10px] font-normal">Live Radar</Badge>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Real-time NEXRAD radar hail detections and NWS severe weather alerts for
                   the DFW region. View live data on the Map View page.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Link href="/map">
                     <Button size="sm" data-testid="button-open-hail-map">
-                      <Radar className="w-3 h-3 mr-1" />
+                      <Radar className="w-3 h-3" />
                       Open Map with Hail Tracker
                     </Button>
                   </Link>
@@ -883,20 +877,19 @@ export default function Admin() {
                 <div className="text-xs text-muted-foreground space-y-1">
                   <p>Sources: NOAA SWDI (NEXRAD L3 hail signatures), NWS Alerts API</p>
                   <p>Coverage: 50-mile radius around DFW center</p>
-                  <p>Data is fetched live and not stored — no database cost.</p>
+                  <p>Data is fetched live and not stored.</p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2">
+            <Card className="lg:col-span-2 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Activity className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Hail Correlation
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Match imported hail events to nearby properties within a configurable radius. Updates lead scores based on proximity to hail damage.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -910,9 +903,9 @@ export default function Admin() {
                     data-testid="button-correlate-hail"
                   >
                     {hailCorrelationMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Activity className="w-3 h-3 mr-1" />
+                      <Activity className="w-3 h-3" />
                     )}
                     Match to Leads
                   </Button>
@@ -922,11 +915,10 @@ export default function Admin() {
           </div>
         </TabsContent>
 
-        <TabsContent value="contact-enrichment" className="space-y-4">
-          <Card>
+        <TabsContent value="contact-enrichment" className="space-y-6">
+          <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Activity className="w-4 h-4" />
+              <CardTitle className="text-base font-semibold">
                 Contact Enrichment Pipeline
               </CardTitle>
               <Button
@@ -939,22 +931,22 @@ export default function Admin() {
                 data-testid="button-run-pipeline"
               >
                 {pipelineMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
-                  <Play className="w-3 h-3 mr-1" />
+                  <Play className="w-3 h-3" />
                 )}
                 Run Full Pipeline
               </Button>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-xs text-muted-foreground">
+            <CardContent className="p-6 pt-0 space-y-6">
+              <p className="text-sm text-muted-foreground">
                 Automated 3-stage enrichment: TX Filing Lookup, Phone Number Discovery, Web Research for Decision-Makers.
               </p>
               {pipelineLoading ? (
                 <Skeleton className="h-20 w-full" />
               ) : pipelineStats ? (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
                     {[
                       { label: "Total Leads", value: pipelineStats.total, color: "text-foreground" },
                       { label: "Owner Known", value: pipelineStats.withOwner, color: "text-foreground" },
@@ -966,26 +958,26 @@ export default function Admin() {
                       { label: "Fully Enriched", value: pipelineStats.fullyEnriched, color: "text-emerald-600 dark:text-emerald-400" },
                     ].map((item) => (
                       <div key={item.label} className="text-center" data-testid={`stat-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <p className={`text-lg font-semibold ${item.color}`}>{item.value.toLocaleString()}</p>
-                        <p className="text-[10px] text-muted-foreground">{item.label}</p>
+                        <p className={`text-2xl font-bold ${item.color}`}>{item.value.toLocaleString()}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">{item.label}</p>
                       </div>
                     ))}
                   </div>
-                  <div className="flex items-center gap-4 pt-2 flex-wrap">
+                  <div className="flex items-center gap-4 flex-wrap">
                     <span className="text-xs text-muted-foreground">Contact Confidence:</span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-emerald-500" />
                       <span className="text-xs">High: {pipelineStats.contactConfidence.high}</span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-amber-500" />
                       <span className="text-xs">Medium: {pipelineStats.contactConfidence.medium}</span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-orange-500" />
                       <span className="text-xs">Low: {pipelineStats.contactConfidence.low}</span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-muted-foreground" />
                       <span className="text-xs">None: {pipelineStats.contactConfidence.none}</span>
                     </div>
@@ -995,19 +987,18 @@ export default function Admin() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <UserSearch className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   TX Filing Enrichment
                 </CardTitle>
-                <Badge variant="default" className="text-[10px]">
+                <Badge variant="outline" className="text-[10px] font-normal">
                   Free Data Source
                 </Badge>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Enrich LLC/Corp owner contacts via Texas Open Data Portal.
                   Finds taxpayer addresses, SOS file numbers, and filing status.
                 </p>
@@ -1022,9 +1013,9 @@ export default function Admin() {
                     data-testid="button-enrich-contacts"
                   >
                     {contactEnrichMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <UserSearch className="w-3 h-3 mr-1" />
+                      <UserSearch className="w-3 h-3" />
                     )}
                     Enrich Contacts (50)
                   </Button>
@@ -1044,29 +1035,29 @@ export default function Admin() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Phone Number Enrichment
                 </CardTitle>
-                <Badge variant={phoneStatus?.totalAvailable ? "default" : "secondary"} className="text-[10px]">
+                <Badge variant={phoneStatus?.totalAvailable ? "outline" : "secondary"} className="text-[10px] font-normal">
                   {phoneStatus?.totalAvailable || 0} Provider{(phoneStatus?.totalAvailable || 0) !== 1 ? "s" : ""} Active
                 </Badge>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Cascading phone lookup: tries Google Places, OpenCorporates, and web search in order.
                   Stops at first match to minimize cost.
                 </p>
                 {phoneStatus?.providers && (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     {phoneStatus.providers.map((p) => (
                       <div key={p.name} className="flex items-center justify-between gap-2" data-testid={`phone-provider-${p.name}`}>
                         <span className="text-xs text-muted-foreground">{p.name}</span>
-                        <Badge variant={p.available ? "default" : "outline"} className="text-[10px]">
-                          {p.available ? "Ready" : "Needs API Key"}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-2 h-2 rounded-full ${p.available ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                          <span className="text-[11px] text-muted-foreground">{p.available ? "Ready" : "Needs API Key"}</span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1082,9 +1073,9 @@ export default function Admin() {
                     data-testid="button-enrich-phones"
                   >
                     {phoneEnrichMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Phone className="w-3 h-3 mr-1" />
+                      <Phone className="w-3 h-3" />
                     )}
                     Find Phones (50)
                   </Button>
@@ -1104,26 +1095,26 @@ export default function Admin() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Search className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Web Research Agent
                 </CardTitle>
-                <Badge variant={webResearchStatus?.googlePlacesAvailable ? "default" : "secondary"} className="text-[10px]">
-                  {webResearchStatus?.googlePlacesAvailable ? "Active" : "Needs API Key"}
-                </Badge>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-2 h-2 rounded-full ${webResearchStatus?.googlePlacesAvailable ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                  <span className="text-[11px] text-muted-foreground">{webResearchStatus?.googlePlacesAvailable ? "Active" : "Needs API Key"}</span>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Scans business websites to find facility managers, property managers, and decision-makers.
                   Extracts their phone numbers and emails from staff directories and contact pages.
                 </p>
                 {webResearchStatus?.capabilities && (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     {webResearchStatus.capabilities.map((cap) => (
                       <div key={cap} className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                         <span className="text-xs text-muted-foreground">{cap}</span>
                       </div>
                     ))}
@@ -1140,9 +1131,9 @@ export default function Admin() {
                     data-testid="button-web-research"
                   >
                     {webResearchMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Search className="w-3 h-3 mr-1" />
+                      <Search className="w-3 h-3" />
                     )}
                     Research 25 Leads
                   </Button>
@@ -1164,116 +1155,87 @@ export default function Admin() {
           </div>
         </TabsContent>
 
-        <TabsContent value="intelligence" className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <TabsContent value="intelligence" className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {isIntelStatsLoading ? (
               [...Array(4)].map((_, i) => (
-                <Card key={i}>
-                  <CardContent className="p-5">
-                    <Skeleton className="h-3 w-20 mb-2" />
-                    <Skeleton className="h-8 w-16 mb-1" />
+                <Card key={i} className="shadow-sm">
+                  <CardContent className="p-6">
+                    <Skeleton className="h-3 w-20 mb-3" />
+                    <Skeleton className="h-8 w-16 mb-2" />
                     <Skeleton className="h-3 w-28" />
                   </CardContent>
                 </Card>
               ))
             ) : (
               <>
-                <Card>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Code Violations</p>
-                        <p className="text-2xl font-bold mt-1 tracking-tight" data-testid="stat-total-violations">
-                          {violationsStatus?.totalViolations?.toLocaleString() ?? 0}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {violationsStatus?.matchedViolations?.toLocaleString() ?? 0} matched to leads
-                        </p>
-                      </div>
-                      <div className="w-10 h-10 rounded-md bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                      </div>
-                    </div>
+                <Card className="shadow-sm">
+                  <CardContent className="p-6">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Code Violations</p>
+                    <p className="text-2xl font-bold mt-2 tracking-tight" data-testid="stat-total-violations">
+                      {violationsStatus?.totalViolations?.toLocaleString() ?? 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {violationsStatus?.matchedViolations?.toLocaleString() ?? 0} matched to leads
+                    </p>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Building Permits</p>
-                        <p className="text-2xl font-bold mt-1 tracking-tight" data-testid="stat-total-permits">
-                          {permitsStatus?.totalPermits?.toLocaleString() ?? 0}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {permitsStatus?.matchedPermits?.toLocaleString() ?? 0} matched to leads
-                        </p>
-                      </div>
-                      <div className="w-10 h-10 rounded-md bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                        <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      </div>
-                    </div>
+                <Card className="shadow-sm">
+                  <CardContent className="p-6">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Building Permits</p>
+                    <p className="text-2xl font-bold mt-2 tracking-tight" data-testid="stat-total-permits">
+                      {permitsStatus?.totalPermits?.toLocaleString() ?? 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {permitsStatus?.matchedPermits?.toLocaleString() ?? 0} matched to leads
+                    </p>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Flood Zones</p>
-                        <p className="text-2xl font-bold mt-1 tracking-tight" data-testid="stat-flood-enriched">
-                          {floodStatus?.enriched?.toLocaleString() ?? 0}
-                          <span className="text-sm font-normal text-muted-foreground"> / {floodStatus?.total?.toLocaleString() ?? 0}</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {floodStatus?.highRisk?.toLocaleString() ?? 0} high risk
-                        </p>
-                      </div>
-                      <div className="w-10 h-10 rounded-md bg-cyan-500/10 flex items-center justify-center flex-shrink-0">
-                        <Droplets className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
-                      </div>
-                    </div>
+                <Card className="shadow-sm">
+                  <CardContent className="p-6">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Flood Zones</p>
+                    <p className="text-2xl font-bold mt-2 tracking-tight" data-testid="stat-flood-enriched">
+                      {floodStatus?.enriched?.toLocaleString() ?? 0}
+                      <span className="text-sm font-normal text-muted-foreground"> / {floodStatus?.total?.toLocaleString() ?? 0}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {floodStatus?.highRisk?.toLocaleString() ?? 0} high risk
+                    </p>
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Compliance</p>
-                        <p className="text-2xl font-bold mt-1 tracking-tight" data-testid="stat-compliance-granted">
-                          {complianceStatus?.granted?.toLocaleString() ?? 0}
-                          <span className="text-sm font-normal text-muted-foreground"> granted</span>
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {complianceStatus?.unknown?.toLocaleString() ?? 0} unknown, {complianceStatus?.dncRegistered?.toLocaleString() ?? 0} DNC
-                        </p>
-                      </div>
-                      <div className="w-10 h-10 rounded-md bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                        <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                      </div>
-                    </div>
+                <Card className="shadow-sm">
+                  <CardContent className="p-6">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Compliance</p>
+                    <p className="text-2xl font-bold mt-2 tracking-tight" data-testid="stat-compliance-granted">
+                      {complianceStatus?.granted?.toLocaleString() ?? 0}
+                      <span className="text-sm font-normal text-muted-foreground"> granted</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {complianceStatus?.unknown?.toLocaleString() ?? 0} unknown, {complianceStatus?.dncRegistered?.toLocaleString() ?? 0} DNC
+                    </p>
                   </CardContent>
                 </Card>
               </>
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Code Violations & 311
                 </CardTitle>
                 {violationsStatus && (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <span className="text-xs text-muted-foreground">
                     {violationsStatus.totalViolations.toLocaleString()} total
-                  </Badge>
+                  </span>
                 )}
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Import code violations and 311 service requests from Dallas Open Data, then match them to tracked leads.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1284,9 +1246,9 @@ export default function Admin() {
                     data-testid="button-import-311"
                   >
                     {import311Mutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Play className="w-3 h-3 mr-1" />
+                      <Play className="w-3 h-3" />
                     )}
                     Import Dallas 311 (Last 90 Days)
                   </Button>
@@ -1298,9 +1260,9 @@ export default function Admin() {
                     data-testid="button-import-code-violations"
                   >
                     {importCodeMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <FileText className="w-3 h-3 mr-1" />
+                      <FileText className="w-3 h-3" />
                     )}
                     Import Code Violations Archive
                   </Button>
@@ -1312,48 +1274,47 @@ export default function Admin() {
                     data-testid="button-match-violations"
                   >
                     {matchViolationsMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                      <RefreshCw className="w-3 h-3" />
                     )}
                     Match to Leads
                   </Button>
                 </div>
                 {lastResults.import311 && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-import311">{lastResults.import311}</span>
                   </div>
                 )}
                 {lastResults.importCode && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-importCode">{lastResults.importCode}</span>
                   </div>
                 )}
                 {lastResults.matchViolations && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-matchViolations">{lastResults.matchViolations}</span>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Building2 className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Building Permits
                 </CardTitle>
                 {permitsStatus && (
-                  <Badge variant="secondary" className="text-[10px]">
+                  <span className="text-xs text-muted-foreground">
                     {permitsStatus.totalPermits.toLocaleString()} total
-                  </Badge>
+                  </span>
                 )}
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Import building permits from Dallas and Fort Worth open data portals, then match them to leads.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1364,9 +1325,9 @@ export default function Admin() {
                     data-testid="button-import-dallas-permits"
                   >
                     {importDallasPermitsMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Play className="w-3 h-3 mr-1" />
+                      <Play className="w-3 h-3" />
                     )}
                     Import Dallas Permits
                   </Button>
@@ -1378,9 +1339,9 @@ export default function Admin() {
                     data-testid="button-import-fortworth-permits"
                   >
                     {importFortWorthPermitsMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Building2 className="w-3 h-3 mr-1" />
+                      <Building2 className="w-3 h-3" />
                     )}
                     Import Fort Worth Permits
                   </Button>
@@ -1392,48 +1353,48 @@ export default function Admin() {
                     data-testid="button-match-permits"
                   >
                     {matchPermitsMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                      <RefreshCw className="w-3 h-3" />
                     )}
                     Match to Leads
                   </Button>
                 </div>
                 {lastResults.importDallasPermits && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-importDallasPermits">{lastResults.importDallasPermits}</span>
                   </div>
                 )}
                 {lastResults.importFortWorthPermits && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-importFortWorthPermits">{lastResults.importFortWorthPermits}</span>
                   </div>
                 )}
                 {lastResults.matchPermits && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-matchPermits">{lastResults.matchPermits}</span>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Droplets className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Flood Risk Assessment
                 </CardTitle>
                 {floodStatus && (
-                  <Badge variant="secondary" className="text-[10px]">
-                    {floodStatus.highRisk} high risk
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-destructive" />
+                    <span className="text-xs text-muted-foreground">{floodStatus.highRisk} high risk</span>
+                  </div>
                 )}
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Enrich leads with FEMA National Flood Hazard Layer data to identify properties in high-risk flood zones.
                 </p>
                 {floodStatus && (
@@ -1468,31 +1429,30 @@ export default function Admin() {
                     data-testid="button-enrich-flood"
                   >
                     {floodEnrichMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Droplets className="w-3 h-3 mr-1" />
+                      <Droplets className="w-3 h-3" />
                     )}
                     Enrich All Leads (FEMA NFHL)
                   </Button>
                 </div>
                 {lastResults.floodEnrich && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-floodEnrich">{lastResults.floodEnrich}</span>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Fingerprint className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Owner Intelligence
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Run the 12-agent intelligence pipeline to unmask the real people behind LLCs, skip-trace owners, and find building contacts.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1503,9 +1463,9 @@ export default function Admin() {
                     data-testid="button-run-owner-intelligence"
                   >
                     {ownerIntelligenceMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <Play className="w-3 h-3 mr-1" />
+                      <Play className="w-3 h-3" />
                     )}
                     Run Intelligence Pipeline
                   </Button>
@@ -1513,15 +1473,14 @@ export default function Admin() {
               </CardContent>
             </Card>
 
-            <Card className="lg:col-span-2">
+            <Card className="lg:col-span-2 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Scale className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Lead Scoring v2
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs text-muted-foreground">
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-sm text-muted-foreground">
                   Recalculate lead scores using the enhanced v2 algorithm that incorporates violations, permits, flood risk, distress signals, and compliance data.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1532,16 +1491,16 @@ export default function Admin() {
                     data-testid="button-recalculate-scores"
                   >
                     {recalcScoresMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                      <RefreshCw className="w-3 h-3" />
                     )}
                     Recalculate All Scores
                   </Button>
                 </div>
                 {lastResults.recalcScores && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="w-3 h-3" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span data-testid="text-result-recalcScores">{lastResults.recalcScores}</span>
                   </div>
                 )}
@@ -1550,23 +1509,22 @@ export default function Admin() {
           </div>
         </TabsContent>
 
-        <TabsContent value="roofing-permits" className="space-y-4">
-          <Card>
+        <TabsContent value="roofing-permits" className="space-y-6">
+          <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Search className="w-4 h-4" />
+              <CardTitle className="text-base font-semibold">
                 Roofing Permit History (10 Years)
               </CardTitle>
               {roofingStats && (
-                <Badge variant="secondary" data-testid="badge-roofing-permit-count">
+                <span className="text-xs text-muted-foreground" data-testid="badge-roofing-permit-count">
                   {roofingStats.totalRoofingPermits.toLocaleString()} permits
-                </Badge>
+                </span>
               )}
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-xs text-muted-foreground">
+            <CardContent className="p-6 pt-0 space-y-6">
+              <p className="text-sm text-muted-foreground">
                 Pulls roofing-specific permits from Dallas Open Data going back 10 years. Identifies which properties have had roof work done,
-                who the contractor was, and what type of roofing system was installed (TPO, EPDM, shingle, metal, etc.).
+                who the contractor was, and what type of roofing system was installed.
               </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
@@ -1576,9 +1534,9 @@ export default function Admin() {
                   data-testid="button-import-roofing-permits"
                 >
                   {roofingPermitMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    <Download className="w-3 h-3 mr-1" />
+                    <Download className="w-3 h-3" />
                   )}
                   Import Roofing Permits (10yr)
                 </Button>
@@ -1590,31 +1548,31 @@ export default function Admin() {
                   data-testid="button-scan-roofing-permits"
                 >
                   {scanRoofingMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
-                    <Search className="w-3 h-3 mr-1" />
+                    <Search className="w-3 h-3" />
                   )}
                   Scan & Match to Leads
                 </Button>
               </div>
               {roofingStats && roofingStats.totalRoofingPermits > 0 && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 rounded-md border">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-4 rounded-md border">
                       <p className="text-xs text-muted-foreground">Total Roofing Permits</p>
-                      <p className="text-lg font-semibold" data-testid="text-total-roofing-permits">{roofingStats.totalRoofingPermits.toLocaleString()}</p>
+                      <p className="text-2xl font-bold mt-1" data-testid="text-total-roofing-permits">{roofingStats.totalRoofingPermits.toLocaleString()}</p>
                     </div>
-                    <div className="p-3 rounded-md border">
+                    <div className="text-center p-4 rounded-md border">
                       <p className="text-xs text-muted-foreground">Matched to Leads</p>
-                      <p className="text-lg font-semibold" data-testid="text-matched-roofing-permits">{roofingStats.matchedToLeads.toLocaleString()}</p>
+                      <p className="text-2xl font-bold mt-1" data-testid="text-matched-roofing-permits">{roofingStats.matchedToLeads.toLocaleString()}</p>
                     </div>
                   </div>
                   {roofingStats.byYear.length > 0 && (
-                    <div className="p-3 rounded-md border">
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Permits by Year</p>
+                    <div className="p-4 rounded-md border">
+                      <p className="text-xs font-medium text-muted-foreground mb-3">Permits by Year</p>
                       <div className="flex flex-wrap gap-2">
                         {roofingStats.byYear.slice(0, 12).map((y) => (
-                          <div key={y.year} className="text-xs px-2 py-1 bg-muted rounded">
+                          <div key={y.year} className="text-xs px-2 py-1 bg-muted rounded-md">
                             <span className="font-medium">{y.year}</span>: {y.count.toLocaleString()}
                           </div>
                         ))}
@@ -1622,13 +1580,13 @@ export default function Admin() {
                     </div>
                   )}
                   {roofingStats.topContractors.length > 0 && (
-                    <div className="p-3 rounded-md border">
-                      <p className="text-xs font-medium text-muted-foreground mb-2">Top Roofing Contractors</p>
-                      <div className="space-y-1">
+                    <div className="p-4 rounded-md border">
+                      <p className="text-xs font-medium text-muted-foreground mb-3">Top Roofing Contractors</p>
+                      <div className="divide-y">
                         {roofingStats.topContractors.slice(0, 5).map((c, i) => (
-                          <div key={i} className="flex justify-between gap-2 text-xs">
+                          <div key={i} className="flex justify-between gap-2 py-2 text-xs items-center">
                             <span className="truncate max-w-[250px]">{c.name}</span>
-                            <Badge variant="secondary" className="text-xs">{c.count}</Badge>
+                            <span className="text-muted-foreground font-medium">{c.count}</span>
                           </div>
                         ))}
                       </div>
@@ -1640,26 +1598,25 @@ export default function Admin() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="system" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Card>
+        <TabsContent value="system" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Globe className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Active Markets
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6 pt-0">
                 {marketsLoading ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Skeleton className="h-16 w-full" />
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="divide-y">
                     {markets?.map((market) => (
                       <div
                         key={market.id}
-                        className="flex items-center justify-between gap-2 p-3 rounded-md border"
+                        className="flex items-center justify-between gap-2 py-3"
                         data-testid={`market-${market.id}`}
                       >
                         <div>
@@ -1668,33 +1625,33 @@ export default function Admin() {
                             {market.counties.join(", ")} counties
                           </p>
                         </div>
-                        <Badge variant={market.isActive ? "default" : "secondary"}>
-                          {market.isActive ? "Active" : "Inactive"}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-2 h-2 rounded-full ${market.isActive ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                          <span className="text-xs text-muted-foreground">{market.isActive ? "Active" : "Inactive"}</span>
+                        </div>
                       </div>
                     ))}
                     {(!markets || markets.length === 0) && (
-                      <p className="text-sm text-muted-foreground text-center py-4">No markets configured</p>
+                      <p className="text-sm text-muted-foreground text-center py-6">No markets configured</p>
                     )}
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Activity className="w-4 h-4" />
+                <CardTitle className="text-base font-semibold">
                   Background Agents
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6 pt-0">
                 {jobs && jobs.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="divide-y">
                     {jobs.map((job) => (
                       <div
                         key={job.id}
-                        className="flex items-center justify-between gap-2 p-3 rounded-md border"
+                        className="flex items-center justify-between gap-2 py-3"
                         data-testid={`job-${job.id}`}
                       >
                         <div className="flex items-center gap-3">
@@ -1709,10 +1666,11 @@ export default function Admin() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={job.isActive ? "default" : "secondary"} className="text-[10px]">
-                            {job.isActive ? "Active" : "Paused"}
-                          </Badge>
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          <div className="flex items-center gap-1.5">
+                            <div className={`w-2 h-2 rounded-full ${job.isActive ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                            <span className="text-[11px] text-muted-foreground">{job.isActive ? "Active" : "Paused"}</span>
+                          </div>
                           <Badge variant="outline" className="text-[10px]">
                             {job.status}
                           </Badge>
@@ -1721,7 +1679,7 @@ export default function Admin() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
+                  <p className="text-sm text-muted-foreground text-center py-6">
                     Background agents will appear here once configured
                   </p>
                 )}
@@ -1729,24 +1687,23 @@ export default function Admin() {
             </Card>
           </div>
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Database className="w-4 h-4" />
+              <CardTitle className="text-base font-semibold">
                 Import History
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-6 pt-0">
               {runsLoading ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
                 </div>
               ) : importRuns && importRuns.length > 0 ? (
-                <div className="space-y-2">
+                <div className="divide-y">
                   {importRuns.map((run) => (
                     <div
                       key={run.id}
-                      className="flex items-center justify-between gap-2 p-3 rounded-md border"
+                      className="flex items-center justify-between gap-2 py-3"
                       data-testid={`import-run-${run.id}`}
                     >
                       <div className="flex items-center gap-3">
@@ -1767,24 +1724,25 @@ export default function Admin() {
                       </div>
                       <div className="flex items-center gap-2 flex-wrap justify-end">
                         {run.recordsImported !== null && run.recordsImported! > 0 && (
-                          <Badge variant="secondary" className="text-[10px]">
+                          <span className="text-[11px] text-muted-foreground">
                             {run.recordsImported} imported
-                          </Badge>
+                          </span>
                         )}
                         {run.recordsSkipped !== null && run.recordsSkipped! > 0 && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <span className="text-[11px] text-muted-foreground">
                             {run.recordsSkipped} skipped
-                          </Badge>
+                          </span>
                         )}
-                        <Badge variant={run.status === "completed" ? "default" : run.status === "failed" ? "destructive" : "outline"} className="text-[10px]">
-                          {run.status}
-                        </Badge>
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-2 h-2 rounded-full ${run.status === "completed" ? "bg-emerald-500" : run.status === "failed" ? "bg-destructive" : "bg-muted-foreground"}`} />
+                          <span className="text-[11px] text-muted-foreground">{run.status}</span>
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
+                <p className="text-sm text-muted-foreground text-center py-6">
                   No import runs yet. Use the import buttons above to fetch real data.
                 </p>
               )}

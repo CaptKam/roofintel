@@ -638,37 +638,35 @@ export default function MapStorms() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 pb-0">
-        <h2 className="text-lg font-semibold tracking-tight" data-testid="text-page-title">Map & Storms</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">Interactive map, storm monitoring, and alert configuration</p>
+      <div className="p-6 pb-2">
+        <h2 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Map & Storms</h2>
+        <p className="text-sm text-muted-foreground mt-1">Real-time storm monitoring, threat detection, and alert management</p>
       </div>
       <Tabs defaultValue="map" className="flex-1 flex flex-col">
-        <div className="px-4 pt-2">
-          <TabsList>
-            <TabsTrigger value="map" data-testid="tab-map">Map</TabsTrigger>
-            <TabsTrigger value="storms" data-testid="tab-storms">Storm Response</TabsTrigger>
-            <TabsTrigger value="alerts" data-testid="tab-alerts">Alert Settings</TabsTrigger>
+        <div className="px-6 pt-3">
+          <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">
+            <TabsTrigger value="map" className="rounded-lg text-[13px] font-medium" data-testid="tab-map">Map</TabsTrigger>
+            <TabsTrigger value="storms" className="rounded-lg text-[13px] font-medium" data-testid="tab-storms">Storm Response</TabsTrigger>
+            <TabsTrigger value="alerts" className="rounded-lg text-[13px] font-medium" data-testid="tab-alerts">Alert Settings</TabsTrigger>
           </TabsList>
         </div>
 
         <TabsContent value="map" className="flex-1 mt-0 flex flex-col">
-          <div className="p-4 pb-0 border-b flex items-center justify-between gap-4 flex-wrap">
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {leadsData ? `Top ${leads?.length} of ${leadsData.total.toLocaleString()} properties` : "Loading..."} plotted by score
-              </p>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
+          <div className="p-4 border-b flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-xs text-muted-foreground">
+              {leadsData ? `${leads?.length} of ${leadsData.total.toLocaleString()} properties` : "Loading..."} plotted by score
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
                 variant={showThreatForecast ? "default" : "outline"}
                 size="sm"
                 onClick={() => setShowThreatForecast(!showThreatForecast)}
                 data-testid="button-toggle-threat-forecast"
               >
-                <Zap className="w-4 h-4 mr-1.5" />
-                Hail Forecast
+                <Zap className="w-3.5 h-3.5 mr-1.5" />
+                Forecast
                 {showThreatForecast && threatCount > 0 && (
-                  <Badge variant="secondary" className="ml-1.5 text-[10px]">{threatCount}</Badge>
+                  <span className="ml-1.5 text-[10px] opacity-70">{threatCount}</span>
                 )}
               </Button>
               <Button
@@ -677,10 +675,10 @@ export default function MapStorms() {
                 onClick={() => setShowSwathZones(!showSwathZones)}
                 data-testid="button-toggle-swath-zones"
               >
-                <CloudLightning className="w-4 h-4 mr-1.5" />
-                Hail Zones
+                <CloudLightning className="w-3.5 h-3.5 mr-1.5" />
+                Zones
                 {showSwathZones && stormRuns && stormRuns.length > 0 && (
-                  <Badge variant="secondary" className="ml-1.5 text-[10px]">{stormRuns.length}</Badge>
+                  <span className="ml-1.5 text-[10px] opacity-70">{stormRuns.length}</span>
                 )}
               </Button>
               <Button
@@ -689,15 +687,15 @@ export default function MapStorms() {
                 onClick={() => setShowHailTracker(!showHailTracker)}
                 data-testid="button-toggle-hail-tracker"
               >
-                <Radar className="w-4 h-4 mr-1.5" />
-                Hail Tracker
+                <Radar className="w-3.5 h-3.5 mr-1.5" />
+                Tracker
                 {showHailTracker && sigCount > 0 && (
-                  <Badge variant="secondary" className="ml-1.5 text-[10px]">{sigCount}</Badge>
+                  <span className="ml-1.5 text-[10px] opacity-70">{sigCount}</span>
                 )}
               </Button>
               {showHailTracker && (
                 <Select value={daysBack} onValueChange={setDaysBack}>
-                  <SelectTrigger className="w-[120px]" data-testid="select-hail-days">
+                  <SelectTrigger className="w-[110px]" data-testid="select-hail-days">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -709,83 +707,78 @@ export default function MapStorms() {
                   </SelectContent>
                 </Select>
               )}
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span className="text-xs text-muted-foreground">Hot (80+)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                <span className="text-xs text-muted-foreground">Warm (60+)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                <span className="text-xs text-muted-foreground">Cool (40+)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-gray-400" />
-                <span className="text-xs text-muted-foreground">Cold</span>
+              <div className="hidden sm:flex items-center gap-3 ml-2">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-[10px] text-muted-foreground">80+</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-[10px] text-muted-foreground">60+</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-orange-500" />
+                  <span className="text-[10px] text-muted-foreground">40+</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-gray-400" />
+                  <span className="text-[10px] text-muted-foreground">Cold</span>
+                </div>
               </div>
             </div>
           </div>
 
           {(showHailTracker || (showThreatForecast && threatCount > 0)) && (
-            <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-4 flex-wrap">
+            <div className="px-4 py-2 border-b flex items-center gap-4 flex-wrap text-[10px] text-muted-foreground">
               {showThreatForecast && threatCount > 0 && (
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-xs font-medium text-muted-foreground">Forecast:</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-purple-600" />
-                    <span className="text-[10px] text-muted-foreground">Severe</span>
+                  <span className="font-medium">Forecast</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-purple-600" />
+                    <span>Severe</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-600" />
-                    <span className="text-[10px] text-muted-foreground">High</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-red-600" />
+                    <span>High</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                    <span className="text-[10px] text-muted-foreground">Moderate</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-orange-500" />
+                    <span>Moderate</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                    <span className="text-[10px] text-muted-foreground">Low</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                    <span>Low</span>
                   </div>
-                  <Badge variant="default" className="text-[10px]">
-                    <Zap className="w-2.5 h-2.5 mr-1" />
-                    {threatCount} Active Threat{threatCount > 1 ? "s" : ""}
-                  </Badge>
+                  <span className="font-medium">{threatCount} active</span>
                 </div>
               )}
               {showHailTracker && (
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-xs font-medium text-muted-foreground">Radar Hail:</span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-600" />
-                    <span className="text-[10px] text-muted-foreground">Severe 50%+</span>
+                  <span className="font-medium">Radar</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-red-600" />
+                    <span>50%+</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                    <span className="text-[10px] text-muted-foreground">Severe 25%+</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-orange-500" />
+                    <span>25%+</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                    <span className="text-[10px] text-muted-foreground">Likely</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                    <span>Likely</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-blue-400" />
-                    <span className="text-[10px] text-muted-foreground">Possible</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-400" />
+                    <span>Possible</span>
                   </div>
                   {alertCount > 0 && (
-                    <Badge variant="destructive" className="text-[10px]">
-                      {alertCount} Active Alert{alertCount > 1 ? "s" : ""}
-                    </Badge>
+                    <span className="font-medium text-destructive">{alertCount} alert{alertCount > 1 ? "s" : ""}</span>
                   )}
                   {hailLoading && (
-                    <span className="text-[10px] text-muted-foreground animate-pulse">Loading radar data...</span>
+                    <span className="animate-pulse">Loading...</span>
                   )}
                   {hailData && !hailLoading && (
-                    <span className="text-[10px] text-muted-foreground">
-                      {sigCount} radar detections, updated {new Date(hailData.fetchedAt).toLocaleTimeString()}
-                    </span>
+                    <span>{sigCount} detections, {new Date(hailData.fetchedAt).toLocaleTimeString()}</span>
                   )}
                 </div>
               )}
@@ -796,21 +789,21 @@ export default function MapStorms() {
             {leadsLoading && (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
                 <div className="text-center">
-                  <Skeleton className="w-12 h-12 rounded-full mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">Loading map data...</p>
+                  <Skeleton className="w-10 h-10 rounded-full mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Loading map...</p>
                 </div>
               </div>
             )}
             <div ref={mapRef} className="absolute inset-0" data-testid="map-container" />
 
             {selectedLead && (
-              <div className="absolute bottom-4 left-4 right-4 z-[1000] max-w-md">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="absolute bottom-4 left-4 right-4 z-[1000] max-w-sm">
+                <Card className="rounded-xl">
+                  <CardContent className="p-5">
+                    <div className="flex items-start justify-between gap-2 mb-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate" data-testid="text-selected-address">{selectedLead.address}</p>
-                        <p className="text-xs text-muted-foreground">{selectedLead.city}, {selectedLead.county} Co.</p>
+                        <p className="text-sm font-semibold truncate" data-testid="text-selected-address">{selectedLead.address}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{selectedLead.city}, {selectedLead.county} Co.</p>
                       </div>
                       <Button
                         variant="ghost"
@@ -821,25 +814,25 @@ export default function MapStorms() {
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <div className="flex items-center gap-3 flex-wrap mb-3">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <div className="flex items-center gap-3 flex-wrap mb-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
                         <Ruler className="w-3 h-3" />
                         {selectedLead.sqft.toLocaleString()} sqft
                       </span>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="flex items-center gap-1">
                         <Building2 className="w-3 h-3" />
                         {selectedLead.zoning}
                       </span>
                       {selectedLead.roofLastReplaced && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          Roof: {selectedLead.roofLastReplaced}
+                          {selectedLead.roofLastReplaced}
                         </span>
                       )}
                       {selectedLead.hailEvents > 0 && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <span className="flex items-center gap-1">
                           <CloudLightning className="w-3 h-3" />
-                          {selectedLead.hailEvents} hail events
+                          {selectedLead.hailEvents} hail
                         </span>
                       )}
                     </div>
@@ -859,78 +852,72 @@ export default function MapStorms() {
           </div>
         </TabsContent>
 
-        <TabsContent value="storms" className="p-4 overflow-auto">
+        <TabsContent value="storms" className="p-6 overflow-auto">
           <div className="space-y-6 max-w-7xl mx-auto">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge
-                  variant={monitorStatus?.running ? "default" : "secondary"}
-                  data-testid="badge-monitor-status"
-                >
-                  <Radio className="w-3 h-3 mr-1" />
-                  {monitorStatus?.running ? "NOAA Active" : "NOAA Off"}
-                </Badge>
-                <Badge
-                  variant={xweatherStatus?.running ? "default" : "secondary"}
-                  data-testid="badge-xweather-status"
-                >
-                  <Zap className="w-3 h-3 mr-1" />
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5" data-testid="badge-monitor-status">
+                <div className={`w-2 h-2 rounded-full ${monitorStatus?.running ? "bg-emerald-500" : "bg-gray-400"}`} />
+                <span className="text-xs text-muted-foreground">{monitorStatus?.running ? "NOAA Active" : "NOAA Off"}</span>
+              </div>
+              <div className="flex items-center gap-1.5" data-testid="badge-xweather-status">
+                <div className={`w-2 h-2 rounded-full ${xweatherStatus?.running ? "bg-emerald-500" : "bg-gray-400"}`} />
+                <span className="text-xs text-muted-foreground">
                   {xweatherStatus?.running ? "Prediction Active" : xweatherStatus?.configured ? "Prediction Off" : "Not Configured"}
-                </Badge>
+                </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Threats</CardTitle>
-                  <Zap className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-xs font-medium text-muted-foreground">Active Threats</CardTitle>
+                  <Zap className="w-3.5 h-3.5 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-active-threats">{xweatherStatus?.activeThreats || 0}</div>
-                  <p className="text-xs text-muted-foreground">Predicted hail</p>
+                  <div className="text-2xl font-bold tracking-tight" data-testid="text-active-threats">{xweatherStatus?.activeThreats || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Predicted hail</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Active Storms</CardTitle>
-                  <CloudLightning className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-xs font-medium text-muted-foreground">Active Storms</CardTitle>
+                  <CloudLightning className="w-3.5 h-3.5 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-active-storms">{activeRuns?.length || 0}</div>
-                  <p className="text-xs text-muted-foreground">Last 24 hours</p>
+                  <div className="text-2xl font-bold tracking-tight" data-testid="text-active-storms">{activeRuns?.length || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Last 24 hours</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Leads in Path</CardTitle>
-                  <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-xs font-medium text-muted-foreground">Leads in Path</CardTitle>
+                  <AlertTriangle className="w-3.5 h-3.5 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-affected-leads">
+                  <div className="text-2xl font-bold tracking-tight" data-testid="text-affected-leads">
                     {(xweatherStatus?.totalAffectedLeads || 0) + (activeRuns?.reduce((s, r) => s + r.affectedLeadCount, 0) || 0)}
                   </div>
-                  <p className="text-xs text-muted-foreground">In storm / threat zones</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">In threat zones</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Pending Calls</CardTitle>
-                  <Phone className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-xs font-medium text-muted-foreground">Pending Calls</CardTitle>
+                  <Phone className="w-3.5 h-3.5 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-pending-calls">{pendingQueue.length}</div>
-                  <p className="text-xs text-muted-foreground">Ready to contact</p>
+                  <div className="text-2xl font-bold tracking-tight" data-testid="text-pending-calls">{pendingQueue.length}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Ready to contact</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Detections</CardTitle>
-                  <Radar className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-xs font-medium text-muted-foreground">Detections</CardTitle>
+                  <Radar className="w-3.5 h-3.5 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-total-detections">{recentRuns?.length || 0}</div>
-                  <p className="text-xs text-muted-foreground">Storm runs logged</p>
+                  <div className="text-2xl font-bold tracking-tight" data-testid="text-total-detections">{recentRuns?.length || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">Storm runs logged</p>
                 </CardContent>
               </Card>
             </div>
@@ -938,10 +925,7 @@ export default function MapStorms() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Radio className="w-4 h-4" />
-                    NOAA Radar Monitor
-                  </CardTitle>
+                  <CardTitle className="text-sm font-semibold">NOAA Radar Monitor</CardTitle>
                   <div className="flex items-center gap-2">
                     {monitorStatus?.running ? (
                       <Button
@@ -979,19 +963,17 @@ export default function MapStorms() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-muted-foreground">
-                    Monitors NOAA SWDI radar for active hail signatures. Detects hail that is currently falling.
+                    Monitors NOAA SWDI radar for active hail signatures near your leads.
                   </p>
                   {activeRuns && activeRuns.length > 0 ? (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-4 divide-y">
                       {activeRuns.slice(0, 5).map((run) => {
                         const swath = run.swathPolygon as any;
                         return (
-                          <div key={run.id} className="flex items-center justify-between gap-3 p-2 border rounded-md text-sm flex-wrap" data-testid={`card-storm-run-${run.id}`}>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant={run.maxHailProb >= 80 ? "destructive" : "default"} className="text-xs">
-                                {run.maxHailProb}%
-                              </Badge>
-                              <span className="text-xs">{run.radarSignatureCount} sigs</span>
+                          <div key={run.id} className="flex items-center justify-between gap-3 py-3 flex-wrap" data-testid={`card-storm-run-${run.id}`}>
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="text-sm font-semibold">{run.maxHailProb}%</span>
+                              <span className="text-xs text-muted-foreground">{run.radarSignatureCount} sigs</span>
                               <span className="text-xs text-muted-foreground">{run.affectedLeadCount} leads</span>
                             </div>
                             <span className="text-xs text-muted-foreground">
@@ -1002,18 +984,17 @@ export default function MapStorms() {
                       })}
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-muted-foreground text-center py-4">No active radar detections</p>
+                    <p className="mt-4 text-xs text-muted-foreground text-center py-6">No active radar detections</p>
                   )}
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Zap className="w-4 h-4" />
-                    Predictive Hail Monitor
-                    <Badge variant="outline" className="text-[10px]">Xweather</Badge>
-                  </CardTitle>
+                  <div>
+                    <CardTitle className="text-sm font-semibold">Predictive Hail Monitor</CardTitle>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Xweather</p>
+                  </div>
                   <div className="flex items-center gap-2">
                     {xweatherStatus?.configured ? (
                       <>
@@ -1051,13 +1032,13 @@ export default function MapStorms() {
                         </Button>
                       </>
                     ) : (
-                      <Badge variant="secondary" className="text-xs">API Keys Needed</Badge>
+                      <span className="text-xs text-muted-foreground">API Keys Needed</span>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-muted-foreground">
-                    Lightning-based nowcasting predicts hail 30-60 minutes before radar detection. Pre-warms leads before competitors know storms happened.
+                    Predicts hail 30-60 min before radar detection via lightning-based nowcasting.
                   </p>
                   {xweatherStatus?.lastFetchedAt && (
                     <p className="text-[10px] text-muted-foreground mt-1">
@@ -1065,17 +1046,13 @@ export default function MapStorms() {
                     </p>
                   )}
                   {activeThreats.length > 0 ? (
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-4 divide-y">
                       {activeThreats.map((threat) => (
-                        <div key={threat.id} className="p-3 border rounded-md" data-testid={`card-threat-${threat.id}`}>
+                        <div key={threat.id} className="py-4 first:pt-0" data-testid={`card-threat-${threat.id}`}>
                           <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant={threat.severe ? "destructive" : "default"} className="text-xs">
-                                {threat.maxSizeIN}" hail
-                              </Badge>
-                              <Badge variant="outline" className="text-xs">
-                                {threat.probSevere}% severe
-                              </Badge>
+                              <span className="text-sm font-semibold">{threat.maxSizeIN}" hail</span>
+                              <span className="text-xs text-muted-foreground">{threat.probSevere}% severe</span>
                               {threat.stormMotionMPH && (
                                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                                   <ArrowRight className="w-3 h-3" />
@@ -1083,9 +1060,7 @@ export default function MapStorms() {
                                 </span>
                               )}
                             </div>
-                            <Badge variant="secondary" className="text-xs">
-                              {threat.affectedLeads.length} leads
-                            </Badge>
+                            <span className="text-xs text-muted-foreground">{threat.affectedLeads.length} leads</span>
                           </div>
                           {threat.affectedLeads.length > 0 && (
                             <div className="space-y-1">
@@ -1093,7 +1068,7 @@ export default function MapStorms() {
                                 <div key={al.leadId} className="text-xs flex items-center justify-between gap-2 text-muted-foreground">
                                   <span className="truncate">{al.address}, {al.city}</span>
                                   <span className="shrink-0">
-                                    {al.etaMinutes !== null ? `ETA ~${al.etaMinutes}min` : `${al.distanceMiles}mi`}
+                                    {al.etaMinutes !== null ? `~${al.etaMinutes}min` : `${al.distanceMiles}mi`}
                                   </span>
                                 </div>
                               ))}
@@ -1106,7 +1081,7 @@ export default function MapStorms() {
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-muted-foreground text-center py-4">
+                    <p className="mt-4 text-xs text-muted-foreground text-center py-6">
                       {xweatherStatus?.configured
                         ? "No active hail threats detected"
                         : "Add XWEATHER_CLIENT_ID and XWEATHER_CLIENT_SECRET to enable predictions"}
@@ -1117,44 +1092,39 @@ export default function MapStorms() {
             </div>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Phone className="w-4 h-4" />
-                  Priority Call Queue
-                  {pendingQueue.length > 0 && (
-                    <Badge variant="secondary">{pendingQueue.length}</Badge>
-                  )}
-                </CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+                <CardTitle className="text-sm font-semibold">Priority Call Queue</CardTitle>
+                {pendingQueue.length > 0 && (
+                  <span className="text-xs text-muted-foreground">{pendingQueue.length} pending</span>
+                )}
               </CardHeader>
               <CardContent>
                 {queueLoading ? (
                   <div className="text-sm text-muted-foreground py-8 text-center">Loading response queue...</div>
                 ) : pendingQueue.length === 0 ? (
                   <div className="text-sm text-muted-foreground py-8 text-center">
-                    No pending calls. Run a storm scan or prediction scan to detect hail near your leads.
+                    No pending calls. Run a storm scan to detect hail near your leads.
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="divide-y">
                     {pendingQueue.map((item, idx) => {
                       const isPredicted = item.stormRun?.status === "predicted";
                       return (
-                        <div key={item.id} className="flex items-center justify-between gap-3 p-3 border rounded-md flex-wrap" data-testid={`card-queue-item-${item.id}`}>
+                        <div key={item.id} className="flex items-center justify-between gap-3 py-4 flex-wrap" data-testid={`card-queue-item-${item.id}`}>
                           <div className="flex items-center gap-3 flex-wrap min-w-0">
-                            <span className="text-sm font-mono text-muted-foreground w-6 shrink-0">#{idx + 1}</span>
-                            <Badge variant={item.priority >= 150 ? "destructive" : item.priority >= 100 ? "default" : "secondary"}>
-                              P{item.priority}
-                            </Badge>
+                            <span className="text-xs font-mono text-muted-foreground w-5 shrink-0">#{idx + 1}</span>
+                            <span className="text-xs font-semibold">P{item.priority}</span>
                             {isPredicted && (
-                              <Badge variant="outline" className="text-[10px]">
-                                <Zap className="w-2.5 h-2.5 mr-0.5" />
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                <Zap className="w-2.5 h-2.5" />
                                 Predicted
-                              </Badge>
+                              </span>
                             )}
                             <div className="min-w-0">
                               <div className="text-sm font-medium truncate">{item.lead?.address || "Unknown"}</div>
                               <div className="text-xs text-muted-foreground truncate">
-                                {item.lead?.ownerName} | {item.lead?.city?.trim()}, {item.lead?.county}
-                                {item.distanceMiles != null && ` | ${item.distanceMiles}mi from storm`}
+                                {item.lead?.ownerName} · {item.lead?.city?.trim()}, {item.lead?.county}
+                                {item.distanceMiles != null && ` · ${item.distanceMiles}mi`}
                               </div>
                             </div>
                           </div>
@@ -1196,28 +1166,25 @@ export default function MapStorms() {
             {recentRuns && recentRuns.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Storm Detection History
-                  </CardTitle>
+                  <CardTitle className="text-sm font-semibold">Detection History</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
+                  <div className="divide-y">
                     {recentRuns.slice(0, 20).map((run) => {
                       const isPredicted = run.status === "predicted";
                       return (
-                        <div key={run.id} className="flex items-center justify-between gap-4 p-2 border rounded-md text-sm flex-wrap" data-testid={`card-history-run-${run.id}`}>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className="text-xs">{run.status}</Badge>
+                        <div key={run.id} className="flex items-center justify-between gap-4 py-3 text-sm flex-wrap" data-testid={`card-history-run-${run.id}`}>
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-xs text-muted-foreground capitalize">{run.status}</span>
                             {isPredicted && (
-                              <Badge variant="outline" className="text-[10px]">
-                                <Zap className="w-2.5 h-2.5 mr-0.5" />
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                <Zap className="w-2.5 h-2.5" />
                                 Predicted
-                              </Badge>
+                              </span>
                             )}
-                            <span>{run.radarSignatureCount} sigs</span>
-                            <span className="text-muted-foreground">{run.affectedLeadCount} leads</span>
-                            <span className="text-muted-foreground">{run.maxHailProb}% prob</span>
+                            <span className="text-xs">{run.radarSignatureCount} sigs</span>
+                            <span className="text-xs text-muted-foreground">{run.affectedLeadCount} leads</span>
+                            <span className="text-xs text-muted-foreground">{run.maxHailProb}%</span>
                           </div>
                           <span className="text-xs text-muted-foreground">
                             {run.detectedAt ? new Date(run.detectedAt).toLocaleString() : ""}
@@ -1232,10 +1199,10 @@ export default function MapStorms() {
           </div>
         </TabsContent>
 
-        <TabsContent value="alerts" className="p-4 overflow-auto">
+        <TabsContent value="alerts" className="p-6 overflow-auto">
           <div className="space-y-6 max-w-4xl mx-auto">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <p className="text-sm text-muted-foreground">Configure storm monitors, alert thresholds, and notification recipients</p>
+              <p className="text-sm text-muted-foreground">Configure monitors, thresholds, and notification recipients</p>
               <Button size="sm" onClick={() => setShowCreate(!showCreate)} data-testid="button-new-config">
                 <Plus className="w-3 h-3 mr-1" />
                 New Alert Rule
@@ -1244,18 +1211,16 @@ export default function MapStorms() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Radio className="w-4 h-4" />
-                    NOAA Storm Monitor
-                  </CardTitle>
-                  <Badge variant={monitorStatus?.running ? "default" : "secondary"} className="text-xs">
-                    {monitorStatus?.running ? "Active" : "Off"}
-                  </Badge>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    Polls NOAA SWDI radar every 10 minutes for active hail signatures in your market area. Triggers alerts when hail is currently falling near leads.
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <span className="text-sm font-semibold">NOAA Storm Monitor</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${monitorStatus?.running ? "bg-emerald-500" : "bg-gray-400"}`} />
+                      <span className="text-xs text-muted-foreground">{monitorStatus?.running ? "Active" : "Off"}</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Polls NOAA SWDI radar every 10 minutes for hail signatures in your market area.
                   </p>
                   <div className="flex items-center gap-2">
                     {monitorStatus?.running ? (
@@ -1283,23 +1248,25 @@ export default function MapStorms() {
               </Card>
 
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Zap className="w-4 h-4" />
-                    Predictive Hail Monitor
-                    <Badge variant="outline" className="text-[10px]">Xweather</Badge>
-                  </CardTitle>
-                  <Badge variant={xweatherStatus?.running ? "default" : "secondary"} className="text-xs">
-                    {xweatherStatus?.running ? "Active" : xweatherStatus?.configured ? "Off" : "Not Configured"}
-                  </Badge>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    Lightning-based nowcasting predicts hail 30-60 minutes before radar detection. Polls every 2 minutes for threat polygons and sends pre-storm alerts to give your team a head start.
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div>
+                      <span className="text-sm font-semibold">Predictive Hail Monitor</span>
+                      <span className="text-[10px] text-muted-foreground ml-2">Xweather</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-2 h-2 rounded-full ${xweatherStatus?.running ? "bg-emerald-500" : "bg-gray-400"}`} />
+                      <span className="text-xs text-muted-foreground">
+                        {xweatherStatus?.running ? "Active" : xweatherStatus?.configured ? "Off" : "Not Configured"}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Lightning-based nowcasting predicts hail 30-60 min before radar. Polls every 2 minutes.
                   </p>
                   {!xweatherStatus?.configured ? (
-                    <div className="text-xs text-muted-foreground p-3 border rounded-md bg-muted/30">
-                      Add <code className="text-[11px] bg-muted px-1 rounded">XWEATHER_CLIENT_ID</code> and <code className="text-[11px] bg-muted px-1 rounded">XWEATHER_CLIENT_SECRET</code> secrets to enable predictive monitoring.
+                    <div className="text-xs text-muted-foreground p-3 border rounded-md">
+                      Add <code className="text-[11px] bg-muted px-1 rounded-md">XWEATHER_CLIENT_ID</code> and <code className="text-[11px] bg-muted px-1 rounded-md">XWEATHER_CLIENT_SECRET</code> to enable.
                     </div>
                   ) : (
                     <div className="flex items-center gap-2">
@@ -1326,9 +1293,9 @@ export default function MapStorms() {
                     </div>
                   )}
                   {xweatherStatus?.lastFetchedAt && (
-                    <p className="text-[10px] text-muted-foreground">
+                    <p className="text-[10px] text-muted-foreground mt-3">
                       Last checked: {new Date(xweatherStatus.lastFetchedAt).toLocaleString()}
-                      {xweatherStatus.activeThreats > 0 && ` | ${xweatherStatus.activeThreats} active threats`}
+                      {xweatherStatus.activeThreats > 0 && ` · ${xweatherStatus.activeThreats} active threats`}
                     </p>
                   )}
                 </CardContent>
@@ -1337,13 +1304,11 @@ export default function MapStorms() {
 
             {showCreate && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Create Alert Rule</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="p-5 space-y-5">
+                  <h3 className="text-sm font-semibold">Create Alert Rule</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Rule Name</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Rule Name</Label>
                       <Input
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
@@ -1351,8 +1316,8 @@ export default function MapStorms() {
                         data-testid="input-config-name"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Min Hail Size (inches)</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Min Hail Size (in)</Label>
                       <Input
                         type="number"
                         value={newMinHailSize}
@@ -1363,10 +1328,10 @@ export default function MapStorms() {
                         step="0.25"
                         data-testid="input-min-hail-size"
                       />
-                      <p className="text-[10px] text-muted-foreground">Min predicted hail size to trigger alert</p>
+                      <p className="text-[10px] text-muted-foreground">Min size to trigger alert</p>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Min Severe Probability (%)</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Min Severe Prob (%)</Label>
                       <Input
                         type="number"
                         value={newMinProbSevere}
@@ -1377,28 +1342,27 @@ export default function MapStorms() {
                         step="5"
                         data-testid="input-min-prob-severe"
                       />
-                      <p className="text-[10px] text-muted-foreground">Min probability for Xweather prediction alerts</p>
+                      <p className="text-[10px] text-muted-foreground">Min probability for prediction alerts</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-6 flex-wrap">
                     <div className="flex items-center gap-2">
                       <Switch checked={newSms} onCheckedChange={setNewSms} data-testid="switch-sms" />
-                      <Label>SMS Alerts</Label>
+                      <Label className="text-xs">SMS</Label>
                     </div>
                     <div className="flex items-center gap-2">
                       <Switch checked={newEmail} onCheckedChange={setNewEmail} data-testid="switch-email" />
-                      <Label>Email Alerts</Label>
+                      <Label className="text-xs">Email</Label>
                     </div>
                     <div className="flex items-center gap-2">
                       <Switch checked={newPredictiveAlerts} onCheckedChange={setNewPredictiveAlerts} data-testid="switch-predictive" />
-                      <Label>Pre-Storm Alerts</Label>
-                      <Badge variant="outline" className="text-[10px]">Xweather</Badge>
+                      <Label className="text-xs">Pre-Storm Alerts</Label>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Recipients</Label>
+                    <Label className="text-xs">Recipients</Label>
                     <div className="flex items-center gap-2 flex-wrap">
                       <select
                         value={recipientType}
@@ -1450,7 +1414,7 @@ export default function MapStorms() {
               ) : !configs || configs.length === 0 ? (
                 <Card>
                   <CardContent className="py-12 text-center">
-                    <Shield className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+                    <Shield className="w-8 h-8 mx-auto text-muted-foreground mb-3" />
                     <p className="text-sm text-muted-foreground">No alert rules configured yet.</p>
                     <p className="text-xs text-muted-foreground mt-1">Create one to get notified when storms hit your lead zones.</p>
                   </CardContent>
@@ -1460,26 +1424,26 @@ export default function MapStorms() {
                   const recipients = (config.recipients as Array<{ type: string; value: string }>) || [];
                   return (
                     <Card key={config.id} data-testid={`card-config-${config.id}`}>
-                      <CardContent className="pt-4">
+                      <CardContent className="p-5">
                         <div className="flex items-center justify-between gap-4 flex-wrap">
-                          <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-3 min-w-0 flex-wrap">
                             <Bell className="w-4 h-4 text-muted-foreground shrink-0" />
-                            <div>
+                            <div className="min-w-0">
                               <div className="font-medium text-sm">{config.name}</div>
                               <div className="text-xs text-muted-foreground">
-                                Min hail: {config.minHailSize}" | Min severe: {config.minProbSevere || 40}%
-                                {config.notifySms && " | SMS"}
-                                {config.notifyEmail && " | Email"}
-                                {config.predictiveAlerts !== false && " | Pre-storm"}
+                                {config.minHailSize}" min · {config.minProbSevere || 40}% severe
+                                {config.notifySms && " · SMS"}
+                                {config.notifyEmail && " · Email"}
+                                {config.predictiveAlerts !== false && " · Pre-storm"}
                               </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             {recipients.map((r, i) => (
-                              <Badge key={i} variant="outline" className="text-xs gap-1">
+                              <span key={i} className="text-xs text-muted-foreground flex items-center gap-1">
                                 {r.type === "sms" ? <Phone className="w-2.5 h-2.5" /> : <Mail className="w-2.5 h-2.5" />}
                                 {r.value}
-                              </Badge>
+                              </span>
                             ))}
                             <Switch
                               checked={config.isActive}
@@ -1507,23 +1471,22 @@ export default function MapStorms() {
             {alertHistoryData && alertHistoryData.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Alert History</CardTitle>
+                  <CardTitle className="text-sm font-semibold">Alert History</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
+                  <div className="divide-y">
                     {alertHistoryData.slice(0, 20).map((alert) => (
-                      <div key={alert.id} className="flex items-center justify-between gap-4 p-2 border rounded-md text-sm flex-wrap" data-testid={`card-alert-history-${alert.id}`}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant={alert.status === "sent" ? "default" : alert.status === "failed" ? "destructive" : "secondary"} className="text-xs">
-                            {alert.status}
-                          </Badge>
-                          <span className="text-muted-foreground">{alert.channel}</span>
-                          <span className="truncate max-w-[200px]">{alert.recipient}</span>
+                      <div key={alert.id} className="flex items-center justify-between gap-4 py-3 text-sm flex-wrap" data-testid={`card-alert-history-${alert.id}`}>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className={`w-2 h-2 rounded-full ${alert.status === "sent" ? "bg-emerald-500" : alert.status === "failed" ? "bg-red-500" : "bg-gray-400"}`} />
+                          <span className="text-xs capitalize">{alert.status}</span>
+                          <span className="text-xs text-muted-foreground">{alert.channel}</span>
+                          <span className="text-xs truncate max-w-[200px]">{alert.recipient}</span>
                           {alert.message && alert.message.includes("PREDICTED") && (
-                            <Badge variant="outline" className="text-[10px]">
-                              <Zap className="w-2.5 h-2.5 mr-0.5" />
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                              <Zap className="w-2.5 h-2.5" />
                               Predictive
-                            </Badge>
+                            </span>
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground">

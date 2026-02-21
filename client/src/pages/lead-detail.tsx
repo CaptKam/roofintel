@@ -66,10 +66,10 @@ function DetailRow({
 }) {
   if (!value && value !== 0) return null;
   return (
-    <div className="flex items-start gap-3 py-2.5">
-      <Icon className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+    <div className="flex items-start gap-3.5 py-3">
+      <Icon className="w-4 h-4 text-muted-foreground/60 mt-0.5 flex-shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
         <div className="text-sm font-medium mt-0.5" data-testid={`detail-${label.toLowerCase().replace(/\s/g, "-")}`}>{value}</div>
       </div>
     </div>
@@ -160,11 +160,11 @@ export default function LeadDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="p-8 space-y-6">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2"><Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card></div>
-          <div><Card><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card></div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2"><Card className="shadow-sm"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card></div>
+          <div><Card className="shadow-sm"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card></div>
         </div>
       </div>
     );
@@ -172,7 +172,7 @@ export default function LeadDetail() {
 
   if (!lead) {
     return (
-      <div className="p-6">
+      <div className="p-8">
         <p className="text-muted-foreground">Lead not found</p>
       </div>
     );
@@ -184,7 +184,7 @@ export default function LeadDetail() {
   const claimWindow = lead.claimWindowOpen ?? (daysSinceHail !== null ? daysSinceHail <= 730 : null);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-8 space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
         <Link href="/leads">
           <Button variant="ghost" size="icon" data-testid="button-back-to-leads">
@@ -192,7 +192,7 @@ export default function LeadDetail() {
           </Button>
         </Link>
         <div className="flex-1 min-w-0">
-          <h2 className="text-xl font-semibold tracking-tight truncate" data-testid="text-lead-address">{lead.address}</h2>
+          <h2 className="text-2xl font-bold tracking-tight truncate" data-testid="text-lead-address">{lead.address}</h2>
           <p className="text-sm text-muted-foreground">{lead.city}, {lead.county} County, {lead.state} {lead.zipCode}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
@@ -201,16 +201,13 @@ export default function LeadDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 space-y-4">
-          <Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-primary" />
-                Property Details
-              </CardTitle>
+              <CardTitle className="text-base font-semibold">Property Details</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-6 pt-0">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
                 <DetailRow icon={Ruler} label="Building Sqft" value={`${lead.sqft.toLocaleString()} sqft`} />
                 <DetailRow icon={Ruler} label="Est. Roof Area" value={`~${roofArea.toLocaleString()} sqft`} />
@@ -242,33 +239,30 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <CloudLightning className="w-4 h-4 text-primary" />
-                Hail Exposure
-              </CardTitle>
+              <CardTitle className="text-base font-semibold">Hail Exposure</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-6 pt-0">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-muted/50 rounded-md">
-                  <p className="text-2xl font-bold" data-testid="text-hail-events">{lead.hailEvents}</p>
+                <div className="text-center p-5 bg-muted/30 rounded-xl">
+                  <p className="text-3xl font-bold" data-testid="text-hail-events">{lead.hailEvents}</p>
                   <p className="text-xs text-muted-foreground mt-1">Total Hail Events</p>
                 </div>
-                <div className="text-center p-4 bg-muted/50 rounded-md">
-                  <p className="text-2xl font-bold" data-testid="text-last-hail-date">{lead.lastHailDate || "N/A"}</p>
+                <div className="text-center p-5 bg-muted/30 rounded-xl">
+                  <p className="text-3xl font-bold" data-testid="text-last-hail-date">{lead.lastHailDate || "N/A"}</p>
                   <p className="text-xs text-muted-foreground mt-1">Last Hail Date</p>
                 </div>
-                <div className="text-center p-4 bg-muted/50 rounded-md">
-                  <p className="text-2xl font-bold" data-testid="text-last-hail-size">
+                <div className="text-center p-5 bg-muted/30 rounded-xl">
+                  <p className="text-3xl font-bold" data-testid="text-last-hail-size">
                     {lead.lastHailSize ? `${lead.lastHailSize}"` : "N/A"}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Largest Hail Size</p>
                 </div>
-                <div className="text-center p-4 bg-muted/50 rounded-md">
+                <div className="text-center p-5 bg-muted/30 rounded-xl">
                   {claimWindow !== null ? (
                     <>
-                      <p className={`text-2xl font-bold ${claimWindow ? "text-emerald-600" : "text-amber-500"}`} data-testid="text-claim-window">
+                      <p className={`text-3xl font-bold ${claimWindow ? "text-emerald-600" : "text-amber-500"}`} data-testid="text-claim-window">
                         {claimWindow ? "OPEN" : "CLOSED"}
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
@@ -278,7 +272,7 @@ export default function LeadDetail() {
                     </>
                   ) : (
                     <>
-                      <p className="text-2xl font-bold text-muted-foreground" data-testid="text-claim-window">N/A</p>
+                      <p className="text-3xl font-bold text-muted-foreground" data-testid="text-claim-window">N/A</p>
                       <p className="text-xs text-muted-foreground mt-1">Insurance Claim Window</p>
                     </>
                   )}
@@ -288,26 +282,23 @@ export default function LeadDetail() {
           </Card>
 
           {permitHistory && permitHistory.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-primary" />
-                  Permit History
-                  <Badge variant="secondary" className="ml-auto">{permitHistory.length} permit{permitHistory.length !== 1 ? 's' : ''}</Badge>
-                </CardTitle>
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">Permit History</CardTitle>
+                <Badge variant="secondary" className="ml-auto">{permitHistory.length} permit{permitHistory.length !== 1 ? 's' : ''}</Badge>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
+              <CardContent className="p-6 pt-0">
+                <div className="space-y-3">
                   {permitHistory.map((permit) => {
                     const isRoofing = (permit.workDescription || '').toLowerCase().includes('roof') || (permit.permitType || '').toLowerCase().includes('roof');
                     return (
                       <div
                         key={permit.id}
-                        className={`p-3 rounded-md border text-sm ${isRoofing ? 'border-primary/30 bg-primary/5' : ''}`}
+                        className={`p-4 rounded-xl border text-sm ${isRoofing ? 'border-primary/30 bg-primary/5' : ''}`}
                         data-testid={`permit-${permit.id}`}
                       >
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-xs">{permit.issuedDate || 'No date'}</span>
                             {isRoofing && <Badge variant="default" className="text-[10px]">Roofing</Badge>}
                             <Badge variant="outline" className="text-[10px]">{permit.permitType}</Badge>
@@ -334,30 +325,27 @@ export default function LeadDetail() {
             </Card>
           )}
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-primary" />
-                Valuation
-              </CardTitle>
+              <CardTitle className="text-base font-semibold">Valuation</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <CardContent className="p-6 pt-0">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 <div>
-                  <p className="text-xs text-muted-foreground">Improvement Value</p>
-                  <p className="text-lg font-semibold mt-0.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Improvement Value</p>
+                  <p className="text-2xl font-semibold mt-1">
                     {lead.improvementValue ? `$${lead.improvementValue.toLocaleString()}` : "N/A"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Land Value</p>
-                  <p className="text-lg font-semibold mt-0.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Land Value</p>
+                  <p className="text-2xl font-semibold mt-1">
                     {lead.landValue ? `$${lead.landValue.toLocaleString()}` : "N/A"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Total Assessed Value</p>
-                  <p className="text-lg font-semibold mt-0.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Assessed Value</p>
+                  <p className="text-2xl font-semibold mt-1">
                     {lead.totalValue ? `$${lead.totalValue.toLocaleString()}` : "N/A"}
                   </p>
                 </div>
@@ -366,25 +354,21 @@ export default function LeadDetail() {
           </Card>
         </div>
 
-        <div className="space-y-4">
-          <Card>
+        <div className="space-y-6">
+          <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <User className="w-4 h-4 text-primary" />
-                Owner / Contact
-              </CardTitle>
+              <CardTitle className="text-base font-semibold">Owner / Contact</CardTitle>
               {confidence && (
                 <Badge
                   variant={confidence.level === "high" ? "default" : confidence.level === "medium" ? "secondary" : "outline"}
                   className="text-[10px]"
                   data-testid="badge-contact-confidence"
                 >
-                  <ShieldCheck className="w-3 h-3 mr-1" />
-                  {confidence.level === "high" ? "High" : confidence.level === "medium" ? "Medium" : "Low"} Confidence ({confidence.score}/100)
+                  {confidence.level === "high" ? "High" : confidence.level === "medium" ? "Medium" : "Low"} ({confidence.score}/100)
                 </Badge>
               )}
             </CardHeader>
-            <CardContent className="space-y-1">
+            <CardContent className="p-6 pt-0 space-y-1">
               <DetailRow icon={User} label="Owner" value={lead.ownerName} />
               <DetailRow icon={Building2} label="Owner Type" value={lead.ownerType} />
               {lead.llcName && <DetailRow icon={FileText} label="LLC Name" value={lead.llcName} />}
@@ -410,10 +394,10 @@ export default function LeadDetail() {
                 icon={Phone}
                 label="Phone"
                 value={lead.ownerPhone ? (
-                  <span className="flex items-center gap-2">
+                  <span className="flex items-center gap-2 flex-wrap">
                     <a href={`tel:${lead.ownerPhone}`} className="text-primary hover:underline">{lead.ownerPhone}</a>
                     {lead.phoneSource && (
-                      <Badge variant="outline" className="text-[10px]">via {lead.phoneSource}</Badge>
+                      <span className="text-[10px] text-muted-foreground">via {lead.phoneSource}</span>
                     )}
                   </span>
                 ) : null}
@@ -430,14 +414,11 @@ export default function LeadDetail() {
           </Card>
 
           {(lead.businessName || lead.contactName || lead.businessWebsite || lead.webResearchedAt) && (
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Search className="w-4 h-4 text-primary" />
-                  Business & Decision Maker
-                </CardTitle>
+                <CardTitle className="text-base font-semibold">Business & Decision Maker</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1">
+              <CardContent className="p-6 pt-0 space-y-1">
                 {lead.businessName && (
                   <DetailRow icon={Building2} label="Business Name" value={lead.businessName} />
                 )}
@@ -485,9 +466,7 @@ export default function LeadDetail() {
                   />
                 )}
                 {lead.contactSource && (
-                  <Badge variant="outline" className="text-[10px] mt-1">
-                    via {lead.contactSource}
-                  </Badge>
+                  <p className="text-[10px] text-muted-foreground pt-1">via {lead.contactSource}</p>
                 )}
                 {lead.webResearchedAt && !lead.contactName && !lead.businessWebsite && (
                   <p className="text-xs text-muted-foreground py-2">Researched - no website or staff found</p>
@@ -501,31 +480,27 @@ export default function LeadDetail() {
             </Card>
           )}
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Fingerprint className="w-4 h-4 text-primary" />
-                Owner Intelligence
-              </CardTitle>
-              <div className="flex items-center gap-1.5">
+              <CardTitle className="text-base font-semibold">Owner Intelligence</CardTitle>
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {(lead as any).ownershipFlag && (
                   <Badge
                     variant="destructive"
                     className="text-[10px]"
                     data-testid="badge-ownership-flag"
                   >
-                    <ShieldAlert className="w-3 h-3 mr-0.5" />
                     {(lead as any).ownershipFlag}
                   </Badge>
                 )}
                 {intelligence?.score !== undefined && intelligence.score > 0 && (
-                  <Badge variant={intelligence.score >= 70 ? "default" : "outline"} className="text-[10px]" data-testid="badge-intel-score">
+                  <span className="text-xs text-muted-foreground font-medium" data-testid="badge-intel-score">
                     {intelligence.score}/100
-                  </Badge>
+                  </span>
                 )}
               </div>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="p-6 pt-0 space-y-2">
               {intelligence?.managingMember ? (
                 <>
                   <DetailRow icon={User} label="Real Owner" value={
@@ -545,33 +520,30 @@ export default function LeadDetail() {
                     } />
                   )}
                   {intelligence.llcChain && intelligence.llcChain.length > 0 && (
-                    <div className="pt-1">
-                      <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1"><LinkIcon className="w-3 h-3" /> LLC Chain</p>
+                    <div className="pt-2">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">LLC Chain</p>
                       {intelligence.llcChain.slice(0, 3).map((link, i) => (
-                        <div key={i} className="flex items-center gap-1 text-xs pl-3 py-0.5">
-                          <span className="text-muted-foreground">{i > 0 ? "  " : ""}</span>
-                          <span>{link.entityName}</span>
-                          {link.status && <Badge variant="outline" className="text-[8px] no-default-active-elevate">{link.status}</Badge>}
+                        <div key={i} className="flex items-center gap-2 text-xs pl-3 py-1">
+                          <span className="text-muted-foreground/60">{i > 0 ? "  " : ""}</span>
+                          <span className="font-medium">{link.entityName}</span>
+                          {link.status && <span className="text-[10px] text-muted-foreground">({link.status})</span>}
                         </div>
                       ))}
                     </div>
                   )}
                   {intelligence.sources && intelligence.sources.length > 0 && (
-                    <div className="flex gap-1 flex-wrap pt-1">
-                      {intelligence.sources.map(s => (
-                        <Badge key={s} variant="outline" className="text-[10px] no-default-active-elevate">{s}</Badge>
-                      ))}
-                    </div>
+                    <p className="text-[10px] text-muted-foreground pt-2">
+                      Sources: {intelligence.sources.join(", ")}
+                    </p>
                   )}
                   {intelligence.generatedAt && (
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-2">
                       <p className="text-[10px] text-muted-foreground">
                         Intel gathered: {new Date(intelligence.generatedAt).toLocaleDateString()}
                       </p>
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="ghost"
-                        className="h-5 px-2 text-[10px]"
                         onClick={() => runIntelMutation.mutate()}
                         disabled={runIntelMutation.isPending}
                         data-testid="button-rerun-intel"
@@ -582,8 +554,8 @@ export default function LeadDetail() {
                   )}
                 </>
               ) : (
-                <div className="text-center py-3">
-                  <p className="text-xs text-muted-foreground mb-2">
+                <div className="text-center py-6">
+                  <p className="text-sm text-muted-foreground mb-3">
                     {intelligence?.generatedAt ? "No real owner found yet" : "Not investigated yet"}
                   </p>
                   <Button
@@ -602,45 +574,42 @@ export default function LeadDetail() {
           </Card>
 
           {intelligence?.buildingContacts && intelligence.buildingContacts.length > 0 && (
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <HardHat className="w-4 h-4 text-primary" />
-                  Building Contacts
-                </CardTitle>
-                <Badge variant="outline" className="text-[10px] no-default-active-elevate" data-testid="badge-building-contacts-count">
+                <CardTitle className="text-base font-semibold">Building Contacts</CardTitle>
+                <span className="text-xs text-muted-foreground" data-testid="badge-building-contacts-count">
                   {intelligence.buildingContacts.length} found
-                </Badge>
+                </span>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="p-6 pt-0 space-y-4">
                 {intelligence.buildingContacts.slice(0, 8).map((contact, i) => (
                   <div key={i} className="space-y-1" data-testid={`building-contact-${i}`}>
                     <div className="flex items-center gap-2">
-                      <UserCheck className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                      <UserCheck className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
                       <span className="text-sm font-medium" data-testid={`text-building-contact-name-${i}`}>{contact.name}</span>
                     </div>
-                    <div className="pl-5 space-y-0.5">
+                    <div className="pl-6 space-y-0.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant="outline" className="text-[10px] no-default-active-elevate" data-testid={`badge-building-contact-role-${i}`}>{contact.role}</Badge>
+                        <span className="text-xs text-muted-foreground" data-testid={`badge-building-contact-role-${i}`}>{contact.role}</span>
                         {contact.company && (
                           <span className="text-xs text-muted-foreground" data-testid={`text-building-contact-company-${i}`}>{contact.company}</span>
                         )}
                       </div>
                       {contact.phone && (
                         <div className="flex items-center gap-1.5 text-xs">
-                          <Phone className="w-3 h-3 text-muted-foreground" />
+                          <Phone className="w-3 h-3 text-muted-foreground/60" />
                           <a href={`tel:${contact.phone}`} className="text-primary hover:underline" data-testid={`link-building-contact-phone-${i}`}>{contact.phone}</a>
                         </div>
                       )}
                       {contact.email && (
                         <div className="flex items-center gap-1.5 text-xs">
-                          <Mail className="w-3 h-3 text-muted-foreground" />
+                          <Mail className="w-3 h-3 text-muted-foreground/60" />
                           <a href={`mailto:${contact.email}`} className="text-primary hover:underline" data-testid={`link-building-contact-email-${i}`}>{contact.email}</a>
                         </div>
                       )}
                       <span className="text-[10px] text-muted-foreground" data-testid={`text-building-contact-source-${i}`}>{contact.source}</span>
                     </div>
-                    {i < intelligence.buildingContacts!.length - 1 && i < 7 && <Separator className="mt-2" />}
+                    {i < intelligence.buildingContacts!.length - 1 && i < 7 && <Separator className="mt-3" />}
                   </div>
                 ))}
               </CardContent>
@@ -648,24 +617,21 @@ export default function LeadDetail() {
           )}
 
           {intelligence?.dossier?.skipTraceHits && intelligence.dossier.skipTraceHits.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <Database className="w-4 h-4 text-primary" />
-                  Skip Trace / Provenance
-                </CardTitle>
-                <Badge variant="outline" className="text-[10px] no-default-active-elevate" data-testid="badge-skip-trace-count">
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold">Skip Trace / Provenance</CardTitle>
+                <span className="text-xs text-muted-foreground" data-testid="badge-skip-trace-count">
                   {intelligence.dossier.skipTraceHits.length} claims
-                </Badge>
+                </span>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="p-6 pt-0 space-y-3">
                 {intelligence.dossier.skipTraceHits.slice(0, 12).map((hit: any, i: number) => (
-                  <div key={i} className="border rounded-md p-2 space-y-1" data-testid={`skip-trace-hit-${i}`}>
+                  <div key={i} className="border rounded-xl p-3 space-y-1" data-testid={`skip-trace-hit-${i}`}>
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium">{hit.fieldName}</span>
-                      <Badge variant={hit.confidence >= 70 ? "default" : "outline"} className="text-[10px] no-default-active-elevate" data-testid={`badge-skip-confidence-${i}`}>
+                      <span className="text-xs text-muted-foreground font-medium" data-testid={`badge-skip-confidence-${i}`}>
                         {hit.confidence}%
-                      </Badge>
+                      </span>
                     </div>
                     <p className="text-sm font-mono truncate" data-testid={`text-skip-value-${i}`}>{hit.fieldValue}</p>
                     <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
@@ -684,19 +650,16 @@ export default function LeadDetail() {
           )}
 
           {(lead.foreclosureFlag || lead.taxDelinquent || (lead.lienCount && lead.lienCount > 0) || (lead.violationCount && lead.violationCount > 0) || lead.floodZone) && (
-            <Card>
+            <Card className="shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-500" />
-                  Distress & Risk Signals
-                </CardTitle>
+                <CardTitle className="text-base font-semibold">Distress & Risk Signals</CardTitle>
                 {lead.distressScore !== undefined && lead.distressScore !== null && lead.distressScore > 0 && (
                   <Badge variant="destructive" className="text-[10px]" data-testid="badge-distress-score">
                     Distress: {lead.distressScore}
                   </Badge>
                 )}
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="p-6 pt-0 space-y-2">
                 {lead.foreclosureFlag && (
                   <DetailRow icon={Ban} label="Foreclosure" value={
                     <Badge variant="destructive" className="text-[10px]" data-testid="badge-foreclosure">Active Foreclosure</Badge>
@@ -730,14 +693,11 @@ export default function LeadDetail() {
             </Card>
           )}
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-primary" />
-                Compliance
-              </CardTitle>
+              <CardTitle className="text-base font-semibold">Compliance</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-6 pt-0">
               <DetailRow icon={Shield} label="Consent Status" value={
                 <Badge variant={lead.consentStatus === "granted" ? "default" : lead.consentStatus === "denied" || lead.consentStatus === "revoked" ? "destructive" : "secondary"} className="text-[10px]" data-testid="badge-consent-status">
                   {lead.consentStatus || "unknown"}
@@ -746,11 +706,11 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Lead Status</CardTitle>
+              <CardTitle className="text-base font-semibold">Lead Status</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="p-6 pt-0 space-y-4">
               <Select
                 value={lead.status}
                 onValueChange={(val) => updateMutation.mutate({ status: val })}
@@ -768,7 +728,7 @@ export default function LeadDetail() {
               </Select>
               <Separator />
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Notes</label>
+                <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">Notes</label>
                 <Textarea
                   value={notes || lead.notes || ""}
                   onChange={(e) => setNotes(e.target.value)}
@@ -779,7 +739,7 @@ export default function LeadDetail() {
                 />
                 <Button
                   size="sm"
-                  className="mt-2 w-full"
+                  className="mt-3 w-full"
                   onClick={() => updateMutation.mutate({ notes })}
                   disabled={updateMutation.isPending}
                   data-testid="button-save-notes"
@@ -814,11 +774,11 @@ function ScoreBreakdownCard({ leadId, leadScore }: { leadId: string; leadScore: 
   ];
 
   return (
-    <Card>
+    <Card className="shadow-sm">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Lead Score v3 Breakdown</CardTitle>
+        <CardTitle className="text-base font-semibold">Lead Score v3 Breakdown</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-6 pt-0">
         <div className="space-y-3">
           {breakdown ? categories.map(cat => {
             const item = breakdown[cat];
@@ -829,13 +789,13 @@ function ScoreBreakdownCard({ leadId, leadScore }: { leadId: string; leadScore: 
               {categories.map(cat => (
                 <div key={cat} className="space-y-1">
                   <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-1.5 w-full" />
+                  <Skeleton className="h-2 w-full" />
                 </div>
               ))}
             </div>
           )}
           <Separator />
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-medium">Total Score</span>
             <ScoreBadge score={leadScore} />
           </div>
@@ -849,11 +809,11 @@ function ScoreBar({ label, value, max }: { label: string; value: number; max: nu
   const pct = Math.min((value / max) * 100, 100);
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-xs text-muted-foreground">{label}</span>
         <span className="text-xs font-mono font-medium">{value}/{max}</span>
       </div>
-      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
         <div
           className="h-full bg-primary rounded-full transition-all duration-500"
           style={{ width: `${pct}%` }}

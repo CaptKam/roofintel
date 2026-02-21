@@ -1,6 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Building2, MapPin, Flame, Zap, Radio, Settings } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, Flame, Zap, Radio, Settings, ChevronRight } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -50,22 +50,22 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="px-5 pt-6 pb-4">
         <Link href="/">
-          <div className="flex items-center gap-2 cursor-pointer">
-            <div className="w-8 h-8 rounded-md bg-sidebar-primary flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-sidebar-primary-foreground" />
+          <div className="flex items-center gap-3 cursor-pointer group">
+            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
+              <Building2 className="w-[18px] h-[18px] text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-sm font-semibold text-sidebar-foreground tracking-tight">RoofIntel</h1>
-              <p className="text-[10px] text-sidebar-foreground/60 tracking-wider uppercase">Lead Intelligence</p>
+              <h1 className="text-[15px] font-semibold text-sidebar-foreground tracking-tight">RoofIntel</h1>
+              <p className="text-[11px] text-sidebar-foreground/50 font-medium">Lead Intelligence</p>
             </div>
           </div>
         </Link>
         {markets.length > 0 && (
-          <div className="mt-3">
+          <div className="mt-4">
             <Select value={activeMarket?.id || ""} onValueChange={setActiveMarketId}>
-              <SelectTrigger className="h-8 text-xs bg-sidebar-accent/50 border-sidebar-border" data-testid="select-market">
+              <SelectTrigger className="h-9 text-xs font-medium bg-sidebar-accent border-sidebar-border rounded-lg" data-testid="select-market">
                 <SelectValue placeholder="Select market" />
               </SelectTrigger>
               <SelectContent>
@@ -79,35 +79,37 @@ export function AppSidebar() {
           </div>
         )}
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="px-3">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">Main</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/35 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 mb-1">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={
-                      item.url === "/"
-                        ? location === "/"
-                        : item.url.includes("?")
-                          ? location === item.url.split("?")[0] && window.location.search === "?" + item.url.split("?")[1]
-                          : location.startsWith(item.url) && !window.location.search
-                    }
-                  >
-                    <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {mainNav.map((item) => {
+                const isActive = item.url === "/"
+                  ? location === "/"
+                  : item.url.includes("?")
+                    ? location === item.url.split("?")[0] && window.location.search === "?" + item.url.split("?")[1]
+                    : location.startsWith(item.url) && !window.location.search;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      className="h-9 rounded-lg transition-all duration-150"
+                    >
+                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
+                        <item.icon className="w-[18px] h-[18px]" />
+                        <span className="text-[13px] font-medium">{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">System</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/35 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 mb-1">System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {toolsNav.map((item) => (
@@ -115,10 +117,11 @@ export function AppSidebar() {
                   <SidebarMenuButton
                     asChild
                     isActive={location.startsWith(item.url)}
+                    className="h-9 rounded-lg transition-all duration-150"
                   >
                     <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
+                      <item.icon className="w-[18px] h-[18px]" />
+                      <span className="text-[13px] font-medium">{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -127,24 +130,30 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
-        <div className="flex items-center gap-2 flex-wrap">
+      <SidebarFooter className="px-5 py-4">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-medium text-sidebar-foreground/60">NOAA Live</span>
+            </div>
+            {monitorStatus?.running && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                <span className="text-[11px] font-medium text-sidebar-foreground/60">Storm Watch</span>
+              </div>
+            )}
+            {xweatherStatus?.running && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                <span className="text-[11px] font-medium text-sidebar-foreground/60">
+                  Prediction{(xweatherStatus?.activeThreats || 0) > 0 && ` (${xweatherStatus?.activeThreats})`}
+                </span>
+              </div>
+            )}
+          </div>
           {activeMarket && (
-            <Badge variant="outline" className="text-[10px]">{activeMarket.name}</Badge>
-          )}
-          <Badge variant="default" className="text-[10px]">NOAA Live</Badge>
-          {monitorStatus?.running && (
-            <Badge variant="default" className="text-[10px]">
-              <Radio className="w-2.5 h-2.5 mr-1" />
-              Storm Watch
-            </Badge>
-          )}
-          {xweatherStatus?.running && (
-            <Badge variant="default" className="text-[10px]">
-              <Zap className="w-2.5 h-2.5 mr-1" />
-              Prediction
-              {(xweatherStatus?.activeThreats || 0) > 0 && ` (${xweatherStatus?.activeThreats})`}
-            </Badge>
+            <p className="text-[10px] text-sidebar-foreground/35 font-medium">{activeMarket.name}</p>
           )}
         </div>
       </SidebarFooter>

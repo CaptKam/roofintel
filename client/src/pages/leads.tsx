@@ -136,19 +136,23 @@ export default function Leads() {
     setExporting(false);
   };
 
+  const unmaskedCount = !isLoading && leads ? leads.filter(l => l.managingMember).length : 0;
+
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-8 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Leads</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {isLoading ? "Loading..." : `${total.toLocaleString()} properties`} in your pipeline
-          </p>
-          {!isLoading && leads && (
-            <p className="text-xs text-muted-foreground mt-1">
-              {leads.filter(l => l.managingMember).length} unmasked
+          <h2 className="text-2xl font-bold tracking-tight">Leads</h2>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-muted-foreground">
+              {isLoading ? "Loading..." : `${total.toLocaleString()} properties`} in your pipeline
             </p>
-          )}
+            {!isLoading && leads && unmaskedCount > 0 && (
+              <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate text-[10px] font-normal" data-testid="badge-unmasked-count">
+                {unmaskedCount} unmasked
+              </Badge>
+            )}
+          </div>
         </div>
         <Button
           variant="outline"
@@ -163,12 +167,12 @@ export default function Leads() {
 
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[240px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
           <Input
             placeholder="Search address, owner, or city..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-11 rounded-xl bg-card"
             data-testid="input-search-leads"
           />
         </div>
@@ -195,8 +199,8 @@ export default function Leads() {
 
       {showFilters && (
         <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <CardContent className="p-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1.5 block">County</label>
                 <Select value={county} onValueChange={setCounty}>
@@ -274,108 +278,103 @@ export default function Leads() {
       )}
 
       {isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-0">
           {[...Array(6)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <Skeleton className="w-2 h-2 rounded-full" />
-                  <div className="flex-1">
-                    <Skeleton className="h-4 w-64 mb-2" />
-                    <Skeleton className="h-3 w-40" />
-                  </div>
-                  <Skeleton className="h-5 w-20" />
-                </div>
-              </CardContent>
-            </Card>
+            <div key={i} className="flex items-center gap-4 py-4 border-b border-border/50">
+              <Skeleton className="w-2 h-2 rounded-full" />
+              <div className="flex-1">
+                <Skeleton className="h-4 w-64 mb-2" />
+                <Skeleton className="h-3 w-40" />
+              </div>
+              <Skeleton className="h-5 w-20" />
+            </div>
           ))}
         </div>
       ) : leads && leads.length > 0 ? (
-        <div className="space-y-1.5">
+        <div>
           {leads.map((lead) => (
             <Link key={lead.id} href={`/leads/${lead.id}`}>
-              <Card className="hover-elevate cursor-pointer transition-colors" data-testid={`card-lead-${lead.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <ScoreDot score={lead.leadScore} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-medium" data-testid={`text-address-${lead.id}`}>{lead.address}</p>
-                        {lead.ownerType === "LLC" && (
-                          <Badge variant="outline" className="text-[10px]">{lead.llcName || "LLC"}</Badge>
-                        )}
-                        {(lead as any).ownershipFlag && (
-                          <Badge variant="destructive" className="text-[10px]" data-testid={`badge-ownership-${lead.id}`}>
-                            {(lead as any).ownershipFlag}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {lead.city}, {lead.county} Co.
-                        </span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Ruler className="w-3 h-3" />
-                          {lead.sqft.toLocaleString()} sqft
-                          {lead.stories > 1 && ` (~${Math.round(lead.sqft / lead.stories).toLocaleString()} roof)`}
-                        </span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Building2 className="w-3 h-3" />
-                          {lead.zoning}
-                        </span>
-                        {lead.roofLastReplaced && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            Roof: {lead.roofLastReplaced}
-                          </span>
-                        )}
-                        {lead.hailEvents > 0 && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <CloudLightning className="w-3 h-3" />
-                            {lead.hailEvents} hail hit{lead.hailEvents > 1 ? "s" : ""}
-                            {lead.claimWindowOpen && (
-                              <Badge variant="default" className="text-[9px] ml-0.5">Claimable</Badge>
-                            )}
-                          </span>
-                        )}
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <User className="w-3 h-3" />
-                          {lead.ownerName}
-                        </span>
-                        {lead.managingMember && (
-                          <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                            <Fingerprint className="w-3 h-3" />
-                            {lead.managingMember}
-                          </span>
-                        )}
-                        {(lead.ownerPhone || lead.contactPhone) && (
-                          <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                            <Phone className="w-3 h-3" />
-                            {lead.ownerPhone || lead.contactPhone}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <StatusBadge status={lead.status} />
-                      <ScoreBadge score={lead.leadScore} />
-                      <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
-                    </div>
+              <div
+                className="flex items-center gap-4 py-4 border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
+                data-testid={`card-lead-${lead.id}`}
+              >
+                <ScoreDot score={lead.leadScore} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-medium" data-testid={`text-address-${lead.id}`}>{lead.address}</p>
+                    {lead.ownerType === "LLC" && (
+                      <Badge variant="outline" className="text-[10px]">{lead.llcName || "LLC"}</Badge>
+                    )}
+                    {(lead as any).ownershipFlag && (
+                      <Badge variant="destructive" className="text-[10px]" data-testid={`badge-ownership-${lead.id}`}>
+                        {(lead as any).ownershipFlag}
+                      </Badge>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="flex items-center gap-4 mt-1 flex-wrap">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {lead.city}, {lead.county} Co.
+                    </span>
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Ruler className="w-3 h-3" />
+                      {lead.sqft.toLocaleString()} sqft
+                      {lead.stories > 1 && ` (~${Math.round(lead.sqft / lead.stories).toLocaleString()} roof)`}
+                    </span>
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Building2 className="w-3 h-3" />
+                      {lead.zoning}
+                    </span>
+                    {lead.roofLastReplaced && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        Roof: {lead.roofLastReplaced}
+                      </span>
+                    )}
+                    {lead.hailEvents > 0 && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <CloudLightning className="w-3 h-3" />
+                        {lead.hailEvents} hail hit{lead.hailEvents > 1 ? "s" : ""}
+                        {lead.claimWindowOpen && (
+                          <Badge variant="default" className="text-[9px] ml-0.5">Claimable</Badge>
+                        )}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      {lead.ownerName}
+                    </span>
+                    {lead.managingMember && (
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <Fingerprint className="w-3 h-3" />
+                        {lead.managingMember}
+                      </span>
+                    )}
+                    {(lead.ownerPhone || lead.contactPhone) && (
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <Phone className="w-3 h-3" />
+                        {lead.ownerPhone || lead.contactPhone}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <StatusBadge status={lead.status} />
+                  <ScoreBadge score={lead.leadScore} />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground/30" />
+                </div>
+              </div>
             </Link>
           ))}
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between gap-4 pt-3">
+            <div className="flex items-center justify-between gap-4 pt-6">
               <p className="text-xs text-muted-foreground">
                 Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString()}
               </p>
               <div className="flex items-center gap-1">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   disabled={page <= 1}
                   onClick={() => setPage(page - 1)}
@@ -384,7 +383,7 @@ export default function Leads() {
                   <ChevronLeft className="w-4 h-4 mr-1" />
                   Previous
                 </Button>
-                <div className="flex items-center gap-1 px-2">
+                <div className="flex items-center gap-0.5 px-2">
                   {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
                     let pageNum: number;
                     if (totalPages <= 7) {
@@ -397,20 +396,23 @@ export default function Leads() {
                       pageNum = page - 3 + i;
                     }
                     return (
-                      <Button
+                      <button
                         key={pageNum}
-                        variant={pageNum === page ? "default" : "ghost"}
-                        size="icon"
+                        className={`min-w-[2rem] h-8 text-sm rounded-lg transition-colors ${
+                          pageNum === page
+                            ? "bg-primary text-primary-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
                         onClick={() => setPage(pageNum)}
                         data-testid={`button-page-${pageNum}`}
                       >
                         {pageNum}
-                      </Button>
+                      </button>
                     );
                   })}
                 </div>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   disabled={page >= totalPages}
                   onClick={() => setPage(page + 1)}
@@ -424,15 +426,13 @@ export default function Leads() {
           )}
         </div>
       ) : (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <Building2 className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">No leads found</p>
-            <p className="text-xs text-muted-foreground/70 mt-1">
-              {hasFilters ? "Try adjusting your filters" : "Leads will appear here once data is loaded"}
-            </p>
-          </CardContent>
-        </Card>
+        <div className="py-20 text-center">
+          <Building2 className="w-10 h-10 text-muted-foreground/20 mx-auto mb-4" />
+          <p className="text-base font-medium text-muted-foreground">No leads found</p>
+          <p className="text-sm text-muted-foreground/60 mt-1.5">
+            {hasFilters ? "Try adjusting your filters" : "Leads will appear here once data is loaded"}
+          </p>
+        </div>
       )}
     </div>
   );
