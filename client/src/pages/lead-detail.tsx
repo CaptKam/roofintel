@@ -209,17 +209,19 @@ export default function LeadDetail() {
                   label="Roof Last Replaced"
                   value={lead.roofLastReplaced ? `${lead.roofLastReplaced}${roofAge ? ` (${roofAge} years ago)` : ""}` : "Unknown"}
                 />
-                {lead.lastRoofingPermitDate && (
-                  <DetailRow icon={FileText} label="Last Roofing Permit" value={
+                <DetailRow icon={FileText} label="Last Roofing Permit" value={
+                  lead.lastRoofingPermitDate ? (
                     <span>
                       {lead.lastRoofingPermitDate}
                       {lead.lastRoofingPermitType && <Badge variant="outline" className="ml-1 text-[10px]">{lead.lastRoofingPermitType}</Badge>}
                     </span>
-                  } />
-                )}
-                {lead.lastRoofingContractor && (
-                  <DetailRow icon={HardHat} label="Last Roofing Contractor" value={lead.lastRoofingContractor} />
-                )}
+                  ) : (
+                    <span className="text-muted-foreground">No permit on file</span>
+                  )
+                } />
+                <DetailRow icon={HardHat} label="Last Roofing Contractor" value={
+                  lead.lastRoofingContractor || <span className="text-muted-foreground">Unknown</span>
+                } />
               </div>
             </CardContent>
           </Card>
