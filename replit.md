@@ -12,7 +12,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **File Upload**: Multer (CSV property data uploads)
 
 ## Architecture
-- `client/src/pages/` - 5 core pages: dashboard, leads, lead-detail, map-storms (tabbed: Map/Storm Response/Alert Settings), admin (tabbed: Property Sources/Storm Data/Contact Enrichment/Intelligence/Roofing Permits/System)
+- `client/src/pages/` - 6 core pages: dashboard, leads, lead-detail, portfolios (Relationship Network Agent), map-storms (tabbed: Map/Storm Response/Alert Settings), admin (tabbed: Property Sources/Storm Data/Contact Enrichment/Intelligence/Roofing Permits/System)
 - `client/src/components/` - Shared components (app-sidebar with market selector, score-badge, status-badge, theme-provider, theme-toggle)
 - **Consolidated pages** (Feb 2026): Merged 12 pages → 5. Removed standalone hail-events, export, owner-intelligence, data-intelligence, storm-response, alert-config pages. Export folded into Leads. Storm/Map/Alerts combined into Map & Storms. Data Management + Data Intelligence + Owner Intelligence batch merged into Admin.
 - `server/routes.ts` - API endpoints
@@ -32,8 +32,9 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/owner-intelligence.ts` - 16-agent owner intelligence system using TX Comptroller PIR detail API for real officer extraction (TX SOS Deep, LLC Chain, TX Comptroller, Property Tax, People Search, Email Discovery, Google Business, Court Records, TREC License, TDLR License, HUD Multifamily, BBB Direct, Google Places Enhanced, Building Contacts, Skip Trace, Master Orchestrator)
 - `server/social-intel-agents.ts` - Social Intelligence sub-agents: TREC license lookup, TDLR property manager/contractor licenses, HUD multifamily database, BBB direct search, Google Places enhanced reverse-address lookup
 - `server/skip-trace-agent.ts` - Skip Trace Agent: 7 free official-records-first lookups (DFW building permits via Socrata, TX Comptroller sales tax, OpenCorporates officers, TCEQ environmental permits, WHOIS/RDAP, email pattern generation with MX verification, reverse address cross-reference)
+- `server/network-agent.ts` - Relationship Network Agent: owner clustering engine with fuzzy matching, LLC chain linking, portfolio discovery, and portfolio scoring
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
-- `shared/schema.ts` - Drizzle schema definitions and Zod validation (includes intelligenceClaims table for provenance tracking)
+- `shared/schema.ts` - Drizzle schema definitions and Zod validation (includes intelligenceClaims table for provenance tracking, portfolios and portfolio_leads tables)
 
 ## Key Features
 - **Dashboard**: Stats overview (total leads, hot leads, avg score, hail events), score distribution chart, county distribution pie chart, top scoring leads
@@ -46,6 +47,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **Contact Enrichment**: TX Open Data Portal-based owner lookup for LLC/Corp entities - finds taxpayer IDs, SOS file numbers, filing status (free, no API key)
 - **Phone Enrichment**: Cascading phone number lookup using Google Places API, OpenCorporates, and Serper web search - stops at first match to minimize cost
 - **Web Research Agent**: Scans business websites to find facility managers, property managers, and decision-makers with their phone numbers and emails
+- **Relationship Network Agent**: Portfolio discovery system that maps ownership connections across properties using fuzzy matching on owner names, LLC chains, registered agents, managing members, taxpayer IDs, and SOS file numbers. Scores portfolios by property count, roof area, hail exposure, and contact quality
 - **Predictive Hail Monitoring**: Xweather/Vaisala lightning-based nowcasting predicts hail 30-60 min before radar detection, with threat polygons, forecast paths, ETAs, and pre-storm SMS alerts
 - **Storm Response Dashboard**: Dual monitoring (NOAA reactive + Xweather predictive), prioritized call queue with distance/ETA ranking
 
@@ -99,6 +101,10 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `POST /api/xweather/monitor/stop` - Stop Xweather polling
 - `GET /api/leads/:id/claims` - Provenance claims for a lead (skip trace source evidence)
 - `GET /api/intelligence/skip-trace-status` - Skip Trace agent source availability
+- `POST /api/network/analyze` - Run Relationship Network Agent to discover owner portfolios (marketId)
+- `GET /api/network/stats` - Network analysis statistics (total portfolios, linked leads, avg portfolio size)
+- `GET /api/portfolios` - List all portfolios with lead counts and scores (optional search, sortBy)
+- `GET /api/portfolios/:id` - Portfolio detail with all linked leads
 
 ## Lead Scoring v3 (0-100) — Roofing Contractor Optimized
 - Roof age: up to 20 points (2 pts per year since last replacement, 10 pts default if unknown)

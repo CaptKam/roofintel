@@ -37,6 +37,7 @@ import {
   ShieldCheck,
   Scale,
   Fingerprint,
+  Network,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -537,6 +538,21 @@ export default function Admin() {
     },
     onError: () => {
       toast({ title: "Failed to start pipeline", variant: "destructive" });
+    },
+  });
+
+  const networkAnalysisMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/network/analyze", { marketId: dfwMarket?.id });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Network Analysis Complete", description: `Created ${data.portfoliosCreated} portfolios linking ${data.leadsLinked} properties` });
+      queryClient.invalidateQueries({ queryKey: ["/api/network/stats", dfwMarket?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolios", dfwMarket?.id] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Network analysis failed", description: err?.message, variant: "destructive" });
     },
   });
 
@@ -1507,6 +1523,38 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-base font-semibold">
+                Relationship Network Agent
+              </CardTitle>
+              <Button
+                size="sm"
+                onClick={() => networkAnalysisMutation.mutate()}
+                disabled={networkAnalysisMutation.isPending || !dfwMarket}
+                data-testid="button-analyze-network"
+              >
+                {networkAnalysisMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Network className="w-3 h-3 mr-1" />
+                )}
+                Analyze Network
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 space-y-3">
+              <p className="text-xs text-muted-foreground">
+                Discovers hidden connections between property owners, management companies, and LLC portfolios. Groups leads into portfolios by matching owner names, taxpayer IDs, SOS file numbers, registered agents, and LLC chain entities. Portfolio plays are the highest-ROI leads in commercial roofing.
+              </p>
+              <Link href="/portfolios">
+                <Button size="sm" variant="outline" data-testid="button-view-portfolios">
+                  <Network className="w-3 h-3 mr-1" />
+                  View Portfolio Network
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="roofing-permits" className="space-y-6">

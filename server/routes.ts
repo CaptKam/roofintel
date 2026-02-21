@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
+import { z } from "zod";
 import { storage } from "./storage";
 import { seedDatabase } from "./seed";
 import { importNoaaHailData, importNoaaMultiYear } from "./noaa-importer";
@@ -1443,6 +1444,63 @@ export async function registerRoutes(
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to add document", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Relationship Network / Portfolio Endpoints
+  // ============================================================
+
+  app.post("/api/network/analyze", async (req, res) => {
+    try {
+      const schema = z.object({ marketId: z.string().optional() });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.issues });
+      }
+      const { analyzeNetwork } = await import("./network-agent");
+      const result = await analyzeNetwork(parsed.data.marketId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Network analysis error:", error);
+      res.status(500).json({ message: "Failed to analyze network", error: error.message });
+    }
+  });
+
+  app.get("/api/network/stats", async (req, res) => {
+    try {
+      const marketId = req.query.marketId as string | undefined;
+      const { getNetworkStats } = await import("./network-agent");
+      const stats = await getNetworkStats(marketId);
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Network stats error:", error);
+      res.status(500).json({ message: "Failed to load network stats", error: error.message });
+    }
+  });
+
+  app.get("/api/portfolios", async (req, res) => {
+    try {
+      const marketId = req.query.marketId as string | undefined;
+      const sortBy = req.query.sortBy as string | undefined;
+      const { getPortfolios } = await import("./network-agent");
+      const portfolios = await getPortfolios(marketId, sortBy);
+      res.json(portfolios);
+    } catch (error: any) {
+      console.error("Portfolios fetch error:", error);
+      res.status(500).json({ message: "Failed to load portfolios", error: error.message });
+    }
+  });
+
+  app.get("/api/portfolios/:id", async (req, res) => {
+    try {
+      const { getPortfolioDetail } = await import("./network-agent");
+      const result = await getPortfolioDetail(req.params.id);
+      if (!result) return res.status(404).json({ message: "Portfolio not found" });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Portfolio detail error:", error);
+      res.status(500).json({ message: "Failed to load portfolio detail", error: error.message });
     }
   });
 

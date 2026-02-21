@@ -306,6 +306,42 @@ export const complianceConsent = pgTable("compliance_consent", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const portfolios = pgTable("portfolios", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id"),
+  name: text("name").notNull(),
+  keyOwner: text("key_owner").notNull(),
+  ownerType: text("owner_type").notNull().default("LLC"),
+  propertyCount: integer("property_count").notNull().default(0),
+  totalSqft: integer("total_sqft").notNull().default(0),
+  totalRoofArea: integer("total_roof_area").notNull().default(0),
+  totalValue: integer("total_value").notNull().default(0),
+  avgLeadScore: integer("avg_lead_score").notNull().default(0),
+  totalHailEvents: integer("total_hail_events").notNull().default(0),
+  claimWindowCount: integer("claim_window_count").notNull().default(0),
+  portfolioScore: integer("portfolio_score").notNull().default(0),
+  keyDecisionMaker: text("key_decision_maker"),
+  keyDecisionMakerTitle: text("key_decision_maker_title"),
+  keyPhone: text("key_phone"),
+  keyEmail: text("key_email"),
+  linkageType: text("linkage_type").notNull().default("owner_name"),
+  linkageKeys: text("linkage_keys").array(),
+  registeredAgent: text("registered_agent"),
+  managingMember: text("managing_member"),
+  llcEntities: text("llc_entities").array(),
+  metadata: jsonb("metadata"),
+  analyzedAt: timestamp("analyzed_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const portfolioLeads = pgTable("portfolio_leads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  portfolioId: varchar("portfolio_id").notNull(),
+  leadId: varchar("lead_id").notNull(),
+  linkReason: text("link_reason").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertMarketSchema = createInsertSchema(markets).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
 export const insertHailEventSchema = createInsertSchema(hailEvents).omit({ id: true });
@@ -321,6 +357,8 @@ export const insertRecordedDocumentSchema = createInsertSchema(recordedDocuments
 export const insertCodeViolationSchema = createInsertSchema(codeViolations).omit({ id: true });
 export const insertBuildingPermitSchema = createInsertSchema(buildingPermits).omit({ id: true, createdAt: true });
 export const insertComplianceConsentSchema = createInsertSchema(complianceConsent).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPortfolioSchema = createInsertSchema(portfolios).omit({ id: true, createdAt: true, analyzedAt: true });
+export const insertPortfolioLeadSchema = createInsertSchema(portfolioLeads).omit({ id: true, createdAt: true });
 
 export type Market = typeof markets.$inferSelect;
 export type InsertMarket = z.infer<typeof insertMarketSchema>;
@@ -352,6 +390,10 @@ export type BuildingPermit = typeof buildingPermits.$inferSelect;
 export type InsertBuildingPermit = z.infer<typeof insertBuildingPermitSchema>;
 export type ComplianceConsentRecord = typeof complianceConsent.$inferSelect;
 export type InsertComplianceConsent = z.infer<typeof insertComplianceConsentSchema>;
+export type Portfolio = typeof portfolios.$inferSelect;
+export type InsertPortfolio = z.infer<typeof insertPortfolioSchema>;
+export type PortfolioLead = typeof portfolioLeads.$inferSelect;
+export type InsertPortfolioLead = z.infer<typeof insertPortfolioLeadSchema>;
 
 export const leadFilterSchema = z.object({
   marketId: z.string().optional(),
