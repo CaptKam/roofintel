@@ -121,6 +121,9 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 
 ## API Endpoints (New)
 - `POST /api/leads/scan-roofing-permits` - Scan building permits for roofing work, match to leads by address, extract contractor/type info
+- `GET /api/permits/roofing-stats` - Roofing permit statistics (total, by year, top contractors, matched to leads)
+- `POST /api/permits/import-roofing` - Import roofing-specific permits from Dallas Open Data (10yr lookback, server-side keyword filter)
+- `GET /api/leads/:id/permits` - All building permits for a specific lead (by leadId or address match)
 - `POST /api/leads/recalculate-scores` - Recalculate all lead scores with v3 algorithm, compute roof area and claim window
 - `POST /api/leads/estimate-stories` - Estimate building stories from zoning/sqft, recalculate roof areas
 - `POST /api/leads/estimate-roof-type` - Estimate roof type and construction type from year built, zoning, sqft, imp value

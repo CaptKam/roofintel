@@ -18,12 +18,12 @@ import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweathe
 import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus } from "./owner-intelligence";
 import { getSkipTraceStatus } from "./skip-trace-agent";
 import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, getDallasRecordsStatus, addRecordedDocument } from "./dallas-records-agent";
-import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats } from "./permits-agent";
+import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
-import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter } from "@shared/schema";
+import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits } from "@shared/schema";
 import { db } from "./storage";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -861,6 +861,34 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/leads/:id/permits", async (req, res) => {
+    try {
+      const leadId = req.params.id;
+      const lead = await storage.getLead(leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const directMatches = await db
+        .select()
+        .from(buildingPermits)
+        .where(eq(buildingPermits.leadId, leadId))
+        .orderBy(sql`${buildingPermits.issuedDate} DESC`);
+
+      if (directMatches.length > 0) {
+        return res.json(directMatches);
+      }
+
+      const normalAddr = lead.address.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const allPermits = await db.select().from(buildingPermits).orderBy(sql`${buildingPermits.issuedDate} DESC`);
+      const addrMatches = allPermits.filter((p) => {
+        const pAddr = p.address.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return pAddr === normalAddr;
+      });
+      res.json(addrMatches);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get permits for lead" });
+    }
+  });
+
   app.get("/api/leads/:id/claims", async (req, res) => {
     try {
       const claims = await storage.getClaimsForLead(req.params.id);
@@ -957,6 +985,34 @@ export async function registerRoutes(
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to import Fort Worth permits", error: error.message });
+    }
+  });
+
+  app.get("/api/permits/roofing-stats", async (_req, res) => {
+    try {
+      const stats = await getRoofingPermitStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get roofing permit stats", error: error.message });
+    }
+  });
+
+  app.post("/api/permits/import-roofing", async (req, res) => {
+    try {
+      const { marketId, yearsBack, commercialOnly } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await importDallasRoofingPermits(marketId, {
+        yearsBack: yearsBack ?? 10,
+        commercialOnly: commercialOnly ?? false,
+      });
+      const matchResult = await matchPermitsToLeads(marketId);
+      res.json({
+        ...result,
+        matched: matchResult.matched,
+        unmatched: matchResult.unmatched,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to import roofing permits", error: error.message });
     }
   });
 

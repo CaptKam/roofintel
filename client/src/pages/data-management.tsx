@@ -228,6 +228,51 @@ export default function DataManagement() {
     },
   });
 
+  const { data: roofingStats } = useQuery<{
+    totalRoofingPermits: number;
+    matchedToLeads: number;
+    byYear: { year: string; count: number }[];
+    topContractors: { name: string; count: number }[];
+  }>({
+    queryKey: ["/api/permits/roofing-stats"],
+  });
+
+  const roofingPermitMutation = useMutation({
+    mutationFn: async ({ marketId, yearsBack }: { marketId: string; yearsBack?: number }) => {
+      const res = await apiRequest("POST", "/api/permits/import-roofing", { marketId, yearsBack: yearsBack ?? 10, commercialOnly: false });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Roofing permit import complete",
+        description: `Imported ${data.imported} roofing permits (${data.skipped} duplicates skipped). ${data.matched} matched to leads.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/permits/roofing-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Roofing permit import failed", description: err?.message || "Could not import roofing permits.", variant: "destructive" });
+    },
+  });
+
+  const scanRoofingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/leads/scan-roofing-permits", {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Roofing permit scan complete",
+        description: `Found ${data.totalRoofingPermits} roofing permits, updated ${data.leadsUpdated} leads with roof type and contractor info.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/permits/roofing-stats"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Roofing permit scan failed", description: err?.message || "Could not scan roofing permits.", variant: "destructive" });
+    },
+  });
+
   const { data: pipelineStats, isLoading: pipelineLoading } = useQuery<{
     total: number;
     withOwner: number;
@@ -904,6 +949,94 @@ export default function DataManagement() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Search className="w-4 h-4" />
+            Roofing Permit History (10 Years)
+          </CardTitle>
+          {roofingStats && (
+            <Badge variant="secondary" data-testid="badge-roofing-permit-count">
+              {roofingStats.totalRoofingPermits.toLocaleString()} permits
+            </Badge>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Pulls roofing-specific permits from Dallas Open Data going back 10 years. Identifies which properties have had roof work done,
+            who the contractor was, and what type of roofing system was installed (TPO, EPDM, shingle, metal, etc.).
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              onClick={() => dfwMarket && roofingPermitMutation.mutate({ marketId: dfwMarket.id, yearsBack: 10 })}
+              disabled={roofingPermitMutation.isPending || !dfwMarket}
+              data-testid="button-import-roofing-permits"
+            >
+              {roofingPermitMutation.isPending ? (
+                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+              ) : (
+                <Download className="w-3 h-3 mr-1" />
+              )}
+              Import Roofing Permits (10yr)
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => scanRoofingMutation.mutate()}
+              disabled={scanRoofingMutation.isPending}
+              data-testid="button-scan-roofing-permits"
+            >
+              {scanRoofingMutation.isPending ? (
+                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+              ) : (
+                <Search className="w-3 h-3 mr-1" />
+              )}
+              Scan & Match to Leads
+            </Button>
+          </div>
+          {roofingStats && roofingStats.totalRoofingPermits > 0 && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-md border">
+                  <p className="text-xs text-muted-foreground">Total Roofing Permits</p>
+                  <p className="text-lg font-semibold" data-testid="text-total-roofing-permits">{roofingStats.totalRoofingPermits.toLocaleString()}</p>
+                </div>
+                <div className="p-3 rounded-md border">
+                  <p className="text-xs text-muted-foreground">Matched to Leads</p>
+                  <p className="text-lg font-semibold" data-testid="text-matched-roofing-permits">{roofingStats.matchedToLeads.toLocaleString()}</p>
+                </div>
+              </div>
+              {roofingStats.byYear.length > 0 && (
+                <div className="p-3 rounded-md border">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Permits by Year</p>
+                  <div className="flex flex-wrap gap-2">
+                    {roofingStats.byYear.slice(0, 12).map((y) => (
+                      <div key={y.year} className="text-xs px-2 py-1 bg-muted rounded">
+                        <span className="font-medium">{y.year}</span>: {y.count.toLocaleString()}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {roofingStats.topContractors.length > 0 && (
+                <div className="p-3 rounded-md border">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Top Roofing Contractors</p>
+                  <div className="space-y-1">
+                    {roofingStats.topContractors.slice(0, 5).map((c, i) => (
+                      <div key={i} className="flex justify-between text-xs">
+                        <span className="truncate max-w-[250px]">{c.name}</span>
+                        <Badge variant="secondary" className="text-xs">{c.count}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">

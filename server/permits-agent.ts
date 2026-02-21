@@ -456,6 +456,195 @@ export async function matchPermitsToLeads(
   return { matched, unmatched };
 }
 
+const ROOFING_KEYWORDS = [
+  "ROOF", "RE-ROOF", "REROOF", "ROOFING", "TEAR OFF", "TEAR-OFF",
+  "SHINGLE", "TPO", "EPDM", "MODIFIED BITUMEN", "MOD BIT", "BUILT-UP",
+  "BUR ", "METAL ROOF", "FLAT ROOF",
+];
+
+export async function importDallasRoofingPermits(
+  marketId: string,
+  options?: { yearsBack?: number; commercialOnly?: boolean }
+): Promise<{ imported: number; skipped: number; total: number; errors: string[] }> {
+  const yearsBack = options?.yearsBack ?? 10;
+  const commercialOnly = options?.commercialOnly ?? false;
+
+  let imported = 0;
+  let skipped = 0;
+  let total = 0;
+  const errors: string[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  const cutoffDate = new Date();
+  cutoffDate.setFullYear(cutoffDate.getFullYear() - yearsBack);
+  const cutoffStr = `${cutoffDate.getFullYear()}-${String(cutoffDate.getMonth() + 1).padStart(2, '0')}-${String(cutoffDate.getDate()).padStart(2, '0')}T00:00:00`;
+
+  console.log(`[Dallas Roofing Permits] Starting import for market ${marketId}, yearsBack=${yearsBack}, cutoff=${cutoffStr}`);
+
+  while (hasMore) {
+    const whereClause = `upper(work_description) like '%ROOF%' OR upper(permit_type) like '%ROOF%'`;
+    const params = new URLSearchParams({
+      "$limit": String(PAGE_SIZE),
+      "$offset": String(offset),
+      "$order": "issued_date DESC",
+      "$where": whereClause,
+    });
+
+    try {
+      const response = await fetchWithTimeout(`${DALLAS_PERMITS_URL}?${params}`, 60000);
+      if (!response.ok) {
+        errors.push(`Dallas Roofing Permits API error ${response.status}: ${response.statusText}`);
+        break;
+      }
+
+      const records: any[] = await response.json();
+      if (records.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      total += records.length;
+      const batch: InsertBuildingPermit[] = [];
+
+      let hitCutoff = false;
+      for (const record of records) {
+        const issuedDate = parseDallasDate(record.issued_date);
+        if (issuedDate && issuedDate < cutoffStr.split("T")[0]) {
+          hitCutoff = true;
+          continue;
+        }
+
+        if (commercialOnly && !isCommercialLandUse(record.land_use)) {
+          continue;
+        }
+
+        const permitNumber = record.permit_number;
+        if (!permitNumber) continue;
+
+        const address = record.street_address?.trim();
+        if (!address) continue;
+
+        const sourcePermitId = `dallas_permit_${permitNumber}`;
+
+        const existing = await db
+          .select({ id: buildingPermits.id })
+          .from(buildingPermits)
+          .where(eq(buildingPermits.sourcePermitId, sourcePermitId))
+          .limit(1);
+
+        if (existing.length > 0) {
+          skipped++;
+          continue;
+        }
+
+        const contractorPhone = extractPhoneFromContractor(record.contractor);
+        const estimatedValue = record.value ? parseFloat(record.value) : null;
+        const sqftVal = record.area ? parseInt(record.area, 10) : null;
+
+        batch.push({
+          marketId,
+          permitNumber,
+          permitType: record.permit_type || "Unknown",
+          issuedDate,
+          address,
+          city: "Dallas",
+          zipCode: record.zip_code || null,
+          contractor: record.contractor || null,
+          contractorPhone,
+          owner: null,
+          workDescription: record.work_description || null,
+          estimatedValue: isNaN(estimatedValue as number) ? null : estimatedValue,
+          sqft: isNaN(sqftVal as number) ? null : sqftVal,
+          landUse: record.land_use || null,
+          status: null,
+          source: "dallas_open_data",
+          sourcePermitId,
+          metadata: {
+            mapsco: record.mapsco,
+            roofingImport: true,
+          },
+        });
+
+        if (batch.length >= 100) {
+          await db.insert(buildingPermits).values(batch);
+          imported += batch.length;
+          batch.length = 0;
+        }
+      }
+
+      if (batch.length > 0) {
+        await db.insert(buildingPermits).values(batch);
+        imported += batch.length;
+      }
+
+      if (hitCutoff || records.length < PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        offset += PAGE_SIZE;
+        await sleep(RATE_LIMIT_MS);
+      }
+    } catch (err: any) {
+      errors.push(`Dallas Roofing Permits fetch error at offset ${offset}: ${err.message}`);
+      hasMore = false;
+    }
+  }
+
+  console.log(`[Dallas Roofing Permits] Complete: imported=${imported}, skipped=${skipped}, totalFetched=${total}, errors=${errors.length}`);
+  return { imported, skipped, total, errors };
+}
+
+export async function getRoofingPermitStats(): Promise<{
+  totalRoofingPermits: number;
+  matchedToLeads: number;
+  byYear: { year: string; count: number }[];
+  topContractors: { name: string; count: number }[];
+}> {
+  const roofingWhere = sql`(${buildingPermits.workDescription} ILIKE '%roof%' OR ${buildingPermits.permitType} ILIKE '%roof%')`;
+
+  const totalResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(buildingPermits)
+    .where(roofingWhere);
+  const totalRoofingPermits = totalResult[0]?.count ?? 0;
+
+  const matchedResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(buildingPermits)
+    .where(sql`${roofingWhere} AND ${buildingPermits.leadId} IS NOT NULL`);
+  const matchedToLeads = matchedResult[0]?.count ?? 0;
+
+  const byYearResult = await db
+    .select({
+      year: sql<string>`COALESCE(LEFT(${buildingPermits.issuedDate}, 4), 'Unknown')`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(buildingPermits)
+    .where(roofingWhere)
+    .groupBy(sql`COALESCE(LEFT(${buildingPermits.issuedDate}, 4), 'Unknown')`)
+    .orderBy(sql`COALESCE(LEFT(${buildingPermits.issuedDate}, 4), 'Unknown') DESC`);
+
+  const byYear = byYearResult.map((r) => ({ year: r.year, count: r.count }));
+
+  const contractorResult = await db
+    .select({
+      name: buildingPermits.contractor,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(buildingPermits)
+    .where(sql`${roofingWhere} AND ${buildingPermits.contractor} IS NOT NULL AND ${buildingPermits.contractor} != ''`)
+    .groupBy(buildingPermits.contractor)
+    .orderBy(sql`count(*) DESC`)
+    .limit(10);
+
+  const topContractors = contractorResult.map((r) => ({
+    name: r.name || "Unknown",
+    count: r.count,
+  }));
+
+  return { totalRoofingPermits, matchedToLeads, byYear, topContractors };
+}
+
 export async function getPermitStats(): Promise<{
   totalPermits: number;
   permitsBySource: { source: string; count: number }[];

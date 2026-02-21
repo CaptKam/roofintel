@@ -109,6 +109,22 @@ export default function LeadDetail() {
     enabled: !!lead,
   });
 
+  const { data: permitHistory } = useQuery<Array<{
+    id: string;
+    permitNumber: string;
+    permitType: string;
+    issuedDate: string | null;
+    address: string;
+    contractor: string | null;
+    contractorPhone: string | null;
+    workDescription: string | null;
+    estimatedValue: number | null;
+    source: string;
+  }>>({
+    queryKey: ["/api/leads", id, "permits"],
+    enabled: !!lead,
+  });
+
   const runIntelMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/intelligence/run-single/${id}`, {});
@@ -270,6 +286,53 @@ export default function LeadDetail() {
               </div>
             </CardContent>
           </Card>
+
+          {permitHistory && permitHistory.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Permit History
+                  <Badge variant="secondary" className="ml-auto">{permitHistory.length} permit{permitHistory.length !== 1 ? 's' : ''}</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {permitHistory.map((permit) => {
+                    const isRoofing = (permit.workDescription || '').toLowerCase().includes('roof') || (permit.permitType || '').toLowerCase().includes('roof');
+                    return (
+                      <div
+                        key={permit.id}
+                        className={`p-3 rounded-md border text-sm ${isRoofing ? 'border-primary/30 bg-primary/5' : ''}`}
+                        data-testid={`permit-${permit.id}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-xs">{permit.issuedDate || 'No date'}</span>
+                            {isRoofing && <Badge variant="default" className="text-[10px]">Roofing</Badge>}
+                            <Badge variant="outline" className="text-[10px]">{permit.permitType}</Badge>
+                          </div>
+                          {permit.estimatedValue && (
+                            <span className="text-xs text-muted-foreground">${permit.estimatedValue.toLocaleString()}</span>
+                          )}
+                        </div>
+                        {permit.workDescription && (
+                          <p className="text-xs text-muted-foreground truncate">{permit.workDescription}</p>
+                        )}
+                        {permit.contractor && (
+                          <p className="text-xs mt-1">
+                            <HardHat className="w-3 h-3 inline mr-1" />
+                            {permit.contractor}
+                            {permit.contractorPhone && <span className="ml-2 text-muted-foreground">{permit.contractorPhone}</span>}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="pb-2">
