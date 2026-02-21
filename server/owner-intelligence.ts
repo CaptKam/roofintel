@@ -451,24 +451,44 @@ async function llcChainAgent(lead: Lead, existingChain: LlcChainLink[]): Promise
   let depth = 0;
   const maxDepth = 3;
 
-  const parentEntities = chain
+  const queue: string[] = chain
     .flatMap(c => c.officers.filter(o => !isPersonName(o.name)).map(o => o.name))
     .filter(name => !seen.has(normalizeForSearch(name)));
 
-  for (const entityName of parentEntities) {
-    if (depth >= maxDepth) break;
+  while (queue.length > 0 && depth < maxDepth) {
+    const entityName = queue.shift()!;
     const normName = normalizeForSearch(entityName);
     if (seen.has(normName)) continue;
     seen.add(normName);
 
     try {
+      let detail: any = null;
+
       const searchResults = await searchComptrollerByName(entityName);
-      if (searchResults.length === 0) continue;
+      if (searchResults.length > 0) {
+        const best = searchResults.find(r => normalizeForSearch(r.name || "") === normName) || searchResults[0];
+        if (best.taxpayerId) {
+          detail = await fetchComptrollerDetail(best.taxpayerId);
+        }
+      }
 
-      const best = searchResults.find(r => normalizeForSearch(r.name || "") === normName) || searchResults[0];
-      if (!best.taxpayerId) continue;
+      if (!detail) {
+        const cleanName = cleanCompanyName(entityName).substring(0, 50);
+        const encodedSearch = encodeURIComponent(`taxpayer_name like '%${cleanName.replace(/'/g, "''")}%'`);
+        const url = `https://data.texas.gov/resource/9cir-efmm.json?$where=${encodedSearch}&$limit=5`;
+        const res = await fetchWithTimeout(url);
+        if (res && res.ok) {
+          const records = await res.json();
+          if (Array.isArray(records) && records.length > 0) {
+            const exactMatch = records.find((r: any) => normalizeForSearch(r.taxpayer_name || "") === normName) || records[0];
+            const tpId = exactMatch.taxpayer_number;
+            if (tpId) {
+              detail = await fetchComptrollerDetail(tpId);
+            }
+          }
+        }
+      }
 
-      const detail = await fetchComptrollerDetail(best.taxpayerId);
       if (!detail) continue;
 
       const extracted = extractOfficersFromDetail(detail);
@@ -478,6 +498,11 @@ async function llcChainAgent(lead: Lead, existingChain: LlcChainLink[]): Promise
           officer.source = `LLC Chain (depth ${depth + 1})`;
           officer.confidence = Math.max(50, officer.confidence - depth * 10);
           people.push(officer);
+        } else {
+          const childNorm = normalizeForSearch(officer.name);
+          if (!seen.has(childNorm)) {
+            queue.push(officer.name);
+          }
         }
       }
       chain.push(extracted.link);
