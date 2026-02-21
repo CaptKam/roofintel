@@ -201,7 +201,173 @@ async function fetchPage(url: string, timeoutMs = 8000): Promise<string | null> 
 
 // ============================================================
 // AGENT 1: TX SOS Deep Agent
+// Uses TX Comptroller detail API for officers/directors/members
 // ============================================================
+
+async function fetchComptrollerDetail(taxpayerId: string): Promise<any | null> {
+  try {
+    const url = `https://comptroller.texas.gov/data-search/franchise-tax/${taxpayerId}`;
+    const res = await fetchWithTimeout(url, {
+      headers: { "Accept": "application/json" },
+    }, 12000);
+    if (!res || !res.ok) return null;
+    const json = await res.json();
+    if (json.success && json.data) return json.data;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function searchComptrollerByName(name: string): Promise<any[]> {
+  try {
+    const cleanName = cleanCompanyName(name).substring(0, 60);
+    const url = `https://comptroller.texas.gov/data-search/franchise-tax?name=${encodeURIComponent(cleanName)}`;
+    const res = await fetchWithTimeout(url, {
+      headers: { "Accept": "application/json" },
+    }, 12000);
+    if (!res || !res.ok) return [];
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data)) return json.data;
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+async function searchComptrollerByFileNumber(fileNumber: string): Promise<any[]> {
+  try {
+    const url = `https://comptroller.texas.gov/data-search/franchise-tax?fileNumber=${encodeURIComponent(fileNumber)}`;
+    const res = await fetchWithTimeout(url, {
+      headers: { "Accept": "application/json" },
+    }, 12000);
+    if (!res || !res.ok) return [];
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data)) return json.data;
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function extractOfficersFromDetail(detail: any): { officers: PersonRecord[]; registeredAgent: string | null; link: LlcChainLink } {
+  const officers: PersonRecord[] = [];
+  let registeredAgent: string | null = detail.registeredAgentName || null;
+
+  const link: LlcChainLink = {
+    entityName: detail.name || "",
+    entityType: detail.stateOfFormation ? `LLC (${detail.stateOfFormation.trim()})` : "LLC",
+    sosFileNumber: detail.sosFileNumber,
+    status: detail.rightToTransactTX === "ACTIVE" ? "Active" : (detail.rightToTransactTX || "Unknown"),
+    officers: [],
+    registeredAgent: registeredAgent || undefined,
+    registeredAgentAddress: [detail.registeredOfficeAddressStreet, detail.registeredOfficeAddressCity, detail.registeredOfficeAddressState, detail.registeredOfficeAddressZip].filter(Boolean).join(", ") || undefined,
+    source: "TX Comptroller PIR",
+  };
+
+  if (Array.isArray(detail.officerInfo)) {
+    for (const officer of detail.officerInfo) {
+      const name = (officer.AGNT_NM || "").trim();
+      const title = (officer.AGNT_TITL_TX || "").trim();
+      const addr = [officer.AD_STR_POB_TX, officer.CITY_NM, officer.ST_CD, officer.AD_ZP].filter(Boolean).join(", ");
+
+      if (isPersonName(name)) {
+        const titleExpanded = expandTitle(title);
+        const person: PersonRecord = {
+          name: formatPersonName(name),
+          title: titleExpanded,
+          source: "TX Comptroller PIR (Officers)",
+          confidence: 85,
+          address: addr || undefined,
+        };
+        officers.push(person);
+        link.officers.push(person);
+      } else if (name && !isPersonName(name)) {
+        const memberLink: LlcChainLink = {
+          entityName: name,
+          entityType: title || "Member",
+          sosFileNumber: undefined,
+          status: "Active",
+          officers: [],
+          source: "TX Comptroller PIR (Member Entity)",
+        };
+        link.officers.push({
+          name,
+          title: expandTitle(title) + " (Entity)",
+          source: "TX Comptroller PIR",
+          confidence: 60,
+        });
+      }
+    }
+  }
+
+  if (registeredAgent && isPersonName(registeredAgent)) {
+    const raAddr = [detail.registeredOfficeAddressStreet, detail.registeredOfficeAddressCity, detail.registeredOfficeAddressState, detail.registeredOfficeAddressZip].filter(Boolean).join(", ");
+    officers.push({
+      name: formatPersonName(registeredAgent),
+      title: "Registered Agent",
+      source: "TX Comptroller PIR (Registered Agent)",
+      confidence: 70,
+      address: raAddr || undefined,
+    });
+  }
+
+  return { officers, registeredAgent, link };
+}
+
+function expandTitle(title: string): string {
+  const titleMap: Record<string, string> = {
+    "CHIEF EXEC": "Chief Executive Officer",
+    "CHIEF FINA": "Chief Financial Officer",
+    "CHIEF OPER": "Chief Operating Officer",
+    "CHIEF INVE": "Chief Investment Officer",
+    "CHIEF TECH": "Chief Technology Officer",
+    "CHIEF MARK": "Chief Marketing Officer",
+    "CHIEF LEGA": "Chief Legal Officer",
+    "CHIEF ADMI": "Chief Administrative Officer",
+    "CHIEF COMP": "Chief Compliance Officer",
+    "CHIEF STRA": "Chief Strategy Officer",
+    "CHIEF ACCO": "Chief Accounting Officer",
+    "CHIEF DEVE": "Chief Development Officer",
+    "CHIEF CUST": "Chief Customer Officer",
+    "PRESIDENT": "President",
+    "VICE PRESI": "Vice President",
+    "SR VICE PR": "Senior Vice President",
+    "EXEC VICE": "Executive Vice President",
+    "SECRETARY": "Secretary",
+    "ASST SECRE": "Assistant Secretary",
+    "TREASURER": "Treasurer",
+    "ASST TREAS": "Assistant Treasurer",
+    "DIRECTOR": "Director",
+    "MANAGING D": "Managing Director",
+    "MANAGER": "Manager",
+    "MEMBER": "Member",
+    "MANAGING M": "Managing Member",
+    "GENERAL PA": "General Partner",
+    "GENERAL CO": "General Counsel",
+    "LIMITED PA": "Limited Partner",
+    "SOLE PROPR": "Sole Proprietor",
+    "OFFICER": "Officer",
+    "PARTNER": "Partner",
+    "AUTHORIZED": "Authorized Person",
+    "ORGANIZER": "Organizer",
+  };
+  const upper = title.toUpperCase().trim();
+  if (titleMap[upper]) return titleMap[upper];
+  for (const [key, val] of Object.entries(titleMap)) {
+    if (upper.startsWith(key)) return val;
+  }
+  return title || "Officer";
+}
+
+function formatPersonName(name: string): string {
+  if (name.includes(",") && !name.includes("LLC") && !name.includes("INC")) {
+    return name.split(",").reverse().map(s => s.trim()).join(" ").trim();
+  }
+  return name.split(/\s+/).map(w =>
+    w.length > 1 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w
+  ).join(" ");
+}
 
 async function txSosDeepAgent(lead: Lead): Promise<{ officers: PersonRecord[]; chain: LlcChainLink[]; agentDetail: string }> {
   const officers: PersonRecord[] = [];
@@ -211,73 +377,60 @@ async function txSosDeepAgent(lead: Lead): Promise<{ officers: PersonRecord[]; c
     return { officers, chain, agentDetail: "Not an LLC/Corp entity" };
   }
 
-  const entityName = lead.ownerName.replace(/&amp;/g, "&");
-
   try {
-    const searchName = cleanCompanyName(entityName).substring(0, 50);
-    const encodedSearch = encodeURIComponent(`taxpayer_name like '%${searchName.replace(/'/g, "''")}%'`);
-    const url = `https://data.texas.gov/resource/9cir-efmm.json?$where=${encodedSearch}&$limit=20`;
-    const res = await fetchWithTimeout(url);
-    if (!res || !res.ok) return { officers, chain, agentDetail: "TX SOS API error" };
-    const records = await res.json();
+    let detail: any = null;
 
-    if (!Array.isArray(records) || records.length === 0) {
+    if (lead.taxpayerId) {
+      detail = await fetchComptrollerDetail(lead.taxpayerId);
+    }
+
+    if (!detail && lead.sosFileNumber) {
+      const searchResults = await searchComptrollerByFileNumber(lead.sosFileNumber);
+      if (searchResults.length > 0 && searchResults[0].taxpayerId) {
+        detail = await fetchComptrollerDetail(searchResults[0].taxpayerId);
+      }
+    }
+
+    if (!detail) {
+      const searchResults = await searchComptrollerByName(lead.ownerName);
+      if (searchResults.length > 0) {
+        const normalized = normalizeForSearch(lead.ownerName);
+        const best = searchResults.find(r => normalizeForSearch(r.name || "") === normalized) || searchResults[0];
+        if (best.taxpayerId) {
+          detail = await fetchComptrollerDetail(best.taxpayerId);
+        }
+      }
+    }
+
+    if (!detail) {
+      const searchName = cleanCompanyName(lead.ownerName.replace(/&amp;/g, "&")).substring(0, 50);
+      const encodedSearch = encodeURIComponent(`taxpayer_name like '%${searchName.replace(/'/g, "''")}%'`);
+      const url = `https://data.texas.gov/resource/9cir-efmm.json?$where=${encodedSearch}&$limit=5`;
+      const res = await fetchWithTimeout(url);
+      if (res && res.ok) {
+        const records = await res.json();
+        if (Array.isArray(records) && records.length > 0) {
+          const record = records[0];
+          const tpId = record.taxpayer_number;
+          if (tpId) {
+            detail = await fetchComptrollerDetail(tpId);
+          }
+        }
+      }
+    }
+
+    if (!detail) {
       return { officers, chain, agentDetail: "No TX filing records found" };
     }
 
-    const normalized = normalizeForSearch(entityName);
-    const sortedRecords = records.sort((a: any, b: any) => {
-      const aN = normalizeForSearch(a.taxpayer_name || "");
-      const bN = normalizeForSearch(b.taxpayer_name || "");
-      const aMatch = aN === normalized ? 3 : aN.includes(normalized) ? 2 : normalized.includes(aN) ? 1 : 0;
-      const bMatch = bN === normalized ? 3 : bN.includes(normalized) ? 2 : normalized.includes(bN) ? 1 : 0;
-      return bMatch - aMatch;
-    });
-
-    const processedNames = new Set<string>();
-
-    for (const record of sortedRecords.slice(0, 5)) {
-      const tName = record.taxpayer_name || "";
-      const normName = normalizeForSearch(tName);
-      if (processedNames.has(normName)) continue;
-      processedNames.add(normName);
-
-      const link: LlcChainLink = {
-        entityName: tName,
-        entityType: record.taxpayer_organizational_type || "Unknown",
-        sosFileNumber: record.secretary_of_state_sos_or_coa_file_number,
-        status: record.right_to_transact_business_code === "A" ? "Active" : "Inactive",
-        officers: [],
-        registeredAgent: undefined,
-        source: "TX Open Data Portal",
-      };
-
-      const addr = [record.taxpayer_address, record.taxpayer_city, record.taxpayer_state, record.taxpayer_zip].filter(Boolean).join(", ");
-      if (addr.length > 5) link.registeredAgentAddress = addr;
-
-      if (isPersonName(tName)) {
-        const person: PersonRecord = {
-          name: tName.split(",").reverse().join(" ").trim(),
-          title: "Taxpayer / Registered Principal",
-          source: "TX SOS Filing",
-          confidence: 75,
-          address: addr || undefined,
-        };
-        officers.push(person);
-        link.officers.push(person);
-      }
-
-      chain.push(link);
-    }
-
-    if (lead.sosFileNumber) {
-      await enrichFromSosFileNumber(lead.sosFileNumber, officers, chain);
-    }
+    const extracted = extractOfficersFromDetail(detail);
+    officers.push(...extracted.officers);
+    chain.push(extracted.link);
 
     return {
       officers,
       chain,
-      agentDetail: `Found ${chain.length} filings, ${officers.length} people`,
+      agentDetail: `Found ${officers.length} officers/members from TX Comptroller PIR`,
     };
 
   } catch (err: any) {
@@ -285,31 +438,9 @@ async function txSosDeepAgent(lead: Lead): Promise<{ officers: PersonRecord[]; c
   }
 }
 
-async function enrichFromSosFileNumber(sosFileNum: string, officers: PersonRecord[], chain: LlcChainLink[]): Promise<void> {
-  try {
-    const url = `https://data.texas.gov/resource/9cir-efmm.json?secretary_of_state_sos_or_coa_file_number=${sosFileNum}&$limit=10`;
-    const res = await fetchWithTimeout(url);
-    if (!res || !res.ok) return;
-    const records = await res.json();
-
-    for (const r of records) {
-      const name = r.taxpayer_name || "";
-      if (isPersonName(name)) {
-        const addr = [r.taxpayer_address, r.taxpayer_city, r.taxpayer_state, r.taxpayer_zip].filter(Boolean).join(", ");
-        officers.push({
-          name: name.split(",").reverse().join(" ").trim(),
-          title: "SOS Filing Principal",
-          source: "TX SOS Cross-Reference",
-          confidence: 70,
-          address: addr || undefined,
-        });
-      }
-    }
-  } catch {}
-}
-
 // ============================================================
 // AGENT 2: LLC Chain Agent
+// Traces parent entities from officer info and looks up their details
 // ============================================================
 
 async function llcChainAgent(lead: Lead, existingChain: LlcChainLink[]): Promise<{ people: PersonRecord[]; chain: LlcChainLink[]; agentDetail: string }> {
@@ -319,57 +450,39 @@ async function llcChainAgent(lead: Lead, existingChain: LlcChainLink[]): Promise
   let depth = 0;
   const maxDepth = 3;
 
-  const entityNames = chain
-    .filter(c => !isPersonName(c.entityName))
-    .map(c => c.entityName);
+  const parentEntities = chain
+    .flatMap(c => c.officers.filter(o => !isPersonName(o.name)).map(o => o.name))
+    .filter(name => !seen.has(normalizeForSearch(name)));
 
-  for (const entityName of entityNames) {
+  for (const entityName of parentEntities) {
     if (depth >= maxDepth) break;
+    const normName = normalizeForSearch(entityName);
+    if (seen.has(normName)) continue;
+    seen.add(normName);
 
     try {
-      const cleaned = cleanCompanyName(entityName).substring(0, 40);
-      const parts = cleaned.split(/\s+/).filter(p => p.length > 2);
-      if (parts.length === 0) continue;
+      const searchResults = await searchComptrollerByName(entityName);
+      if (searchResults.length === 0) continue;
 
-      const searchTerm = parts.slice(0, 3).join(" ");
-      const encodedSearch = encodeURIComponent(`taxpayer_name like '%${searchTerm.replace(/'/g, "''")}%'`);
-      const url = `https://data.texas.gov/resource/9cir-efmm.json?$where=${encodedSearch}&$limit=15`;
-      const res = await fetchWithTimeout(url);
-      if (!res || !res.ok) continue;
-      const records = await res.json();
-      if (!Array.isArray(records)) continue;
+      const best = searchResults.find(r => normalizeForSearch(r.name || "") === normName) || searchResults[0];
+      if (!best.taxpayerId) continue;
 
-      for (const record of records) {
-        const tName = (record.taxpayer_name || "").trim();
-        const normName = normalizeForSearch(tName);
-        if (seen.has(normName)) continue;
-        seen.add(normName);
+      const detail = await fetchComptrollerDetail(best.taxpayerId);
+      if (!detail) continue;
 
-        if (isPersonName(tName)) {
-          const addr = [record.taxpayer_address, record.taxpayer_city, record.taxpayer_state, record.taxpayer_zip].filter(Boolean).join(", ");
-          people.push({
-            name: tName.split(",").reverse().join(" ").trim(),
-            title: "LLC Chain - Managing Member",
-            source: `LLC Chain (depth ${depth + 1})`,
-            confidence: Math.max(50, 80 - depth * 10),
-            address: addr || undefined,
-          });
-        } else {
-          const parentLink: LlcChainLink = {
-            entityName: tName,
-            entityType: record.taxpayer_organizational_type || "Unknown",
-            sosFileNumber: record.secretary_of_state_sos_or_coa_file_number,
-            status: record.right_to_transact_business_code === "A" ? "Active" : "Inactive",
-            officers: [],
-            source: `LLC Chain (depth ${depth + 1})`,
-          };
-          chain.push(parentLink);
+      const extracted = extractOfficersFromDetail(detail);
+      for (const officer of extracted.officers) {
+        if (isPersonName(officer.name)) {
+          officer.title = `${officer.title} (via ${entityName})`;
+          officer.source = `LLC Chain (depth ${depth + 1})`;
+          officer.confidence = Math.max(50, officer.confidence - depth * 10);
+          people.push(officer);
         }
       }
-
+      chain.push(extracted.link);
       depth++;
-      await new Promise(r => setTimeout(r, 300));
 
+      await new Promise(r => setTimeout(r, 500));
     } catch {}
   }
 
@@ -382,57 +495,41 @@ async function llcChainAgent(lead: Lead, existingChain: LlcChainLink[]): Promise
 
 // ============================================================
 // AGENT 3: TX Comptroller Agent
+// Now uses the detail API which has officerInfo with real names
 // ============================================================
 
 async function txComptrollerAgent(lead: Lead): Promise<{ people: PersonRecord[]; agentDetail: string }> {
   const people: PersonRecord[] = [];
-  const apiKey = process.env.TX_COMPTROLLER_API_KEY;
 
-  if (!lead.taxpayerId && !lead.sosFileNumber) {
-    return { people, agentDetail: "No taxpayer ID or SOS number" };
+  if (!lead.taxpayerId && !lead.sosFileNumber && !lead.ownerName) {
+    return { people, agentDetail: "No taxpayer ID, SOS number, or owner name" };
   }
 
   try {
+    let detail: any = null;
+
     if (lead.taxpayerId) {
-      const url = `https://data.texas.gov/resource/9cir-efmm.json?taxpayer_number=${lead.taxpayerId}&$limit=10`;
-      const res = await fetchWithTimeout(url);
-      if (res && res.ok) {
-        const records = await res.json();
-        for (const r of records) {
-          const name = r.taxpayer_name || "";
-          if (isPersonName(name)) {
-            const addr = [r.taxpayer_address, r.taxpayer_city, r.taxpayer_state, r.taxpayer_zip].filter(Boolean).join(", ");
-            people.push({
-              name: name.split(",").reverse().join(" ").trim(),
-              title: "TX Comptroller - Responsible Party",
-              source: "TX Comptroller",
-              confidence: 80,
-              address: addr || undefined,
-            });
-          }
-        }
+      detail = await fetchComptrollerDetail(lead.taxpayerId);
+    }
+
+    if (!detail && lead.sosFileNumber) {
+      const results = await searchComptrollerByFileNumber(lead.sosFileNumber);
+      if (results.length > 0 && results[0].taxpayerId) {
+        detail = await fetchComptrollerDetail(results[0].taxpayerId);
       }
     }
 
-    if (apiKey && lead.ownerName) {
-      const companyName = cleanCompanyName(lead.ownerName).substring(0, 40);
-      const url = `https://data.texas.gov/resource/9cir-efmm.json?$where=taxpayer_name like '%${encodeURIComponent(companyName)}%'&$limit=5&$$app_token=${apiKey}`;
-      const res = await fetchWithTimeout(url);
-      if (res && res.ok) {
-        const records = await res.json();
-        const typeCodes = new Set(records.map((r: any) => r.record_type_code));
-        if (typeCodes.has("RP") || typeCodes.has("RO")) {
-          for (const r of records.filter((r: any) => r.record_type_code === "RP" || r.record_type_code === "RO")) {
-            const name = r.taxpayer_name || "";
-            if (isPersonName(name)) {
-              people.push({
-                name: name.split(",").reverse().join(" ").trim(),
-                title: r.record_type_code === "RP" ? "Responsible Party" : "Registered Officer",
-                source: "TX Comptroller (Franchise Tax)",
-                confidence: 85,
-              });
-            }
-          }
+    if (detail && Array.isArray(detail.officerInfo)) {
+      for (const officer of detail.officerInfo) {
+        const name = (officer.AGNT_NM || "").trim();
+        const title = (officer.AGNT_TITL_TX || "").trim();
+        if (isPersonName(name)) {
+          people.push({
+            name: formatPersonName(name),
+            title: `${expandTitle(title)} (Comptroller)`,
+            source: "TX Comptroller Franchise Tax",
+            confidence: 80,
+          });
         }
       }
     }
