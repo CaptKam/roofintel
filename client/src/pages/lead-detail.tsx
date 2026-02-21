@@ -48,6 +48,7 @@ import {
   Scale,
   ShieldAlert,
   Ban,
+  RefreshCw,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -486,9 +487,21 @@ export default function LeadDetail() {
                     </div>
                   )}
                   {intelligence.generatedAt && (
-                    <p className="text-[10px] text-muted-foreground pt-1">
-                      Intel gathered: {new Date(intelligence.generatedAt).toLocaleDateString()}
-                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <p className="text-[10px] text-muted-foreground">
+                        Intel gathered: {new Date(intelligence.generatedAt).toLocaleDateString()}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-5 px-2 text-[10px]"
+                        onClick={() => runIntelMutation.mutate()}
+                        disabled={runIntelMutation.isPending}
+                        data-testid="button-rerun-intel"
+                      >
+                        {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                      </Button>
+                    </div>
                   )}
                 </>
               ) : (
@@ -496,18 +509,16 @@ export default function LeadDetail() {
                   <p className="text-xs text-muted-foreground mb-2">
                     {intelligence?.generatedAt ? "No real owner found yet" : "Not investigated yet"}
                   </p>
-                  {(lead.ownerType === "LLC" || lead.ownerType === "Corporation" || lead.ownerType === "LP") && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => runIntelMutation.mutate()}
-                      disabled={runIntelMutation.isPending}
-                      data-testid="button-run-intel"
-                    >
-                      {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
-                      Run 16-Agent Pipeline
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => runIntelMutation.mutate()}
+                    disabled={runIntelMutation.isPending}
+                    data-testid="button-run-intel"
+                  >
+                    {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
+                    Run 16-Agent Pipeline
+                  </Button>
                 </div>
               )}
             </CardContent>
