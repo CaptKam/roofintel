@@ -1,0 +1,248 @@
+Reality check on what you have today
+Your current stack is strong on tax appraisal attributes + storm signals + Texas business “unmasking”, but it is weak where the money and legal truth live: recorded ownership / liens / foreclosure activity / litigation / compliance-grade decision-maker identification. In other words, you’ve built a solid “lead hint engine,” not a defensible “ownership and control intelligence system.” That distinction matters if you want to scale without getting destroyed by data quality disputes, complaints, or platform blocks.
+
+Your property backbone is the Dallas Central Appraisal District ArcGIS-driven data. Appraisal data is useful for segmentation and valuation, but it is not the canonical legal record of ownership changes, liens, or creditor control—those are recorded through county clerk/recorder systems. Dallas County’s own Recording Division explicitly describes recording deeds and documents associated with deeds (including liens, releases of lien, transfers, probate-related property matters). 
+
+Your storm layer is credible: the National Oceanic and Atmospheric Administration Storm Events Database and SWDI/NEXRAD-derived products are official sources for severe weather reporting and radar-derived hail signatures. NOAA’s Storm Events Database states it contains data from January 1950 through October 2025 (as of the site’s current update), which is much deeper than your current “2020–present” posture. 
+
+Your decision-maker enrichment is ambitious—but you’re currently mixing high-reliability public records (state tax accounts, permits) with high-fragility / high-risk scraping targets (SOS scraping, parts of the open web, some exposure via WHOIS/RDAP). Also, your “LLC chain tracing” can easily become a false-confidence trap in Texas because formation data often identifies initial managers/members and registered agents—not necessarily the true economic owners in any enduring or complete sense. Texas SOS Form 205 instructions, for example, require listing the LLC’s initial managers or initial members depending on management structure; that is not the same as continuously updated beneficial ownership. 
+
+Finally, you have outbound triggers (pre-storm SMS alerts, lead workflows). If you’re contacting individuals at scale, your data strategy and compliance strategy are inseparable: U.S. rules around calls/texts and consent are not a footnote; they can become existential risk (TCPA, DNC, CAN-SPAM). 
+
+The biggest missing layer is recorded ownership, encumbrances, and distress
+If you care about “owners and decision makers,” you cannot skip the recorder/clerks. Right now, you’re relying heavily on appraisal-district owner fields and state entity lookups. That leaves you blind to the documents that actually control property outcomes:
+
+Deeds, liens, releases, probate transfers, and real ownership timelines
+County recording offices are where deeds and lien-related documents are recorded; Dallas County’s Recording Division states it records property deeds and documents associated with the deed such as liens, transfers, probate matters, and releases of lien. 
+Dallas County’s Online Record Search hub links to official portals for “UCC / Personal Property / Deeds,” and the related public search portal for official records notes it is “Certified through 02/17/2026,” which is exactly the sort of recency stamp you want for evidence-driven ownership timelines. 
+What you gain if you ingest recorded documents
+
+You can compute fields your competitors can’t defend:
+
+last deed date (true transfer timeline)
+chain of title (within available index constraints)
+lien stack indicators (presence of lien filings / releases)
+probate transfer flags
+refinance signals (mortgage-related recordings)
+“ownership freshness” vs appraisal lag
+Foreclosure notices and tax sale pipelines
+You’re missing a major “distress → decision-maker urgency” channel:
+
+Dallas County’s County Clerk Recording Division answers “Where can I find out which properties will be sold?” by stating notices are posted on the County Clerk site and that notices must be posted 21 days prior to the sale. 
+Dallas County Public Works’ Property Division page describes tax sale properties sold via the Sheriff through a live online auction held the first Tuesday of every month and links to lists and process details. 
+Dallas County also provides a Property Tax Lookup/Payment application for accessing tax info, and publishes delinquency guidance and delinquency deadlines—useful for a “delinquency risk” feature set. 
+This is not optional for a serious lead engine. Distressed owners behave differently; they also have clearer “who is making decisions right now” signals (attorneys, trustees, lenders, tax sale notices).
+
+UCC filings and creditor control signals
+UCC is not “property ownership,” but it is often control and leverage—especially for commercial operations and business assets tied to a site.
+
+Texas SOS now routes UCC filings through an SOS Portal system (paper filings no longer accepted as of Aug. 29, 2025 per SOS UCC guidance), and SOSDirect indicates a per-search fee structure. 
+
+Your “free info” expectation needs to be corrected here: in Texas, some of the most valuable legal signals are accessible but not “free at scale.”
+
+Official Record Search - Quick Search
+Foreclosures on commercial properties jump in Texas
+Public Works | Property Division Tax Foreclosure Resales
+Public Works | Property Division Tax Foreclosure Resales
+
+You’re under-collecting decision-maker signals hiding in permits, violations, licensing, and courts
+Right now you’re pulling “DFW Building Permits (Socrata API, when available),” but that’s only a fraction of the actual operational decision-maker surface area.
+
+City permit ecosystems across the Metroplex
+The Dallas open data portal includes a Building Permits dataset and other operational datasets. 
+The Fort Worth Development Services site publishes issued building permits and certificates of occupancy resources, including a “Full Data Download” and permit tables. 
+The City of Plano’s official site provides building inspections/permits resources (even if not always fully open-data structured, it still represents a decision-maker trail via inspections and permits). 
+What you’re missing operationally is a jurisdiction map and ingestion plan that treats the Metroplex as multiple independent permit jurisdictions, not “DFW = one Socrata endpoint.”
+
+Code violations and 311 service requests are “ownership behavior” signals
+You’re currently scoring roof age, hail exposure, size, owner type, and value. You are missing “neglect / compliance / urgency” signals that can be predictive of willingness to engage.
+
+Dallas open data includes:
+
+Code Violations datasets 
+311 Service Requests datasets, representing service requests and complaints affecting quality of life and code compliance contexts 
+These introduce a powerful feature cluster:
+
+repeated complaints at an address
+unresolved violations
+time-to-close / backlog indicators
+category-specific distress (roof debris, structural concerns, illegal dumping, etc.)
+Licensed professional layers you’re not using correctly
+You have contractors in some permit feeds. You should also ingest regulator license data to validate and enrich decision-makers and vendors around a site:
+
+Texas Real Estate Commission provides a License Holder Search across brokers/sales agents/inspectors/appraisers and related license categories. 
+Texas Department of Licensing and Regulation data is available through Texas Open Data (“TDLR - All Licenses”) and TDLR also provides online verification tools (including specific industries such as elevator inspection reports). 
+This is where “decision-maker” becomes provable:
+
+property manager / broker license validation
+inspector identity validation
+elevator/boiler inspection ecosystem (often tied to large commercial/residential buildings)
+Court records: lawsuits, evictions, probate, collections
+If you want “decision-makers,” litigation often identifies:
+
+responsible individuals
+attorneys
+corporate representatives
+trustees/executors (probate)
+Dallas County’s Online Record Search hub links to the Dallas County and District Court Case Information portal and explicitly states registration is not required for public access. 
+
+You don’t need to boil the ocean: even lightweight flags like “active civil case count by address/owner” and “recent probate transfer” can materially improve lead prioritization.
+
+Your hazard model is leaving accuracy and expansion on the table
+Your hail pipeline is credible, but it has two big weaknesses: temporal short-sightedness and spatial imprecision.
+
+You’re artificially limiting historic storm coverage
+NOAA’s Storm Events Database states the dataset spans January 1950 to October 2025 (current as posted). Your “2020–present” constraint is a choice, not a limitation of the source. 
+
+A five-year view: insurance/roofing players with the best loss modeling will use long-run climatology plus radar-derived swaths; short windows get outcompeted.
+
+Your 5-mile “hail proximity” matching is crude
+Storm Events reports are not the same as actual hail footprint. NOAA’s Severe Weather Data Inventory (SWDI) is explicitly designed as an integrated severe weather archive, with multiple access methods and machine formats—including CSV/JSON—and includes NEXRAD Level III derived products (including hail-related products). 
+
+NOAA’s WDTD “MESH Tracks” description ties directly to Maximum Estimated Size of Hail (MESH), a radar-derived maximum hail size metric over time windows. 
+
+What you should add
+
+Hail swath/track-based exposure rather than circle buffers
+exposure intensity over time (max MESH, duration above threshold)
+uncertainty fields (radar coverage gaps, algorithm confidence where available)
+You’re missing non-hail property-risk overlays customers will expect
+If you sell to anyone serious (commercial roofing, asset managers), they’ll ask: flood, wildfire, wind. Flood is the quickest win.
+
+The Federal Emergency Management Agency National Flood Hazard Layer (NFHL) is a geospatial database of effective flood hazard data; FEMA provides web/map services and ArcGIS REST access for mapping and queries. 
+
+With NFHL you can compute:
+
+flood zone classification per parcel/building footprint
+proximity to floodways
+“risk stacking” features (hail + flood-prone = different buyer urgency and insurance angle)
+Physical-asset intelligence from imagery and footprints
+Your “roof age” scoring is structurally weak if it relies mainly on year built or appraisal fields. You need better proxies based on permits and imagery.
+
+Free/public building geometry and imagery resources include:
+
+Microsoft’s U.S. building footprints dataset (computer-generated footprints, freely available for download and use). 
+NAIP aerial imagery: USGS describes NAIP as 1-meter ground sample distance for the U.S. (for many years of coverage) and The National Map’s NAIP Plus service provides orthoimagery with resolutions from 6 inches to 1 meter depending on source. 
+Even basic footprint + imagery usage unlocks:
+
+roof area estimation (better than square footage proxies)
+roof complexity heuristics
+visible damage pre/post storm (where resolution supports it)
+“construction change detection” when paired with permits
+You have critical data-quality and “unmasking” blind spots
+This is where people build flashy demos and then die in production.
+
+Metroplex coverage gaps: DCAD is not the Metroplex
+You’re describing “DFW region,” but your property backbone is effectively Dallas County-centric. Texas Comptroller’s county directory explicitly exists to list appraisal districts and county tax offices by county—because Texas property data is fragmented. 
+
+At minimum, a DFW platform should integrate appraisal/tax sources across Dallas County and neighboring counties (Tarrant, Collin, Denton, Ellis, etc.) as appropriate for your promised coverage. 
+
+Assumed names (DBA) are a major missing “operator identity” layer
+You’re trying to identify tenants and responsible parties. In Texas, assumed name filings are a key public mechanism for mapping an operating trade name to real parties.
+
+Dallas County Clerk guidance for assumed names explicitly instructs searching County Assumed Names records (via its public search portal) and notes filing procedures. 
+
+Tarrant County similarly states an assumed name/DBA should be filed with the County Clerk’s office in the county where business is conducted. 
+
+That matters because your “sales tax permit holder at address” logic doesn’t catch:
+
+entities operating under DBAs without clean tax-location matching
+management companies branded differently from the owner LLC
+Your Texas SOS and Comptroller assumptions need correction
+SOSDirect is not free: Texas SOSDirect indicates a $1 statutorily authorized fee per search. 
+Texas Form 205 instructions show you get initial manager/member names/addresses depending on structure—not a continuously updated, complete ownership ledger. 
+Beneficial owner reporting under the CTA is submitted to FinCEN (not to the Texas SOS). Texas SOS explicitly points BOI reporting to FinCEN’s system. 
+Texas Comptroller public-data APIs require an API key (the documentation shows x-api-key as required in headers and points to registration to obtain one). 
+If your product messaging is “free public records,” you need to differentiate:
+
+free to view manually vs
+free to automate at scale vs
+free to redistribute commercially
+WHOIS/RDAP is not the enrichment goldmine it used to be
+You’re doing WHOIS/RDAP lookups for domain registrant info. That’s increasingly unreliable for personal attribution.
+
+ICANN states that gTLD registries/registrars are required to provide RDAP services using the gTLD RDAP Profile and that as of Jan. 28, 2025 they are no longer required to provide WHOIS services (with limited exceptions). That environment is deeply shaped by GDPR-era data minimization and access constraints. 
+
+What you’ll often get now is proxy/redacted registration, which is weak for identifying real humans.
+
+Free “affordable housing owner/operator” datasets you’re not leveraging
+If you touch multifamily, there’s a powerful free segmentation layer: subsidized/assisted housing datasets often include owner/manager fields and property characteristics.
+
+U.S. Department of Housing and Urban Development publishes a Multifamily Assistance & Section 8 database that includes contract-level and property-level tables and provides downloads (property-level requires linking via property id). 
+
+Texas Department of Housing and Community Affairs provides participating properties information for programs like Section 811 PRA (map/list). 
+
+Even if this isn’t your whole market, it helps you:
+
+avoid wasting time on properties with rigid procurement constraints
+correctly identify management entities and compliance contacts
+Compliance, scaling, and a ruthless roadmap
+Here’s the uncomfortable truth: the path you’re on naturally evolves into either (a) a compliant, defensible data business, or (b) a fragile scraping operation that gets blocked and generates complaints. If you want to win in 5–10 years, you build (a).
+
+The compliance trapdoors in your current approach
+If you generate leads and contact people, you must treat communications compliance as core product infrastructure:
+
+The Federal Communications Commission states the TCPA generally requires consent before certain calls/texts using autodialers or artificial/prerecorded voice, and FCC rules require prior express written consent for certain categories. 
+The Federal Trade Commission describes the National Do Not Call Registry and related Telemarketing Sales Rule obligations, including restrictions on calling numbers on the registry or a seller’s DNC list. 
+FTC’s CAN-SPAM guidance states CAN-SPAM sets rules for commercial email and gives recipients the right to have you stop emailing them. 
+At the state level, if you ever cross into “data broker” style aggregation, California’s deletion mechanism ecosystem is a preview of what broader U.S. regulation can look like:
+
+California Privacy Protection Agency describes DROP as an accessible deletion mechanism for consumers to request deletion from registered data brokers, with regulations adopted Sept. 26, 2025. 
+Prioritized “what you’re missing” checklist
+This is ordered by ROI + defensibility + customer value, not by what’s fun to code.
+
+Priority	Missing layer	Why it matters	Typical availability
+Top	Recorder/Clerk deeds + liens + releases + probate	Legal ownership reality, encumbrances, true transfer dates	Mostly public; automation varies by county 
+Top	Foreclosure notices + tax sale lists + delinquency indicators	Distress leads + urgent decision makers	Public listings and portals exist 
+High	Metroplex-wide multi-county appraisal/tax coverage	Your “DFW” claim is incomplete without it	Fragmented; directory-based discovery 
+High	City permits + certificates of occupancy + inspections (multi-city)	Identifies active operational actors (applicants, contractors)	Mix of open data + portals 
+High	Code violations + 311	Behavior/distress signals and property condition proxies	Open data in some cities 
+Medium	Assumed name / DBA filings	Maps trade names to real parties; tenant/operator discovery	Public but sometimes fee-based 
+Medium	Court record flags (civil/probate)	Identifies responsible parties + urgency	Often public portals 
+Medium	Flood risk overlay (NFHL)	Risk stacking; commercial buyers expect it	Free GIS services 
+Medium	Footprints + imagery (NAIP)	Roof area/complexity; better physical modeling	Free/open services and datasets 
+Medium	Radar-derived hail swaths / MESH tracks	More accurate exposure than buffers	NOAA archives / SWDI 
+
+A practical implementation plan that won’t collapse
+Below is the hard-nosed route that builds a sellable asset.
+
+Normalize property IDs across counties
+
+Recorder/Clerk ingestion: deeds/liens/foreclosures
+
+City permits/inspections ingestion
+
+Storm + radar swaths ingestion
+
+Ownership timeline + encumbrance features
+
+Operational decision-maker graph
+
+Exposure intensity features
+
+Unified lead score v2
+
+Outbound compliance gate: consent/DNC/email opt-out
+
+CRM/export/API
+
+
+
+Show code
+Near-term (next 30–60 days)
+
+Add Dallas County recorded documents ingestion (deeds, liens, releases) and foreclosure notices feeds as first-class sources. These are core ownership/decision-maker signals in the county. 
+Expand permits beyond “when available” into a defined list of jurisdictions (Dallas, Fort Worth, Plano as initial targets) using the best available structured data endpoints per city. 
+Mid-term (60–120 days)
+
+Integrate multi-county appraisal/tax sources for credible “DFW coverage,” using the Texas Comptroller directory as your jurisdiction discovery baseline. 
+Add code violations + 311 datasets where available (Dallas is easy); treat them as predictive urgency and property-condition signals. 
+Long-term (6–18 months)
+
+Upgrade hail matching from buffers to radar-derived swaths/track features (SWDI + MESH tracks) and extend historical windows beyond 2020. 
+Add NFHL flood overlays and building footprint + imagery layers for physical modeling quality. 
+Treat Texas SOSDirect and UCC as “paid but authoritative” modules with explicit cost controls and ToS-safe access patterns; stop pretending they’re free. 
+Five- and ten-year trajectory
+In five years, expect buyer expectations to shift from “who might own this?” to “show me the recorded chain + provenance + confidence,” especially as more jurisdictions tighten data broker obligations and platform anti-scraping enforcement improves. Your moat will be provenance + resolution accuracy + compliant outreach, not “more scraped pages.”
+
+In ten years, the winners will look less like “lead scrapers” and more like “regulated decision intelligence systems” with audit logs, deletion tooling, and strong source licensing. If you build the recorder/permit/court backbone now, you’ll still be standing when weaker stacks get wiped out by blocked access, legal threats, and bad data reputations.
