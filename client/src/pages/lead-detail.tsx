@@ -162,6 +162,9 @@ export default function LeadDetail() {
   }
 
   const roofAge = lead.roofLastReplaced ? new Date().getFullYear() - lead.roofLastReplaced : null;
+  const roofArea = lead.estimatedRoofArea || Math.round(lead.sqft / Math.max(lead.stories || 1, 1));
+  const daysSinceHail = lead.lastHailDate ? Math.floor((Date.now() - new Date(lead.lastHailDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
+  const claimWindow = lead.claimWindowOpen ?? (daysSinceHail !== null ? daysSinceHail <= 730 : null);
 
   return (
     <div className="p-6 space-y-4">
@@ -192,17 +195,30 @@ export default function LeadDetail() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-                <DetailRow icon={Ruler} label="Square Footage" value={`${lead.sqft.toLocaleString()} sqft`} />
+                <DetailRow icon={Ruler} label="Building Sqft" value={`${lead.sqft.toLocaleString()} sqft`} />
+                <DetailRow icon={Ruler} label="Est. Roof Area" value={`~${roofArea.toLocaleString()} sqft`} />
                 <DetailRow icon={Calendar} label="Year Built" value={lead.yearBuilt} />
                 <DetailRow icon={Home} label="Construction Type" value={lead.constructionType} />
                 <DetailRow icon={Layers} label="Stories / Units" value={`${lead.stories} stories, ${lead.units} units`} />
                 <DetailRow icon={Building2} label="Zoning" value={lead.zoning} />
                 <DetailRow icon={Shield} label="Roof Material" value={lead.roofMaterial} />
+                <DetailRow icon={Shield} label="Roof System Type" value={lead.roofType} />
                 <DetailRow
                   icon={Calendar}
                   label="Roof Last Replaced"
                   value={lead.roofLastReplaced ? `${lead.roofLastReplaced}${roofAge ? ` (${roofAge} years ago)` : ""}` : "Unknown"}
                 />
+                {lead.lastRoofingPermitDate && (
+                  <DetailRow icon={FileText} label="Last Roofing Permit" value={
+                    <span>
+                      {lead.lastRoofingPermitDate}
+                      {lead.lastRoofingPermitType && <Badge variant="outline" className="ml-1 text-[10px]">{lead.lastRoofingPermitType}</Badge>}
+                    </span>
+                  } />
+                )}
+                {lead.lastRoofingContractor && (
+                  <DetailRow icon={HardHat} label="Last Roofing Contractor" value={lead.lastRoofingContractor} />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -215,7 +231,7 @@ export default function LeadDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="text-center p-4 bg-muted/50 rounded-md">
                   <p className="text-2xl font-bold" data-testid="text-hail-events">{lead.hailEvents}</p>
                   <p className="text-xs text-muted-foreground mt-1">Total Hail Events</p>
@@ -229,6 +245,24 @@ export default function LeadDetail() {
                     {lead.lastHailSize ? `${lead.lastHailSize}"` : "N/A"}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Largest Hail Size</p>
+                </div>
+                <div className="text-center p-4 bg-muted/50 rounded-md">
+                  {claimWindow !== null ? (
+                    <>
+                      <p className={`text-2xl font-bold ${claimWindow ? "text-emerald-600" : "text-amber-500"}`} data-testid="text-claim-window">
+                        {claimWindow ? "OPEN" : "CLOSED"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Insurance Claim Window
+                        {daysSinceHail !== null && <span className="block">{daysSinceHail} days ago</span>}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-muted-foreground" data-testid="text-claim-window">N/A</p>
+                      <p className="text-xs text-muted-foreground mt-1">Insurance Claim Window</p>
+                    </>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -471,7 +505,7 @@ export default function LeadDetail() {
                       data-testid="button-run-intel"
                     >
                       {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
-                      Run 12-Agent Pipeline
+                      Run 16-Agent Pipeline
                     </Button>
                   )}
                 </div>
@@ -687,14 +721,14 @@ function ScoreBreakdownCard({ leadId, leadScore }: { leadId: string; leadScore: 
 
   const breakdown = data?.breakdown;
   const categories = [
-    "Roof Age", "Hail Exposure", "Building Size", "Distress Signals",
-    "Owner Type", "Property Value", "Flood Risk", "Property Condition"
+    "Roof Age", "Hail Exposure", "Storm Recency", "Roof Area", "Contactability",
+    "Owner Type", "Property Value", "Distress Signals", "Flood Risk", "Property Condition"
   ];
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Lead Score v2 Breakdown</CardTitle>
+        <CardTitle className="text-sm font-medium">Lead Score v3 Breakdown</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">

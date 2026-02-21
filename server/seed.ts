@@ -5,44 +5,64 @@ export function calculateScore(lead: Partial<InsertLead>): number {
   let score = 0;
   const currentYear = new Date().getFullYear();
 
-  // === ROOF AGE (up to 25 pts) ===
+  // === ROOF AGE (up to 20 pts) ===
   if (lead.roofLastReplaced) {
     const roofAge = currentYear - lead.roofLastReplaced;
-    score += Math.min(roofAge * 2, 25);
+    score += Math.min(roofAge * 2, 20);
   } else {
-    score += 12;
+    score += 10;
   }
 
-  // === HAIL EXPOSURE (up to 20 pts) ===
-  score += Math.min((lead.hailEvents || 0) * 6, 20);
+  // === HAIL EXPOSURE (up to 15 pts) ===
+  score += Math.min((lead.hailEvents || 0) * 5, 15);
 
-  // === BUILDING SIZE (up to 15 pts) ===
-  if ((lead.sqft || 0) >= 10000) score += 15;
-  else if ((lead.sqft || 0) >= 5000) score += 12;
-  else if ((lead.sqft || 0) >= 2500) score += 8;
+  // === STORM RECENCY (up to 15 pts) ===
+  if (lead.lastHailDate) {
+    const lastHail = new Date(lead.lastHailDate);
+    const daysSince = Math.floor((Date.now() - lastHail.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysSince <= 30) score += 15;
+    else if (daysSince <= 90) score += 12;
+    else if (daysSince <= 180) score += 10;
+    else if (daysSince <= 365) score += 7;
+    else if (daysSince <= 730) score += 4;
+    else score += 1;
+  }
 
-  // === OWNER TYPE (up to 10 pts) ===
-  if (lead.ownerType === "LLC") score += 10;
-  else if (lead.ownerType === "Corporation") score += 8;
-  else score += 3;
+  // === ROOF AREA / JOB SIZE (up to 15 pts) ===
+  const roofArea = lead.estimatedRoofArea || Math.round((lead.sqft || 0) / Math.max(lead.stories || 1, 1));
+  if (roofArea >= 20000) score += 15;
+  else if (roofArea >= 10000) score += 12;
+  else if (roofArea >= 5000) score += 8;
+  else if (roofArea >= 2500) score += 5;
 
-  // === PROPERTY VALUE (up to 8 pts) ===
-  if (lead.totalValue && lead.totalValue >= 1000000) score += 8;
-  else if (lead.totalValue && lead.totalValue >= 500000) score += 5;
+  // === OWNER TYPE (up to 8 pts) ===
+  if (lead.ownerType === "LLC") score += 8;
+  else if (lead.ownerType === "Corporation") score += 6;
   else score += 2;
 
-  // === DISTRESS SIGNALS (up to 12 pts) ===
+  // === PROPERTY VALUE (up to 7 pts) ===
+  if (lead.totalValue && lead.totalValue >= 1000000) score += 7;
+  else if (lead.totalValue && lead.totalValue >= 500000) score += 4;
+  else score += 1;
+
+  // === CONTACTABILITY (up to 10 pts) ===
+  let contactPts = 0;
+  if (lead.ownerPhone || lead.contactPhone || lead.managingMemberPhone) contactPts += 4;
+  if (lead.ownerEmail || lead.contactEmail || lead.managingMemberEmail) contactPts += 3;
+  if (lead.managingMember || lead.contactName) contactPts += 3;
+  score += Math.min(contactPts, 10);
+
+  // === DISTRESS SIGNALS (up to 5 pts) ===
   const distress = calculateDistressScore(lead);
-  score += Math.min(distress, 12);
+  score += Math.min(distress, 5);
 
-  // === FLOOD RISK (up to 5 pts) ===
-  if (lead.isFloodHighRisk) score += 5;
-  else if (lead.floodZone && lead.floodZone !== "X" && lead.floodZone !== "NONE") score += 2;
+  // === FLOOD RISK (up to 3 pts) ===
+  if (lead.isFloodHighRisk) score += 3;
+  else if (lead.floodZone && lead.floodZone !== "X" && lead.floodZone !== "NONE") score += 1;
 
-  // === PROPERTY CONDITION / VIOLATIONS (up to 5 pts) ===
-  if ((lead.openViolations || 0) >= 3) score += 5;
-  else if ((lead.openViolations || 0) >= 1) score += 3;
-  else if ((lead.violationCount || 0) >= 2) score += 1;
+  // === PROPERTY CONDITION / VIOLATIONS (up to 2 pts) ===
+  if ((lead.openViolations || 0) >= 3) score += 2;
+  else if ((lead.openViolations || 0) >= 1) score += 1;
 
   return Math.min(score, 100);
 }
@@ -65,52 +85,76 @@ export function getScoreBreakdown(lead: Partial<InsertLead>): Record<string, { p
   const currentYear = new Date().getFullYear();
   const breakdown: Record<string, { points: number; max: number; detail: string }> = {};
 
-  let roofPts = 12;
+  let roofPts = 10;
   let roofDetail = "Unknown roof age (default)";
   if (lead.roofLastReplaced) {
     const roofAge = currentYear - lead.roofLastReplaced;
-    roofPts = Math.min(roofAge * 2, 25);
+    roofPts = Math.min(roofAge * 2, 20);
     roofDetail = `${roofAge} years old (replaced ${lead.roofLastReplaced})`;
   }
-  breakdown["Roof Age"] = { points: roofPts, max: 25, detail: roofDetail };
+  breakdown["Roof Age"] = { points: roofPts, max: 20, detail: roofDetail };
 
-  const hailPts = Math.min((lead.hailEvents || 0) * 6, 20);
-  breakdown["Hail Exposure"] = { points: hailPts, max: 20, detail: `${lead.hailEvents || 0} events` };
+  const hailPts = Math.min((lead.hailEvents || 0) * 5, 15);
+  breakdown["Hail Exposure"] = { points: hailPts, max: 15, detail: `${lead.hailEvents || 0} events` };
 
-  let sizePts = 0;
-  if ((lead.sqft || 0) >= 10000) sizePts = 15;
-  else if ((lead.sqft || 0) >= 5000) sizePts = 12;
-  else if ((lead.sqft || 0) >= 2500) sizePts = 8;
-  breakdown["Building Size"] = { points: sizePts, max: 15, detail: `${(lead.sqft || 0).toLocaleString()} sqft` };
+  let recencyPts = 0;
+  let recencyDetail = "No hail history";
+  if (lead.lastHailDate) {
+    const lastHail = new Date(lead.lastHailDate);
+    const daysSince = Math.floor((Date.now() - lastHail.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysSince <= 30) recencyPts = 15;
+    else if (daysSince <= 90) recencyPts = 12;
+    else if (daysSince <= 180) recencyPts = 10;
+    else if (daysSince <= 365) recencyPts = 7;
+    else if (daysSince <= 730) recencyPts = 4;
+    else recencyPts = 1;
+    recencyDetail = `${daysSince} days ago (${lead.lastHailDate})`;
+  }
+  breakdown["Storm Recency"] = { points: recencyPts, max: 15, detail: recencyDetail };
 
-  let ownerPts = 3;
-  if (lead.ownerType === "LLC") ownerPts = 10;
-  else if (lead.ownerType === "Corporation") ownerPts = 8;
-  breakdown["Owner Type"] = { points: ownerPts, max: 10, detail: lead.ownerType || "Unknown" };
+  const roofArea = lead.estimatedRoofArea || Math.round((lead.sqft || 0) / Math.max(lead.stories || 1, 1));
+  let areaPts = 0;
+  if (roofArea >= 20000) areaPts = 15;
+  else if (roofArea >= 10000) areaPts = 12;
+  else if (roofArea >= 5000) areaPts = 8;
+  else if (roofArea >= 2500) areaPts = 5;
+  breakdown["Roof Area"] = { points: areaPts, max: 15, detail: `~${roofArea.toLocaleString()} sqft roof` };
 
-  let valuePts = 2;
-  if (lead.totalValue && lead.totalValue >= 1000000) valuePts = 8;
-  else if (lead.totalValue && lead.totalValue >= 500000) valuePts = 5;
-  breakdown["Property Value"] = { points: valuePts, max: 8, detail: `$${(lead.totalValue || 0).toLocaleString()}` };
+  let ownerPts = 2;
+  if (lead.ownerType === "LLC") ownerPts = 8;
+  else if (lead.ownerType === "Corporation") ownerPts = 6;
+  breakdown["Owner Type"] = { points: ownerPts, max: 8, detail: lead.ownerType || "Unknown" };
 
-  const distressPts = Math.min(calculateDistressScore(lead), 12);
+  let valuePts = 1;
+  if (lead.totalValue && lead.totalValue >= 1000000) valuePts = 7;
+  else if (lead.totalValue && lead.totalValue >= 500000) valuePts = 4;
+  breakdown["Property Value"] = { points: valuePts, max: 7, detail: `$${(lead.totalValue || 0).toLocaleString()}` };
+
+  let contactPts = 0;
+  const contactDetails: string[] = [];
+  if (lead.ownerPhone || lead.contactPhone || lead.managingMemberPhone) { contactPts += 4; contactDetails.push("Phone"); }
+  if (lead.ownerEmail || lead.contactEmail || lead.managingMemberEmail) { contactPts += 3; contactDetails.push("Email"); }
+  if (lead.managingMember || lead.contactName) { contactPts += 3; contactDetails.push("Named contact"); }
+  contactPts = Math.min(contactPts, 10);
+  breakdown["Contactability"] = { points: contactPts, max: 10, detail: contactDetails.length > 0 ? contactDetails.join(", ") : "No contact info" };
+
+  const distressPts = Math.min(calculateDistressScore(lead), 5);
   const distressDetails: string[] = [];
   if (lead.foreclosureFlag) distressDetails.push("Foreclosure");
   if (lead.taxDelinquent) distressDetails.push("Tax delinquent");
   if ((lead.lienCount || 0) > 0) distressDetails.push(`${lead.lienCount} liens`);
   if ((lead.openViolations || 0) > 0) distressDetails.push(`${lead.openViolations} open violations`);
-  breakdown["Distress Signals"] = { points: distressPts, max: 12, detail: distressDetails.length > 0 ? distressDetails.join(", ") : "None detected" };
+  breakdown["Distress Signals"] = { points: distressPts, max: 5, detail: distressDetails.length > 0 ? distressDetails.join(", ") : "None detected" };
 
   let floodPts = 0;
-  if (lead.isFloodHighRisk) floodPts = 5;
-  else if (lead.floodZone && lead.floodZone !== "X" && lead.floodZone !== "NONE") floodPts = 2;
-  breakdown["Flood Risk"] = { points: floodPts, max: 5, detail: lead.floodZone || "Not assessed" };
+  if (lead.isFloodHighRisk) floodPts = 3;
+  else if (lead.floodZone && lead.floodZone !== "X" && lead.floodZone !== "NONE") floodPts = 1;
+  breakdown["Flood Risk"] = { points: floodPts, max: 3, detail: lead.floodZone || "Not assessed" };
 
   let violPts = 0;
-  if ((lead.openViolations || 0) >= 3) violPts = 5;
-  else if ((lead.openViolations || 0) >= 1) violPts = 3;
-  else if ((lead.violationCount || 0) >= 2) violPts = 1;
-  breakdown["Property Condition"] = { points: violPts, max: 5, detail: `${lead.violationCount || 0} total, ${lead.openViolations || 0} open` };
+  if ((lead.openViolations || 0) >= 3) violPts = 2;
+  else if ((lead.openViolations || 0) >= 1) violPts = 1;
+  breakdown["Property Condition"] = { points: violPts, max: 2, detail: `${lead.violationCount || 0} total, ${lead.openViolations || 0} open` };
 
   return breakdown;
 }

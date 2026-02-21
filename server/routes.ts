@@ -22,6 +22,8 @@ import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPe
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter } from "@shared/schema";
+import { db } from "./storage";
+import { sql } from "drizzle-orm";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -993,16 +995,91 @@ export async function registerRoutes(
       const { leads: allLeads } = await storage.getLeads(filter);
       let updated = 0;
       for (const lead of allLeads) {
-        const newScore = calculateScore(lead as any);
-        const distress = calculateDistressScore(lead as any);
-        if (newScore !== lead.leadScore || distress !== (lead.distressScore || 0)) {
-          await storage.updateLead(lead.id, { leadScore: newScore, distressScore: distress } as any);
+        const roofArea = Math.round(lead.sqft / Math.max(lead.stories || 1, 1));
+        let claimWindowOpen: boolean | null = null;
+        if (lead.lastHailDate) {
+          const daysSince = Math.floor((Date.now() - new Date(lead.lastHailDate).getTime()) / (1000 * 60 * 60 * 24));
+          claimWindowOpen = daysSince <= 730;
+        }
+        const enrichedLead = { ...lead, estimatedRoofArea: roofArea, claimWindowOpen } as any;
+        const newScore = calculateScore(enrichedLead);
+        const distress = calculateDistressScore(enrichedLead);
+        const updates: any = {};
+        if (roofArea !== lead.estimatedRoofArea) updates.estimatedRoofArea = roofArea;
+        if (claimWindowOpen !== lead.claimWindowOpen) updates.claimWindowOpen = claimWindowOpen;
+        if (newScore !== lead.leadScore) updates.leadScore = newScore;
+        if (distress !== (lead.distressScore || 0)) updates.distressScore = distress;
+        if (Object.keys(updates).length > 0) {
+          await storage.updateLead(lead.id, updates);
           updated++;
         }
       }
       res.json({ total: allLeads.length, updated });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to recalculate scores", error: error.message });
+    }
+  });
+
+  app.post("/api/leads/scan-roofing-permits", async (req, res) => {
+    try {
+      const roofingPermits = await db.execute(sql`
+        SELECT bp.lead_id, bp.address, bp.contractor, bp.contractor_phone, bp.work_description, bp.issued_date, bp.permit_type
+        FROM building_permits bp
+        WHERE (bp.work_description ILIKE '%roof%' OR bp.permit_type ILIKE '%roof%')
+        ORDER BY bp.issued_date DESC
+      `);
+      const permitsByLead = new Map<string, any>();
+      const addressToLeadId = new Map<string, string>();
+      const { leads: allLeads } = await storage.getLeads({ limit: 50000 });
+      for (const lead of allLeads) {
+        const normalAddr = lead.address.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        addressToLeadId.set(normalAddr, lead.id);
+      }
+      for (const p of roofingPermits.rows) {
+        let leadId = p.lead_id as string | null;
+        if (!leadId && p.address) {
+          const normalAddr = (p.address as string).toUpperCase().replace(/[^A-Z0-9]/g, '');
+          leadId = addressToLeadId.get(normalAddr) || null;
+        }
+        if (leadId && !permitsByLead.has(leadId)) {
+          permitsByLead.set(leadId, p);
+        }
+      }
+      let updated = 0;
+      for (const [leadId, permit] of Array.from(permitsByLead.entries())) {
+        const desc = (permit.work_description || "").toLowerCase();
+        let roofType: string | null = null;
+        if (desc.includes("tpo")) roofType = "TPO";
+        else if (desc.includes("epdm")) roofType = "EPDM";
+        else if (desc.includes("modified bitumen") || desc.includes("mod bit")) roofType = "Modified Bitumen";
+        else if (desc.includes("built-up") || desc.includes("bur ")) roofType = "Built-Up (BUR)";
+        else if (desc.includes("metal")) roofType = "Metal";
+        else if (desc.includes("shingle")) roofType = "Shingle";
+        else if (desc.includes("flat")) roofType = "Flat";
+        let permitClassification = "Replacement";
+        if (desc.includes("repair") || desc.includes("patch") || desc.includes("fix") || desc.includes("leak")) {
+          permitClassification = "Repair";
+        } else if (desc.includes("inspect") || desc.includes("survey")) {
+          permitClassification = "Inspection";
+        } else if (desc.includes("overlay")) {
+          permitClassification = "Overlay";
+        } else if (desc.includes("tear") || desc.includes("remove") || desc.includes("demo")) {
+          permitClassification = "Tear-Off/Replace";
+        } else if (desc.includes("re-roof") || desc.includes("reroof") || desc.includes("new roof") || desc.includes("replacement")) {
+          permitClassification = "Replacement";
+        }
+        const updates: any = {
+          lastRoofingPermitDate: permit.issued_date || null,
+          lastRoofingContractor: permit.contractor || null,
+          lastRoofingPermitType: permitClassification,
+        };
+        if (roofType) updates.roofType = roofType;
+        await storage.updateLead(leadId, updates);
+        updated++;
+      }
+      res.json({ totalRoofingPermits: roofingPermits.rows.length, leadsUpdated: updated });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to scan roofing permits", error: error.message });
     }
   });
 

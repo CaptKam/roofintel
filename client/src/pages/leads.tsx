@@ -277,6 +277,7 @@ export default function Leads() {
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Ruler className="w-3 h-3" />
                           {lead.sqft.toLocaleString()} sqft
+                          {lead.stories > 1 && ` (~${Math.round(lead.sqft / lead.stories).toLocaleString()} roof)`}
                         </span>
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Building2 className="w-3 h-3" />
@@ -292,6 +293,9 @@ export default function Leads() {
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <CloudLightning className="w-3 h-3" />
                             {lead.hailEvents} hail hit{lead.hailEvents > 1 ? "s" : ""}
+                            {lead.claimWindowOpen && (
+                              <Badge variant="default" className="text-[9px] ml-0.5">Claimable</Badge>
+                            )}
                           </span>
                         )}
                         <span className="text-xs text-muted-foreground flex items-center gap-1">

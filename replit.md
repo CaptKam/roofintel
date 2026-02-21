@@ -99,12 +99,29 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `GET /api/leads/:id/claims` - Provenance claims for a lead (skip trace source evidence)
 - `GET /api/intelligence/skip-trace-status` - Skip Trace agent source availability
 
-## Lead Scoring (0-100)
-- Roof age: up to 30 points (2 pts per year since last replacement, 15 pts default if unknown)
-- Hail exposure: up to 25 points (8 pts per event)
-- Building size: up to 20 points (>=10k sqft: 20, >=5k: 15, >=2.5k: 10)
-- Owner type: up to 15 points (LLC: 15, Corp: 10, Other: 5)
-- Property value: up to 10 points
+## Lead Scoring v3 (0-100) — Roofing Contractor Optimized
+- Roof age: up to 20 points (2 pts per year since last replacement, 10 pts default if unknown)
+- Hail exposure: up to 15 points (5 pts per event)
+- Storm recency: up to 15 points (15 if ≤30 days, 12 if ≤90, 10 if ≤180, 7 if ≤365, 4 if ≤730, 1 if older)
+- Roof area (job size): up to 15 points (based on estimated roof sqft = building sqft / stories)
+- Contactability: up to 10 points (4 for phone, 3 for email, 3 for named contact/decision-maker)
+- Owner type: up to 8 points (LLC: 8, Corp: 6, Other: 2)
+- Property value: up to 7 points
+- Distress signals: up to 5 points
+- Flood risk: up to 3 points
+- Property condition: up to 2 points
+
+## New Data Fields
+- `estimatedRoofArea` - Calculated as sqft / stories, represents actual rooftop job size
+- `claimWindowOpen` - Boolean flag, true if last hail was within 2 years (insurance claim filing window)
+- `roofType` - Roof system type (TPO, EPDM, Modified Bitumen, Built-Up, Metal, Shingle, Flat) extracted from permit descriptions
+- `lastRoofingPermitDate` - Most recent roofing-specific permit date
+- `lastRoofingContractor` - Competitor who last did roofing work on the property
+- `lastRoofingPermitType` - Classification: Replacement, Repair, Tear-Off/Replace, Overlay, Inspection
+
+## API Endpoints (New)
+- `POST /api/leads/scan-roofing-permits` - Scan building permits for roofing work, match to leads by address, extract contractor/type info
+- `POST /api/leads/recalculate-scores` - Recalculate all lead scores with v3 algorithm, compute roof area and claim window
 
 ## Design
 - Professional blue/slate B2B color scheme
