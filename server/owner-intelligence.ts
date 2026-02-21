@@ -2,6 +2,7 @@ import { storage } from "./storage";
 import type { Lead, InsertIntelligenceClaim } from "@shared/schema";
 import * as cheerio from "cheerio";
 import { runSkipTraceAgent } from "./skip-trace-agent";
+import { runSocialIntelPipeline } from "./social-intel-agents";
 
 // ============================================================
 // TYPES
@@ -1287,7 +1288,7 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   let discoveredEmails: Array<{ email: string; source: string; verified: boolean }> = [];
   let sources: string[] = [];
 
-  console.log(`[Intelligence] Running 12-agent pipeline for: ${lead.ownerName} (${lead.address})`);
+  console.log(`[Intelligence] Running 16-agent pipeline for: ${lead.ownerName} (${lead.address})`);
 
   // Stage 1: TX SOS Deep Agent
   const sosResult = await txSosDeepAgent(lead);
@@ -1353,11 +1354,14 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   agentResults.push({ agent: "Court Records", status: courtResult.people.length > 0 || courtResult.records.length > 0 ? "found" : "empty", found: courtResult.people.length, detail: courtResult.agentDetail });
   if (courtResult.people.length > 0) sources.push("Court Records");
 
-  // Stage 9: Social Intelligence Agent
-  const socialResult = await socialIntelAgent(lead, allPeople);
+  // Stage 9: Social Intelligence Pipeline (TREC, TDLR, HUD, BBB, Google Places Enhanced)
+  const socialResult = await runSocialIntelPipeline(lead, allPeople);
   allPeople.push(...socialResult.people);
   businessProfiles.push(...socialResult.profiles);
-  agentResults.push({ agent: "Social Intelligence", status: socialResult.people.length > 0 || socialResult.profiles.length > 0 ? "found" : "empty", found: socialResult.people.length, detail: socialResult.agentDetail });
+  buildingContacts.push(...socialResult.contacts);
+  for (const subResult of socialResult.agentResults) {
+    agentResults.push(subResult);
+  }
   if (socialResult.people.length > 0 || socialResult.profiles.length > 0) sources.push("Social Intel");
 
   // Stage 10: Building Contacts Agent
@@ -1513,7 +1517,7 @@ export async function runOwnerIntelligenceBatch(
     recordsProcessed: 0,
     recordsImported: 0,
     recordsSkipped: 0,
-    metadata: { source: "12_agent_pipeline", totalOwners: batch.length, totalLeads: eligibleLeads.length },
+    metadata: { source: "16_agent_pipeline", totalOwners: batch.length, totalLeads: eligibleLeads.length },
   });
 
   for (let i = 0; i < batch.length; i++) {
@@ -1592,7 +1596,11 @@ export function getIntelligenceStatus(): {
     { name: "Email Discovery", available: true, description: "Generates and verifies email patterns from business domains" },
     { name: "Google Business", available: !!process.env.GOOGLE_PLACES_API_KEY, description: "Google Places business profile and owner info from reviews" },
     { name: "Court Records", available: !!process.env.SERPER_API_KEY, description: "Searches public court filings and building permits" },
-    { name: "Social Intelligence", available: !!process.env.SERPER_API_KEY, description: "BBB profiles, LinkedIn companies, and business registrations" },
+    { name: "TREC License", available: true, description: "Texas Real Estate Commission license lookup for brokers/agents" },
+    { name: "TDLR License", available: true, description: "Texas Dept of Licensing & Regulation property manager and contractor licenses" },
+    { name: "HUD Multifamily", available: true, description: "HUD multifamily property database for management agents and executive directors" },
+    { name: "BBB Direct", available: true, description: "Better Business Bureau profiles, principals, and accreditation (no API key needed)" },
+    { name: "Google Places Enhanced", available: !!process.env.GOOGLE_PLACES_API_KEY, description: "Reverse address lookup for businesses at property, review mining for manager names" },
     { name: "Building Contacts", available: !!process.env.SERPER_API_KEY || !!process.env.GOOGLE_PLACES_API_KEY, description: "Finds property managers, tenants, contractors, and permit filers connected to the building" },
     { name: "Skip Trace", available: true, description: "7-source free lookup: DFW permits, TX sales tax, OpenCorporates officers, TCEQ contacts, WHOIS, email patterns, reverse address" },
     { name: "Master Orchestrator", available: true, description: "Chains all agents, deduplicates, scores confidence, and stores provenance claims" },

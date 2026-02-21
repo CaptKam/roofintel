@@ -769,7 +769,7 @@ export async function registerRoutes(
       const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 10, 1), 50);
 
       res.json({
-        message: "Owner intelligence pipeline started (12 agents)",
+        message: "Owner intelligence pipeline started (16 agents)",
         batchSize: parsedBatchSize,
       });
 

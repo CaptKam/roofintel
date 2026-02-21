@@ -47,6 +47,11 @@ function AgentIcon({ name }: { name: string }) {
     case "Google Business": return <Globe className="w-3.5 h-3.5" />;
     case "Court Records": return <Scale className="w-3.5 h-3.5" />;
     case "Social Intelligence": return <Users className="w-3.5 h-3.5" />;
+    case "TREC License": return <UserCheck className="w-3.5 h-3.5" />;
+    case "TDLR License": return <ShieldCheck className="w-3.5 h-3.5" />;
+    case "HUD Multifamily": return <Building2 className="w-3.5 h-3.5" />;
+    case "BBB Direct": return <Globe className="w-3.5 h-3.5" />;
+    case "Google Places Enhanced": return <MapPin className="w-3.5 h-3.5" />;
     case "Building Contacts": return <Building2 className="w-3.5 h-3.5" />;
     case "Skip Trace": return <Fingerprint className="w-3.5 h-3.5" />;
     case "Master Orchestrator": return <Bot className="w-3.5 h-3.5" />;
