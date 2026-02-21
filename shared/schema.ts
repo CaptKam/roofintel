@@ -71,9 +71,26 @@ export const leads = pgTable("leads", {
   hailEvents: integer("hail_events").notNull().default(0),
   lastHailDate: text("last_hail_date"),
   lastHailSize: real("last_hail_size"),
+  floodZone: text("flood_zone"),
+  floodZoneSubtype: text("flood_zone_subtype"),
+  isFloodHighRisk: boolean("is_flood_high_risk").default(false),
+  lastDeedDate: text("last_deed_date"),
+  lienCount: integer("lien_count").default(0),
+  foreclosureFlag: boolean("foreclosure_flag").default(false),
+  taxDelinquent: boolean("tax_delinquent").default(false),
+  violationCount: integer("violation_count").default(0),
+  openViolations: integer("open_violations").default(0),
+  lastViolationDate: text("last_violation_date"),
+  permitCount: integer("permit_count").default(0),
+  lastPermitDate: text("last_permit_date"),
+  distressScore: integer("distress_score").default(0),
   leadScore: integer("lead_score").notNull().default(0),
   status: text("status").notNull().default("new"),
   notes: text("notes"),
+  consentStatus: text("consent_status").default("unknown"),
+  consentDate: text("consent_date"),
+  consentChannel: text("consent_channel"),
+  dncRegistered: boolean("dnc_registered"),
   sourceType: text("source_type").default("seed"),
   sourceId: text("source_id"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -203,6 +220,85 @@ export const intelligenceClaims = pgTable("intelligence_claims", {
   metadata: jsonb("metadata"),
 });
 
+export const recordedDocuments = pgTable("recorded_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id"),
+  marketId: varchar("market_id"),
+  documentType: text("document_type").notNull(),
+  instrumentNumber: text("instrument_number"),
+  grantor: text("grantor"),
+  grantee: text("grantee"),
+  recordingDate: text("recording_date"),
+  legalDescription: text("legal_description"),
+  address: text("address"),
+  county: text("county").notNull(),
+  amount: real("amount"),
+  source: text("source").notNull().default("dallas_county_clerk"),
+  sourceDocId: text("source_doc_id"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const codeViolations = pgTable("code_violations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id"),
+  marketId: varchar("market_id"),
+  serviceRequestNumber: text("service_request_number"),
+  address: text("address").notNull(),
+  violationType: text("violation_type").notNull(),
+  category: text("category"),
+  status: text("status").notNull().default("open"),
+  priority: text("priority"),
+  createdDate: text("created_date"),
+  closedDate: text("closed_date"),
+  department: text("department"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  source: text("source").notNull().default("dallas_311"),
+  sourceId: text("source_id"),
+  metadata: jsonb("metadata"),
+});
+
+export const buildingPermits = pgTable("building_permits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id"),
+  marketId: varchar("market_id"),
+  permitNumber: text("permit_number").notNull(),
+  permitType: text("permit_type").notNull(),
+  issuedDate: text("issued_date"),
+  address: text("address").notNull(),
+  city: text("city").notNull(),
+  zipCode: text("zip_code"),
+  contractor: text("contractor"),
+  contractorPhone: text("contractor_phone"),
+  owner: text("owner"),
+  workDescription: text("work_description"),
+  estimatedValue: real("estimated_value"),
+  sqft: integer("sqft"),
+  landUse: text("land_use"),
+  status: text("status"),
+  source: text("source").notNull().default("dallas_open_data"),
+  sourcePermitId: text("source_permit_id"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const complianceConsent = pgTable("compliance_consent", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  channel: text("channel").notNull(),
+  consentStatus: text("consent_status").notNull().default("unknown"),
+  consentSource: text("consent_source"),
+  consentDate: timestamp("consent_date"),
+  revokedDate: timestamp("revoked_date"),
+  dncChecked: boolean("dnc_checked").default(false),
+  dncResult: text("dnc_result"),
+  dncCheckedAt: timestamp("dnc_checked_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertMarketSchema = createInsertSchema(markets).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
 export const insertHailEventSchema = createInsertSchema(hailEvents).omit({ id: true });
@@ -214,6 +310,10 @@ export const insertStormRunSchema = createInsertSchema(stormRuns).omit({ id: tru
 export const insertAlertHistorySchema = createInsertSchema(alertHistory).omit({ id: true });
 export const insertResponseQueueSchema = createInsertSchema(responseQueue).omit({ id: true, createdAt: true });
 export const insertIntelligenceClaimSchema = createInsertSchema(intelligenceClaims).omit({ id: true });
+export const insertRecordedDocumentSchema = createInsertSchema(recordedDocuments).omit({ id: true, createdAt: true });
+export const insertCodeViolationSchema = createInsertSchema(codeViolations).omit({ id: true });
+export const insertBuildingPermitSchema = createInsertSchema(buildingPermits).omit({ id: true, createdAt: true });
+export const insertComplianceConsentSchema = createInsertSchema(complianceConsent).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type Market = typeof markets.$inferSelect;
 export type InsertMarket = z.infer<typeof insertMarketSchema>;
@@ -237,6 +337,14 @@ export type ResponseQueueItem = typeof responseQueue.$inferSelect;
 export type InsertResponseQueue = z.infer<typeof insertResponseQueueSchema>;
 export type IntelligenceClaim = typeof intelligenceClaims.$inferSelect;
 export type InsertIntelligenceClaim = z.infer<typeof insertIntelligenceClaimSchema>;
+export type RecordedDocument = typeof recordedDocuments.$inferSelect;
+export type InsertRecordedDocument = z.infer<typeof insertRecordedDocumentSchema>;
+export type CodeViolation = typeof codeViolations.$inferSelect;
+export type InsertCodeViolation = z.infer<typeof insertCodeViolationSchema>;
+export type BuildingPermit = typeof buildingPermits.$inferSelect;
+export type InsertBuildingPermit = z.infer<typeof insertBuildingPermitSchema>;
+export type ComplianceConsentRecord = typeof complianceConsent.$inferSelect;
+export type InsertComplianceConsent = z.infer<typeof insertComplianceConsentSchema>;
 
 export const leadFilterSchema = z.object({
   marketId: z.string().optional(),
@@ -250,6 +358,9 @@ export const leadFilterSchema = z.object({
   status: z.string().optional(),
   search: z.string().optional(),
   hasPhone: z.boolean().optional(),
+  hasDistress: z.boolean().optional(),
+  floodRisk: z.boolean().optional(),
+  hasViolations: z.boolean().optional(),
   limit: z.number().optional(),
   offset: z.number().optional(),
 });

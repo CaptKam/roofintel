@@ -17,6 +17,10 @@ import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMoni
 import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweatherStatus, getActiveThreats } from "./xweather-hail";
 import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus } from "./owner-intelligence";
 import { getSkipTraceStatus } from "./skip-trace-agent";
+import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, getDallasRecordsStatus, addRecordedDocument } from "./dallas-records-agent";
+import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats } from "./permits-agent";
+import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
+import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter } from "@shared/schema";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -844,6 +848,215 @@ export async function registerRoutes(
       res.json(status);
     } catch (error) {
       res.status(500).json({ message: "Failed to get skip trace status" });
+    }
+  });
+
+  // ============================================================
+  // Code Violations & 311 Endpoints
+  // ============================================================
+
+  app.get("/api/violations/status", async (_req, res) => {
+    try {
+      const status = await getDallasRecordsStatus();
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get violations status", error: error.message });
+    }
+  });
+
+  app.post("/api/violations/import-311", async (req, res) => {
+    try {
+      const { marketId, daysBack } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await importDallas311(marketId, { daysBack: daysBack || 90 });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to import 311 data", error: error.message });
+    }
+  });
+
+  app.post("/api/violations/import-code", async (req, res) => {
+    try {
+      const { marketId, daysBack } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await importDallasCodeViolations(marketId, { daysBack: daysBack || 365 });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to import code violations", error: error.message });
+    }
+  });
+
+  app.post("/api/violations/match", async (req, res) => {
+    try {
+      const { marketId } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await matchViolationsToLeads(marketId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to match violations to leads", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Building Permits Endpoints
+  // ============================================================
+
+  app.get("/api/permits/status", async (_req, res) => {
+    try {
+      const stats = await getPermitStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get permit stats", error: error.message });
+    }
+  });
+
+  app.post("/api/permits/import-dallas", async (req, res) => {
+    try {
+      const { marketId, daysBack, commercialOnly } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await importDallasPermits(marketId, { daysBack, commercialOnly });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to import Dallas permits", error: error.message });
+    }
+  });
+
+  app.post("/api/permits/import-fortworth", async (req, res) => {
+    try {
+      const { marketId, daysBack } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await importFortWorthPermits(marketId, { daysBack });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to import Fort Worth permits", error: error.message });
+    }
+  });
+
+  app.post("/api/permits/match", async (req, res) => {
+    try {
+      const { marketId } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await matchPermitsToLeads(marketId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to match permits to leads", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Flood Zone Endpoints
+  // ============================================================
+
+  app.get("/api/flood/status", async (req, res) => {
+    try {
+      const stats = await getFloodZoneStats(req.query.marketId as string);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get flood zone stats", error: error.message });
+    }
+  });
+
+  app.post("/api/flood/enrich", async (req, res) => {
+    try {
+      const { marketId, batchSize } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const result = await enrichLeadsWithFloodZones(marketId, { batchSize });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to enrich flood zones", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Lead Score v2 Endpoints
+  // ============================================================
+
+  app.get("/api/leads/:id/score-breakdown", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      const breakdown = getScoreBreakdown(lead as any);
+      const totalScore = calculateScore(lead as any);
+      const distressScore = calculateDistressScore(lead as any);
+      res.json({ score: totalScore, distressScore, breakdown });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get score breakdown" });
+    }
+  });
+
+  app.post("/api/leads/recalculate-scores", async (req, res) => {
+    try {
+      const { marketId } = req.body;
+      const filter: any = {};
+      if (marketId) filter.marketId = marketId;
+      filter.limit = 50000;
+      const { leads: allLeads } = await storage.getLeads(filter);
+      let updated = 0;
+      for (const lead of allLeads) {
+        const newScore = calculateScore(lead as any);
+        const distress = calculateDistressScore(lead as any);
+        if (newScore !== lead.leadScore || distress !== (lead.distressScore || 0)) {
+          await storage.updateLead(lead.id, { leadScore: newScore, distressScore: distress } as any);
+          updated++;
+        }
+      }
+      res.json({ total: allLeads.length, updated });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to recalculate scores", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Compliance / Consent Endpoints
+  // ============================================================
+
+  app.get("/api/compliance/status", async (req, res) => {
+    try {
+      const marketId = req.query.marketId as string;
+      const filter: any = { limit: 50000 };
+      if (marketId) filter.marketId = marketId;
+      const { leads: allLeads, total } = await storage.getLeads(filter);
+      const consentStats = {
+        total,
+        unknown: allLeads.filter(l => !l.consentStatus || l.consentStatus === "unknown").length,
+        granted: allLeads.filter(l => l.consentStatus === "granted").length,
+        denied: allLeads.filter(l => l.consentStatus === "denied").length,
+        revoked: allLeads.filter(l => l.consentStatus === "revoked").length,
+        dncRegistered: allLeads.filter(l => l.dncRegistered).length,
+        hasPhone: allLeads.filter(l => l.ownerPhone || l.contactPhone || l.managingMemberPhone).length,
+        hasEmail: allLeads.filter(l => l.ownerEmail || l.contactEmail || l.managingMemberEmail).length,
+      };
+      res.json(consentStats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get compliance status", error: error.message });
+    }
+  });
+
+  app.patch("/api/leads/:id/consent", async (req, res) => {
+    try {
+      const { consentStatus, consentChannel } = req.body;
+      if (!consentStatus) return res.status(400).json({ message: "consentStatus required" });
+      await storage.updateLead(req.params.id, {
+        consentStatus,
+        consentChannel: consentChannel || "manual",
+        consentDate: new Date().toISOString(),
+      } as any);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update consent", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Recorded Documents Endpoints
+  // ============================================================
+
+  app.post("/api/documents/add", async (req, res) => {
+    try {
+      const result = await addRecordedDocument(req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to add document", error: error.message });
     }
   });
 

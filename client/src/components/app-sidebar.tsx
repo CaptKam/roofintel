@@ -1,6 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio, Radar, Fingerprint } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio, Radar, Fingerprint, Shield } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -32,6 +32,7 @@ const stormNav = [
 const toolsNav = [
   { title: "Export", url: "/export", icon: Download },
   { title: "Data Sources", url: "/data", icon: Database },
+  { title: "Data Intelligence", url: "/data-intelligence", icon: Shield },
 ];
 
 export function AppSidebar() {

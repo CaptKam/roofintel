@@ -43,6 +43,11 @@ import {
   UserCheck,
   Database,
   ExternalLink,
+  AlertTriangle,
+  Droplets,
+  Scale,
+  ShieldAlert,
+  Ban,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -556,6 +561,69 @@ export default function LeadDetail() {
             </Card>
           )}
 
+          {(lead.foreclosureFlag || lead.taxDelinquent || (lead.lienCount && lead.lienCount > 0) || (lead.violationCount && lead.violationCount > 0) || lead.floodZone) && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  Distress & Risk Signals
+                </CardTitle>
+                {lead.distressScore !== undefined && lead.distressScore !== null && lead.distressScore > 0 && (
+                  <Badge variant="destructive" className="text-[10px]" data-testid="badge-distress-score">
+                    Distress: {lead.distressScore}
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {lead.foreclosureFlag && (
+                  <DetailRow icon={Ban} label="Foreclosure" value={
+                    <Badge variant="destructive" className="text-[10px]" data-testid="badge-foreclosure">Active Foreclosure</Badge>
+                  } />
+                )}
+                {lead.taxDelinquent && (
+                  <DetailRow icon={DollarSign} label="Tax Status" value={
+                    <Badge variant="destructive" className="text-[10px]" data-testid="badge-tax-delinquent">Tax Delinquent</Badge>
+                  } />
+                )}
+                {lead.lienCount !== undefined && lead.lienCount !== null && lead.lienCount > 0 && (
+                  <DetailRow icon={Scale} label="Liens" value={
+                    <span data-testid="text-lien-count">{lead.lienCount} lien{lead.lienCount > 1 ? 's' : ''} on record</span>
+                  } />
+                )}
+                {lead.violationCount !== undefined && lead.violationCount !== null && lead.violationCount > 0 && (
+                  <DetailRow icon={ShieldAlert} label="Code Violations" value={
+                    <span data-testid="text-violation-count">{lead.violationCount} violation{lead.violationCount > 1 ? 's' : ''}</span>
+                  } />
+                )}
+                {lead.floodZone && (
+                  <DetailRow icon={Droplets} label="Flood Zone" value={
+                    <Badge variant={
+                      ['A', 'AE', 'AH', 'AO', 'AR', 'V', 'VE'].includes(lead.floodZone) ? "destructive" : "outline"
+                    } className="text-[10px]" data-testid="badge-flood-zone">
+                      Zone {lead.floodZone}{lead.floodZoneSubtype ? ` (${lead.floodZoneSubtype})` : ''}
+                    </Badge>
+                  } />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-primary" />
+                Compliance
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DetailRow icon={Shield} label="Consent Status" value={
+                <Badge variant={lead.consentStatus === "granted" ? "default" : lead.consentStatus === "denied" || lead.consentStatus === "revoked" ? "destructive" : "secondary"} className="text-[10px]" data-testid="badge-consent-status">
+                  {lead.consentStatus || "unknown"}
+                </Badge>
+              } />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Lead Status</CardTitle>
@@ -600,28 +668,58 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Lead Score Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <ScoreBar label="Roof Age" value={roofAge ? Math.min(roofAge * 5, 30) : 0} max={30} />
-                <ScoreBar label="Hail Exposure" value={Math.min(lead.hailEvents * 10, 25)} max={25} />
-                <ScoreBar label="Building Size" value={lead.sqft >= 10000 ? 20 : lead.sqft >= 5000 ? 15 : 10} max={20} />
-                <ScoreBar label="Owner Type" value={lead.ownerType === "LLC" ? 15 : 5} max={15} />
-                <ScoreBar label="Property Value" value={lead.totalValue && lead.totalValue >= 500000 ? 10 : 5} max={10} />
-                <Separator />
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Total Score</span>
-                  <ScoreBadge score={lead.leadScore} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <ScoreBreakdownCard leadId={id!} leadScore={lead.leadScore} />
         </div>
       </div>
     </div>
+  );
+}
+
+function ScoreBreakdownCard({ leadId, leadScore }: { leadId: string; leadScore: number }) {
+  const { data } = useQuery<{ score: number; distressScore: number; breakdown: Record<string, { points: number; max: number; detail: string }> }>({
+    queryKey: ["/api/leads", leadId, "score-breakdown"],
+    queryFn: async () => {
+      const res = await fetch(`/api/leads/${leadId}/score-breakdown`);
+      if (!res.ok) throw new Error("Failed to fetch score breakdown");
+      return res.json();
+    },
+  });
+
+  const breakdown = data?.breakdown;
+  const categories = [
+    "Roof Age", "Hail Exposure", "Building Size", "Distress Signals",
+    "Owner Type", "Property Value", "Flood Risk", "Property Condition"
+  ];
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium">Lead Score v2 Breakdown</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {breakdown ? categories.map(cat => {
+            const item = breakdown[cat];
+            if (!item) return null;
+            return <ScoreBar key={cat} label={cat} value={item.points} max={item.max} />;
+          }) : (
+            <div className="space-y-3">
+              {categories.map(cat => (
+                <div key={cat} className="space-y-1">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-1.5 w-full" />
+                </div>
+              ))}
+            </div>
+          )}
+          <Separator />
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Total Score</span>
+            <ScoreBadge score={leadScore} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

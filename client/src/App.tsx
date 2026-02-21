@@ -18,6 +18,7 @@ import DataManagement from "@/pages/data-management";
 import StormResponse from "@/pages/storm-response";
 import AlertConfig from "@/pages/alert-config";
 import OwnerIntelligence from "@/pages/owner-intelligence";
+import DataIntelligence from "@/pages/data-intelligence";
 
 function Router() {
   return (
@@ -32,6 +33,7 @@ function Router() {
       <Route path="/export" component={Export} />
       <Route path="/intelligence" component={OwnerIntelligence} />
       <Route path="/data" component={DataManagement} />
+      <Route path="/data-intelligence" component={DataIntelligence} />
       <Route component={NotFound} />
     </Switch>
   );

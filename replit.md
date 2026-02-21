@@ -12,7 +12,7 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **File Upload**: Multer (CSV property data uploads)
 
 ## Architecture
-- `client/src/pages/` - Page components (dashboard, leads, lead-detail, map-view, hail-events, export, data-management, owner-intelligence, storm-response, alert-config)
+- `client/src/pages/` - Page components (dashboard, leads, lead-detail, map-view, hail-events, export, data-management, data-intelligence, owner-intelligence, storm-response, alert-config)
 - `client/src/components/` - Shared components (app-sidebar, score-badge, status-badge, theme-provider, theme-toggle)
 - `server/routes.ts` - API endpoints
 - `server/storage.ts` - Database storage layer with Drizzle ORM
