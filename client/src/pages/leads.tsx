@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { ScoreBadge, ScoreDot } from "@/components/score-badge";
 import { StatusBadge } from "@/components/status-badge";
+import { useToast } from "@/hooks/use-toast";
 import {
   Search,
   Building2,
@@ -29,6 +30,7 @@ import {
   User,
   Phone,
   Fingerprint,
+  Download,
 } from "lucide-react";
 import type { Lead } from "@shared/schema";
 
@@ -40,11 +42,13 @@ interface LeadsResponse {
 }
 
 export default function Leads() {
+  const { toast } = useToast();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [exporting, setExporting] = useState(false);
   const [county, setCounty] = useState<string>(urlParams.get("county") || "");
   const [minScore, setMinScore] = useState<string>(urlParams.get("minScore") || "");
   const [zoning, setZoning] = useState<string>(urlParams.get("zoning") || "");
@@ -109,6 +113,29 @@ export default function Leads() {
     setHasPhone(false);
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const exportParams = new URLSearchParams();
+      if (county) exportParams.set("county", county);
+      if (minScore) exportParams.set("minScore", minScore);
+      if (zoning) exportParams.set("zoning", zoning);
+      const res = await fetch(`/api/leads/export?${exportParams.toString()}`);
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `roofIntel-leads-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export complete", description: `${total} leads exported to CSV` });
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    }
+    setExporting(false);
+  };
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -123,6 +150,15 @@ export default function Leads() {
             </p>
           )}
         </div>
+        <Button
+          variant="outline"
+          onClick={handleExport}
+          disabled={exporting || isLoading || total === 0}
+          data-testid="button-export-csv"
+        >
+          <Download className="w-4 h-4 mr-1.5" />
+          {exporting ? "Exporting..." : "Export CSV"}
+        </Button>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

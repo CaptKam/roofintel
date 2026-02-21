@@ -12,8 +12,9 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - **File Upload**: Multer (CSV property data uploads)
 
 ## Architecture
-- `client/src/pages/` - Page components (dashboard, leads, lead-detail, map-view, hail-events, export, data-management, data-intelligence, owner-intelligence, storm-response, alert-config)
-- `client/src/components/` - Shared components (app-sidebar, score-badge, status-badge, theme-provider, theme-toggle)
+- `client/src/pages/` - 5 core pages: dashboard, leads, lead-detail, map-storms (tabbed: Map/Storm Response/Alert Settings), admin (tabbed: Property Sources/Storm Data/Contact Enrichment/Intelligence/Roofing Permits/System)
+- `client/src/components/` - Shared components (app-sidebar with market selector, score-badge, status-badge, theme-provider, theme-toggle)
+- **Consolidated pages** (Feb 2026): Merged 12 pages → 5. Removed standalone hail-events, export, owner-intelligence, data-intelligence, storm-response, alert-config pages. Export folded into Leads. Storm/Map/Alerts combined into Map & Storms. Data Management + Data Intelligence + Owner Intelligence batch merged into Admin.
 - `server/routes.ts` - API endpoints
 - `server/storage.ts` - Database storage layer with Drizzle ORM
 - `server/seed.ts` - Market setup and calculateScore function (no fake data)

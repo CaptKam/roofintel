@@ -7,18 +7,13 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MarketProvider } from "@/hooks/use-market";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Leads from "@/pages/leads";
 import LeadDetail from "@/pages/lead-detail";
-import MapView from "@/pages/map-view";
-import HailEvents from "@/pages/hail-events";
-import Export from "@/pages/export";
-import DataManagement from "@/pages/data-management";
-import StormResponse from "@/pages/storm-response";
-import AlertConfig from "@/pages/alert-config";
-import OwnerIntelligence from "@/pages/owner-intelligence";
-import DataIntelligence from "@/pages/data-intelligence";
+import MapStorms from "@/pages/map-storms";
+import Admin from "@/pages/admin";
 
 function Router() {
   return (
@@ -26,14 +21,8 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/leads" component={Leads} />
       <Route path="/leads/:id" component={LeadDetail} />
-      <Route path="/map" component={MapView} />
-      <Route path="/hail" component={HailEvents} />
-      <Route path="/storm" component={StormResponse} />
-      <Route path="/alerts" component={AlertConfig} />
-      <Route path="/export" component={Export} />
-      <Route path="/intelligence" component={OwnerIntelligence} />
-      <Route path="/data" component={DataManagement} />
-      <Route path="/data-intelligence" component={DataIntelligence} />
+      <Route path="/map" component={MapStorms} />
+      <Route path="/admin" component={Admin} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -48,23 +37,25 @@ function App() {
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <SidebarProvider style={style as React.CSSProperties}>
-            <div className="flex h-screen w-full">
-              <AppSidebar />
-              <div className="flex flex-col flex-1 min-w-0">
-                <header className="flex items-center justify-between gap-2 p-2 border-b bg-background sticky top-0 z-50">
-                  <SidebarTrigger data-testid="button-sidebar-toggle" />
-                  <ThemeToggle />
-                </header>
-                <main className="flex-1 overflow-auto">
-                  <Router />
-                </main>
+        <MarketProvider>
+          <TooltipProvider>
+            <SidebarProvider style={style as React.CSSProperties}>
+              <div className="flex h-screen w-full">
+                <AppSidebar />
+                <div className="flex flex-col flex-1 min-w-0">
+                  <header className="flex items-center justify-between gap-2 p-2 border-b bg-background sticky top-0 z-50">
+                    <SidebarTrigger data-testid="button-sidebar-toggle" />
+                    <ThemeToggle />
+                  </header>
+                  <main className="flex-1 overflow-auto">
+                    <Router />
+                  </main>
+                </div>
               </div>
-            </div>
-          </SidebarProvider>
-          <Toaster />
-        </TooltipProvider>
+            </SidebarProvider>
+            <Toaster />
+          </TooltipProvider>
+        </MarketProvider>
       </QueryClientProvider>
     </ThemeProvider>
   );

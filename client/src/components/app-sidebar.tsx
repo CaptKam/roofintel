@@ -1,6 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Building2, MapPin, CloudLightning, Download, Database, Flame, Zap, Bell, Radio, Radar, Fingerprint, Shield } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, Flame, Zap, Radio, Settings } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -14,29 +14,29 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useMarket } from "@/hooks/use-market";
 
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Leads", url: "/leads", icon: Building2 },
   { title: "Hot Leads", url: "/leads?minScore=80", icon: Flame },
-  { title: "Map View", url: "/map", icon: MapPin },
-  { title: "Hail Events", url: "/hail", icon: CloudLightning },
-  { title: "Owner Intel", url: "/intelligence", icon: Fingerprint },
-];
-
-const stormNav = [
-  { title: "Storm Response", url: "/storm", icon: Zap },
-  { title: "Alert Settings", url: "/alerts", icon: Bell },
+  { title: "Map & Storms", url: "/map", icon: MapPin },
 ];
 
 const toolsNav = [
-  { title: "Export", url: "/export", icon: Download },
-  { title: "Data Sources", url: "/data", icon: Database },
-  { title: "Data Intelligence", url: "/data-intelligence", icon: Shield },
+  { title: "Admin", url: "/admin", icon: Settings },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { markets, activeMarket, setActiveMarketId } = useMarket();
 
   const { data: monitorStatus } = useQuery<{ running: boolean }>({
     queryKey: ["/api/storm/status"],
@@ -62,6 +62,22 @@ export function AppSidebar() {
             </div>
           </div>
         </Link>
+        {markets.length > 0 && (
+          <div className="mt-3">
+            <Select value={activeMarket?.id || ""} onValueChange={setActiveMarketId}>
+              <SelectTrigger className="h-8 text-xs bg-sidebar-accent/50 border-sidebar-border" data-testid="select-market">
+                <SelectValue placeholder="Select market" />
+              </SelectTrigger>
+              <SelectContent>
+                {markets.map((market) => (
+                  <SelectItem key={market.id} value={market.id}>
+                    {market.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -91,27 +107,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">Storm Center</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {stormNav.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={location.startsWith(item.url)}
-                  >
-                    <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">Tools</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/40 text-[10px] uppercase tracking-widest">System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {toolsNav.map((item) => (
@@ -133,7 +129,9 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="p-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="outline" className="text-[10px]">DFW Region</Badge>
+          {activeMarket && (
+            <Badge variant="outline" className="text-[10px]">{activeMarket.name}</Badge>
+          )}
           <Badge variant="default" className="text-[10px]">NOAA Live</Badge>
           {monitorStatus?.running && (
             <Badge variant="default" className="text-[10px]">
