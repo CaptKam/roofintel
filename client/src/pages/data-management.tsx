@@ -183,6 +183,21 @@ export default function DataManagement() {
     },
   });
 
+  const storyEstimateMutation = useMutation({
+    mutationFn: async ({ marketId }: { marketId: string }) => {
+      const res = await apiRequest("POST", "/api/leads/estimate-stories", { marketId });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Story estimation complete", description: `Updated ${data.updated} leads with estimated story counts. ${data.unchanged} unchanged.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Story estimation failed", description: err?.message || "Could not estimate stories.", variant: "destructive" });
+    },
+  });
+
   const { data: pipelineStats, isLoading: pipelineLoading } = useQuery<{
     total: number;
     withOwner: number;
@@ -800,6 +815,36 @@ export default function DataManagement() {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Building2 className="w-4 h-4" />
+              Story & Roof Area Estimation
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              Estimates building stories based on property type, total sqft, and zoning classification.
+              Multi-family properties get 2-4 stories, large commercial buildings get 2-10 stories.
+              Recalculates roof area as sqft ÷ stories for more accurate job sizing.
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                size="sm"
+                onClick={() => dfwMarket && storyEstimateMutation.mutate({ marketId: dfwMarket.id })}
+                disabled={storyEstimateMutation.isPending || !dfwMarket}
+                data-testid="button-estimate-stories"
+              >
+                {storyEstimateMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Building2 className="w-3 h-3 mr-1" />
+                )}
+                Estimate Stories & Roof Areas
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -1084,6 +1084,67 @@ export async function registerRoutes(
   });
 
   // ============================================================
+  // Story Estimation Endpoint
+  // ============================================================
+
+  app.post("/api/leads/estimate-stories", async (req, res) => {
+    try {
+      const marketId = req.body.marketId as string | undefined;
+      const filter: any = { limit: 50000 };
+      if (marketId) filter.marketId = marketId;
+      const { leads: allLeads } = await storage.getLeads(filter);
+
+      let updated = 0;
+      let skipped = 0;
+
+      for (const lead of allLeads) {
+        const sqft = lead.sqft || 0;
+        const zoning = (lead.zoning || "").toLowerCase();
+        const impValue = lead.improvementValue || 0;
+        const totalValue = lead.totalValue || 0;
+
+        let estimatedStories = 1;
+
+        if (zoning.includes("multi-family") || zoning.includes("multi family") || zoning.includes("apartment")) {
+          if (sqft >= 500000) estimatedStories = 4;
+          else if (sqft >= 200000) estimatedStories = 3;
+          else if (sqft >= 80000) estimatedStories = 2;
+          else estimatedStories = 2;
+        } else if (zoning.includes("commercial") || zoning.includes("office") || zoning.includes("mixed")) {
+          if (sqft >= 1000000) estimatedStories = 10;
+          else if (sqft >= 500000) estimatedStories = 6;
+          else if (sqft >= 200000) estimatedStories = 4;
+          else if (sqft >= 100000) estimatedStories = 3;
+          else if (sqft >= 50000) estimatedStories = 2;
+          else estimatedStories = 1;
+        } else if (zoning.includes("industrial") || zoning.includes("warehouse")) {
+          estimatedStories = 1;
+        }
+
+        if (estimatedStories !== (lead.stories || 1)) {
+          const roofArea = Math.round(sqft / estimatedStories);
+          await storage.updateLead(lead.id, {
+            stories: estimatedStories,
+            estimatedRoofArea: roofArea,
+          } as any);
+          updated++;
+        } else {
+          skipped++;
+        }
+      }
+
+      res.json({
+        message: "Story estimation complete",
+        totalLeads: allLeads.length,
+        updated,
+        unchanged: skipped,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to estimate stories", error: error.message });
+    }
+  });
+
+  // ============================================================
   // Compliance / Consent Endpoints
   // ============================================================
 
