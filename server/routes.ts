@@ -1504,6 +1504,68 @@ export async function registerRoutes(
     }
   });
 
+  // Entity Resolution & Deduplication endpoints
+  app.post("/api/entity-resolution/scan", async (req, res) => {
+    try {
+      const { runEntityResolutionScan } = await import("./entity-resolution");
+      const marketId = req.body.marketId as string | undefined;
+      const result = await runEntityResolutionScan(marketId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Entity resolution scan error:", error);
+      res.status(500).json({ message: "Entity resolution scan failed", error: error.message });
+    }
+  });
+
+  app.get("/api/entity-resolution/stats", async (req, res) => {
+    try {
+      const { getEntityResolutionStats } = await import("./entity-resolution");
+      const marketId = req.query.marketId as string | undefined;
+      const stats = await getEntityResolutionStats(marketId);
+      res.json(stats);
+    } catch (error: any) {
+      console.error("Entity resolution stats error:", error);
+      res.status(500).json({ message: "Failed to get stats", error: error.message });
+    }
+  });
+
+  app.get("/api/entity-resolution/clusters", async (req, res) => {
+    try {
+      const { getClustersList } = await import("./entity-resolution");
+      const marketId = req.query.marketId as string | undefined;
+      const status = req.query.status as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      const clusters = await getClustersList(marketId, status, limit, offset);
+      res.json(clusters);
+    } catch (error: any) {
+      console.error("Entity resolution clusters error:", error);
+      res.status(500).json({ message: "Failed to get clusters", error: error.message });
+    }
+  });
+
+  app.post("/api/entity-resolution/merge/:id", async (req, res) => {
+    try {
+      const { mergeCluster } = await import("./entity-resolution");
+      const result = await mergeCluster(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Entity resolution merge error:", error);
+      res.status(500).json({ message: "Merge failed", error: error.message });
+    }
+  });
+
+  app.post("/api/entity-resolution/skip/:id", async (req, res) => {
+    try {
+      const { skipCluster } = await import("./entity-resolution");
+      await skipCluster(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Entity resolution skip error:", error);
+      res.status(500).json({ message: "Skip failed", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

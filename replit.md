@@ -32,9 +32,10 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `server/owner-intelligence.ts` - 16-agent owner intelligence system using TX Comptroller PIR detail API for real officer extraction (TX SOS Deep, LLC Chain, TX Comptroller, Property Tax, People Search, Email Discovery, Google Business, Court Records, TREC License, TDLR License, HUD Multifamily, BBB Direct, Google Places Enhanced, Building Contacts, Skip Trace, Master Orchestrator)
 - `server/social-intel-agents.ts` - Social Intelligence sub-agents: TREC license lookup, TDLR property manager/contractor licenses, HUD multifamily database, BBB direct search, Google Places enhanced reverse-address lookup
 - `server/skip-trace-agent.ts` - Skip Trace Agent: 7 free official-records-first lookups (DFW building permits via Socrata, TX Comptroller sales tax, OpenCorporates officers, TCEQ environmental permits, WHOIS/RDAP, email pattern generation with MX verification, reverse address cross-reference)
+- `server/entity-resolution.ts` - Entity Resolution & Deduplication engine: deterministic matching (taxpayer IDs, SOS file numbers, source IDs, addresses), probabilistic Jaro-Winkler fuzzy matching on owner names, union-find clustering, soft-merge with audit trail
 - `server/network-agent.ts` - Relationship Network Agent: owner clustering engine with fuzzy matching, LLC chain linking, portfolio discovery, and portfolio scoring
 - `server/job-scheduler.ts` - Background job scheduler (NOAA sync, score recalc)
-- `shared/schema.ts` - Drizzle schema definitions and Zod validation (includes intelligenceClaims table for provenance tracking, portfolios and portfolio_leads tables)
+- `shared/schema.ts` - Drizzle schema definitions and Zod validation (includes intelligenceClaims table for provenance tracking, portfolios and portfolio_leads tables, duplicate_clusters and entity_merges tables for deduplication)
 
 ## Key Features
 - **Dashboard**: Stats overview (total leads, hot leads, avg score, hail events), score distribution chart, county distribution pie chart, top scoring leads
@@ -101,6 +102,11 @@ A SaaS platform for roofing contractors to find and prioritize qualified commerc
 - `POST /api/xweather/monitor/stop` - Stop Xweather polling
 - `GET /api/leads/:id/claims` - Provenance claims for a lead (skip trace source evidence)
 - `GET /api/intelligence/skip-trace-status` - Skip Trace agent source availability
+- `POST /api/entity-resolution/scan` - Run entity resolution scan to find duplicate leads (marketId)
+- `GET /api/entity-resolution/stats` - Entity resolution statistics (total clusters, pending, merged, confidence)
+- `GET /api/entity-resolution/clusters` - List duplicate clusters with member leads (status, limit, offset)
+- `POST /api/entity-resolution/merge/:id` - Approve and merge a duplicate cluster (soft-merge with enrichment)
+- `POST /api/entity-resolution/skip/:id` - Skip a duplicate cluster (mark as reviewed, no merge)
 - `POST /api/network/analyze` - Run Relationship Network Agent to discover owner portfolios (marketId)
 - `GET /api/network/stats` - Network analysis statistics (total portfolios, linked leads, avg portfolio size)
 - `GET /api/portfolios` - List all portfolios with lead counts and scores (optional search, sortBy)

@@ -342,6 +342,39 @@ export const portfolioLeads = pgTable("portfolio_leads", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const duplicateClusters = pgTable("duplicate_clusters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id"),
+  canonicalLeadId: varchar("canonical_lead_id").notNull(),
+  memberLeadIds: text("member_lead_ids").array().notNull(),
+  matchType: text("match_type").notNull(),
+  matchKeys: text("match_keys").array().notNull(),
+  matchConfidence: integer("match_confidence").notNull().default(0),
+  matchExplanation: text("match_explanation").notNull(),
+  status: text("status").notNull().default("pending"),
+  reviewedAt: timestamp("reviewed_at"),
+  mergedAt: timestamp("merged_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const entityMerges = pgTable("entity_merges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clusterId: varchar("cluster_id").notNull(),
+  canonicalLeadId: varchar("canonical_lead_id").notNull(),
+  mergedLeadId: varchar("merged_lead_id").notNull(),
+  fieldsApplied: jsonb("fields_applied"),
+  previousValues: jsonb("previous_values"),
+  mergedAt: timestamp("merged_at").defaultNow(),
+});
+
+export const insertDuplicateClusterSchema = createInsertSchema(duplicateClusters).omit({ id: true, createdAt: true, reviewedAt: true, mergedAt: true });
+export const insertEntityMergeSchema = createInsertSchema(entityMerges).omit({ id: true, mergedAt: true });
+
+export type DuplicateCluster = typeof duplicateClusters.$inferSelect;
+export type InsertDuplicateCluster = z.infer<typeof insertDuplicateClusterSchema>;
+export type EntityMerge = typeof entityMerges.$inferSelect;
+export type InsertEntityMerge = z.infer<typeof insertEntityMergeSchema>;
+
 export const insertMarketSchema = createInsertSchema(markets).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
 export const insertHailEventSchema = createInsertSchema(hailEvents).omit({ id: true });

@@ -38,6 +38,10 @@ import {
   Scale,
   Fingerprint,
   Network,
+  GitMerge,
+  Copy,
+  Eye,
+  SkipForward,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -553,6 +557,72 @@ export default function Admin() {
     },
     onError: (err: any) => {
       toast({ title: "Network analysis failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const entityResolutionStatsQuery = useQuery<any>({
+    queryKey: ["/api/entity-resolution/stats", dfwMarket?.id],
+    queryFn: async () => {
+      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const res = await fetch(`/api/entity-resolution/stats${params}`);
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      return res.json();
+    },
+  });
+
+  const entityResolutionClustersQuery = useQuery<any[]>({
+    queryKey: ["/api/entity-resolution/clusters", "pending", dfwMarket?.id],
+    queryFn: async () => {
+      const params = new URLSearchParams({ status: "pending", limit: "20" });
+      if (dfwMarket?.id) params.set("marketId", dfwMarket.id);
+      const res = await fetch(`/api/entity-resolution/clusters?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch clusters");
+      return res.json();
+    },
+  });
+
+  const entityScanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/entity-resolution/scan", { marketId: dfwMarket?.id });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Entity Resolution Complete", description: `Found ${data.clustersFound} duplicate clusters (${data.totalDuplicateLeads} duplicates)` });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-resolution/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-resolution/clusters"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Entity scan failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const entityMergeMutation = useMutation({
+    mutationFn: async (clusterId: string) => {
+      const res = await apiRequest("POST", `/api/entity-resolution/merge/${clusterId}`);
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Merge Complete", description: `Merged ${data.merged} duplicates, enriched ${data.fieldsEnriched.length} fields` });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-resolution/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-resolution/clusters"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Merge failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const entitySkipMutation = useMutation({
+    mutationFn: async (clusterId: string) => {
+      const res = await apiRequest("POST", `/api/entity-resolution/skip/${clusterId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-resolution/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/entity-resolution/clusters"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Skip failed", description: err?.message, variant: "destructive" });
     },
   });
 
@@ -1553,6 +1623,151 @@ export default function Admin() {
                   View Portfolio Network
                 </Button>
               </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-base font-semibold">
+                Entity Resolution & Deduplication
+              </CardTitle>
+              <Button
+                size="sm"
+                onClick={() => entityScanMutation.mutate()}
+                disabled={entityScanMutation.isPending || !dfwMarket}
+                data-testid="button-entity-scan"
+              >
+                {entityScanMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Fingerprint className="w-3 h-3 mr-1" />
+                )}
+                Scan for Duplicates
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Identifies duplicate property records using deterministic matching (taxpayer IDs, SOS file numbers, addresses) and probabilistic fuzzy matching (owner names with Jaro-Winkler similarity). Soft-merge preserves provenance and enriches the canonical record.
+              </p>
+
+              {entityResolutionStatsQuery.data && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Clusters</p>
+                    <p className="text-lg font-bold mt-0.5" data-testid="text-entity-total-clusters">
+                      {entityResolutionStatsQuery.data.totalClusters?.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Duplicates</p>
+                    <p className="text-lg font-bold mt-0.5" data-testid="text-entity-total-duplicates">
+                      {entityResolutionStatsQuery.data.totalDuplicates?.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Merged</p>
+                    <p className="text-lg font-bold mt-0.5 text-emerald-600" data-testid="text-entity-merged">
+                      {entityResolutionStatsQuery.data.mergedClusters?.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Avg Confidence</p>
+                    <p className="text-lg font-bold mt-0.5" data-testid="text-entity-avg-confidence">
+                      {entityResolutionStatsQuery.data.avgConfidence}%
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {entityResolutionStatsQuery.data && entityResolutionStatsQuery.data.totalClusters > 0 && (
+                <div className="flex gap-2 text-xs text-muted-foreground">
+                  <Badge variant="outline" className="text-[10px]">
+                    <Copy className="w-2.5 h-2.5 mr-1" />
+                    {entityResolutionStatsQuery.data.deterministicClusters} deterministic
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    <Search className="w-2.5 h-2.5 mr-1" />
+                    {entityResolutionStatsQuery.data.probabilisticClusters} probabilistic
+                  </Badge>
+                  <Badge variant="outline" className="text-[10px]">
+                    <Clock className="w-2.5 h-2.5 mr-1" />
+                    {entityResolutionStatsQuery.data.pendingClusters} pending review
+                  </Badge>
+                </div>
+              )}
+
+              {entityResolutionClustersQuery.data && entityResolutionClustersQuery.data.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pending Review</p>
+                  <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                    {entityResolutionClustersQuery.data.map((cluster: any) => (
+                      <div key={cluster.id} className="border rounded-lg p-3 space-y-2" data-testid={`cluster-${cluster.id}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={cluster.matchType === "deterministic" ? "default" : "secondary"} className="text-[10px]">
+                                {cluster.matchType === "deterministic" ? (
+                                  <Copy className="w-2.5 h-2.5 mr-1" />
+                                ) : (
+                                  <Search className="w-2.5 h-2.5 mr-1" />
+                                )}
+                                {cluster.matchType}
+                              </Badge>
+                              <span className="text-xs font-medium">{cluster.matchConfidence}% confidence</span>
+                              <span className="text-xs text-muted-foreground">{cluster.memberLeadIds.length} records</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1 truncate" title={cluster.matchExplanation}>
+                              {cluster.matchExplanation}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs px-2"
+                              onClick={() => entityMergeMutation.mutate(cluster.id)}
+                              disabled={entityMergeMutation.isPending}
+                              data-testid={`button-merge-${cluster.id}`}
+                            >
+                              <GitMerge className="w-3 h-3 mr-1" />
+                              Merge
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs px-2"
+                              onClick={() => entitySkipMutation.mutate(cluster.id)}
+                              disabled={entitySkipMutation.isPending}
+                              data-testid={`button-skip-${cluster.id}`}
+                            >
+                              <SkipForward className="w-3 h-3 mr-1" />
+                              Skip
+                            </Button>
+                          </div>
+                        </div>
+                        {cluster.leads && cluster.leads.length > 0 && (
+                          <div className="bg-muted/30 rounded p-2 space-y-1">
+                            {cluster.leads.map((lead: any) => (
+                              <div key={lead.id} className="flex items-center gap-2 text-xs">
+                                {lead.id === cluster.canonicalLeadId && (
+                                  <Badge variant="outline" className="text-[9px] px-1 py-0 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-700">
+                                    canonical
+                                  </Badge>
+                                )}
+                                <span className="font-medium truncate max-w-[180px]" title={lead.ownerName}>{lead.ownerName}</span>
+                                <span className="text-muted-foreground truncate max-w-[200px]" title={lead.address}>{lead.address}, {lead.city}</span>
+                                <span className="text-muted-foreground">{lead.sqft?.toLocaleString()} sqft</span>
+                                {lead.ownerPhone && <Badge variant="outline" className="text-[9px] px-1 py-0">phone</Badge>}
+                                {lead.ownerEmail && <Badge variant="outline" className="text-[9px] px-1 py-0">email</Badge>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
