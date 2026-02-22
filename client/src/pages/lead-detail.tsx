@@ -206,9 +206,8 @@ export default function LeadDetail() {
 
   useEffect(() => {
     if (lead && !enrichTriggered.current) {
-      const lastEnriched = (lead as any).lastEnrichedAt;
-      const hasIntelligence = (lead as any).intelligenceScore && (lead as any).intelligenceScore > 0;
-      if (!lastEnriched || !hasIntelligence) {
+      const enrichStatus = (lead as any).enrichmentStatus;
+      if (enrichStatus !== "complete") {
         enrichTriggered.current = true;
         enrichMutation.mutate();
       }

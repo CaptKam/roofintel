@@ -52,10 +52,6 @@ async function fetchLead(leadId: string): Promise<Lead | null> {
 async function runOwnerIntelligenceStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
   updateStep(progress, 0, "running");
   try {
-    if (lead.ownerIntelligence && lead.intelligenceScore && lead.intelligenceScore > 0) {
-      updateStep(progress, 0, "skipped", `Already scored: ${lead.intelligenceScore}/100`);
-      return lead;
-    }
     if (!lead.ownerName) {
       updateStep(progress, 0, "skipped", "No owner name for intelligence lookup");
       return lead;
