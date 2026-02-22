@@ -104,6 +104,7 @@ export default function LeadDetail() {
     score: number;
     sources: string[];
     generatedAt: string | null;
+    realPeople: Array<{ name: string; title?: string; source?: string; phone?: string; email?: string; address?: string; confidence?: number }>;
   }>({
     queryKey: ["/api/leads", id, "intelligence"],
     enabled: !!lead,
@@ -774,6 +775,22 @@ export default function LeadDetail() {
                           <span className="text-muted-foreground/60">{i > 0 ? "  " : ""}</span>
                           <span className="font-medium">{link.entityName}</span>
                           {link.status && <span className="text-[10px] text-muted-foreground">({link.status})</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {intelligence.realPeople && intelligence.realPeople.length > 1 && (
+                    <div className="pt-2">
+                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Other People Found</p>
+                      {intelligence.realPeople.slice(1, 5).map((person, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs pl-3 py-1.5 border-b last:border-0" data-testid={`real-person-${i}`}>
+                          <div>
+                            <span className="font-medium">{person.name}</span>
+                            {person.title && <span className="text-muted-foreground ml-1.5">({person.title})</span>}
+                          </div>
+                          {person.confidence && (
+                            <span className="text-[10px] text-muted-foreground">{person.confidence}%</span>
+                          )}
                         </div>
                       ))}
                     </div>

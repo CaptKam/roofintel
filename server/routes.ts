@@ -846,17 +846,22 @@ export async function registerRoutes(
       const lead = await storage.getLeadById(req.params.id);
       if (!lead) return res.status(404).json({ message: "Lead not found" });
 
+      const dossier = lead.ownerIntelligence as any;
+      const realPeople = dossier?.realPeople || [];
+      const topPerson = realPeople[0];
+
       res.json({
-        managingMember: lead.managingMember,
-        managingMemberTitle: lead.managingMemberTitle,
-        managingMemberPhone: lead.managingMemberPhone,
-        managingMemberEmail: lead.managingMemberEmail,
-        llcChain: lead.llcChain,
-        buildingContacts: lead.buildingContacts,
-        dossier: lead.ownerIntelligence,
+        managingMember: lead.managingMember || topPerson?.name || null,
+        managingMemberTitle: lead.managingMemberTitle || topPerson?.title || null,
+        managingMemberPhone: lead.managingMemberPhone || topPerson?.phone || null,
+        managingMemberEmail: lead.managingMemberEmail || topPerson?.email || null,
+        llcChain: lead.llcChain || dossier?.llcChain || [],
+        buildingContacts: lead.buildingContacts || dossier?.buildingContacts || [],
+        dossier: dossier,
         score: lead.intelligenceScore,
-        sources: lead.intelligenceSources,
-        generatedAt: lead.intelligenceAt,
+        sources: lead.intelligenceSources || dossier?.agentResults?.filter((a: any) => a.status === 'found').map((a: any) => a.agent) || [],
+        generatedAt: lead.intelligenceAt || dossier?.generatedAt || null,
+        realPeople: realPeople,
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to get intelligence data" });
