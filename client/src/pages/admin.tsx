@@ -42,6 +42,13 @@ import {
   Copy,
   Eye,
   SkipForward,
+  Users,
+  UserCheck,
+  ShieldOff,
+  Target,
+  ThumbsUp,
+  ThumbsDown,
+  BarChart3,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -623,6 +630,115 @@ export default function Admin() {
     },
     onError: (err: any) => {
       toast({ title: "Skip failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const attributionStatsQuery = useQuery<any>({
+    queryKey: ["/api/attribution/stats", dfwMarket?.id],
+    queryFn: async () => {
+      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const res = await fetch(`/api/attribution/stats${params}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const attributionScanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/attribution/scan", { marketId: dfwMarket?.id });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Management Attribution Complete", description: `Attributed ${data.attributed} leads (${data.withCompany} companies, ${data.withContact} contacts)` });
+      queryClient.invalidateQueries({ queryKey: ["/api/attribution/stats"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Attribution failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const roleStatsQuery = useQuery<any>({
+    queryKey: ["/api/roles/stats", dfwMarket?.id],
+    queryFn: async () => {
+      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const res = await fetch(`/api/roles/stats${params}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const roleInferenceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/roles/infer", { marketId: dfwMarket?.id });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Role Inference Complete", description: `Assigned roles to ${data.rolesAssigned} leads` });
+      queryClient.invalidateQueries({ queryKey: ["/api/roles/stats"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Role inference failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const confidenceStatsQuery = useQuery<any>({
+    queryKey: ["/api/dm-confidence/stats", dfwMarket?.id],
+    queryFn: async () => {
+      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const res = await fetch(`/api/dm-confidence/stats${params}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const confidenceScoringMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/dm-confidence/score", { marketId: dfwMarket?.id });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Confidence Scoring Complete", description: `Scored ${data.totalProcessed} leads: ${data.autoPublish} auto-publish, ${data.review} review, ${data.suppress} suppress` });
+      queryClient.invalidateQueries({ queryKey: ["/api/dm-confidence/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dm-confidence/review-queue"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Confidence scoring failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const reviewQueueQuery = useQuery<any[]>({
+    queryKey: ["/api/dm-confidence/review-queue", dfwMarket?.id],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: "15" });
+      if (dfwMarket?.id) params.set("marketId", dfwMarket.id);
+      const res = await fetch(`/api/dm-confidence/review-queue?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const reviewMutation = useMutation({
+    mutationFn: async ({ leadId, action, notes }: { leadId: string; action: string; notes?: string }) => {
+      const res = await apiRequest("POST", `/api/dm-confidence/review/${leadId}`, { action, notes });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Review Recorded", description: `Lead ${data.action}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/dm-confidence/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dm-confidence/review-queue"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Review failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const complianceOverviewQuery = useQuery<any>({
+    queryKey: ["/api/compliance/overview", dfwMarket?.id],
+    queryFn: async () => {
+      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const res = await fetch(`/api/compliance/overview${params}`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
     },
   });
 
@@ -1766,6 +1882,348 @@ export default function Admin() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">
+                  Management Attribution
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => attributionScanMutation.mutate()}
+                  disabled={attributionScanMutation.isPending || !dfwMarket}
+                  data-testid="button-attribution-scan"
+                >
+                  {attributionScanMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <Users className="w-3 h-3 mr-1" />
+                  )}
+                  Scan Management
+                </Button>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Separates property managers from owners using permit applicant data, mailing address c/o analysis, web research contacts, and corporate registry records. Identifies who manages vs. who owns.
+                </p>
+
+                {attributionStatsQuery.data && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Attributed</p>
+                      <p className="text-lg font-bold mt-0.5" data-testid="text-attribution-total">
+                        {attributionStatsQuery.data.attributed?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Companies</p>
+                      <p className="text-lg font-bold mt-0.5" data-testid="text-attribution-companies">
+                        {attributionStatsQuery.data.withCompany?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Contacts</p>
+                      <p className="text-lg font-bold mt-0.5" data-testid="text-attribution-contacts">
+                        {attributionStatsQuery.data.withContact?.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">
+                  Role Inference
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => roleInferenceMutation.mutate()}
+                  disabled={roleInferenceMutation.isPending || !dfwMarket}
+                  data-testid="button-role-inference"
+                >
+                  {roleInferenceMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <UserCheck className="w-3 h-3 mr-1" />
+                  )}
+                  Infer Roles
+                </Button>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Classifies contacts into decision-maker roles (Property Manager, Facilities Director, Asset Manager, Owner Rep) using title parsing, corporate registry context, and intelligence claims.
+                </p>
+
+                {roleStatsQuery.data && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">With Role</p>
+                        <p className="text-lg font-bold mt-0.5" data-testid="text-roles-assigned">
+                          {roleStatsQuery.data.withRole?.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Avg Confidence</p>
+                        <p className="text-lg font-bold mt-0.5" data-testid="text-roles-confidence">
+                          {roleStatsQuery.data.avgConfidence}%
+                        </p>
+                      </div>
+                    </div>
+                    {roleStatsQuery.data.byRole && Object.keys(roleStatsQuery.data.byRole).length > 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {Object.entries(roleStatsQuery.data.byRole).sort((a: any, b: any) => b[1] - a[1]).map(([role, count]: any) => (
+                          <Badge key={role} variant="outline" className="text-[10px]">
+                            {role}: {count.toLocaleString()}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-base font-semibold">
+                Decision-Maker Confidence Scoring
+              </CardTitle>
+              <Button
+                size="sm"
+                onClick={() => confidenceScoringMutation.mutate()}
+                disabled={confidenceScoringMutation.isPending || !dfwMarket}
+                data-testid="button-confidence-scoring"
+              >
+                {confidenceScoringMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Target className="w-3 h-3 mr-1" />
+                )}
+                Score Confidence
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Decomposed 7-factor confidence scoring: PropertyMatch + OwnerMatch + ManagementMatch + PersonRoleFit + Reachability – ConflictPenalty – StalenessPenalty. Scores determine auto-publish (&ge;85), review queue (60-84), or suppress (&lt;60) tiers.
+              </p>
+
+              {confidenceStatsQuery.data && confidenceStatsQuery.data.scored > 0 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Scored</p>
+                      <p className="text-lg font-bold mt-0.5" data-testid="text-dm-scored">
+                        {confidenceStatsQuery.data.scored?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Avg Score</p>
+                      <p className="text-lg font-bold mt-0.5" data-testid="text-dm-avg-score">
+                        {confidenceStatsQuery.data.avgScore}
+                      </p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Auto-Publish</p>
+                      <p className="text-lg font-bold mt-0.5 text-emerald-700 dark:text-emerald-400" data-testid="text-dm-auto-publish">
+                        {confidenceStatsQuery.data.autoPublish?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Review Queue</p>
+                      <p className="text-lg font-bold mt-0.5 text-amber-700 dark:text-amber-400" data-testid="text-dm-review">
+                        {confidenceStatsQuery.data.review?.toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Suppress</p>
+                      <p className="text-lg font-bold mt-0.5 text-red-700 dark:text-red-400" data-testid="text-dm-suppress">
+                        {confidenceStatsQuery.data.suppress?.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  {confidenceStatsQuery.data.reviewStatuses && (
+                    <div className="flex gap-2 flex-wrap">
+                      {Object.entries(confidenceStatsQuery.data.reviewStatuses).map(([status, count]: any) => (
+                        <Badge key={status} variant="outline" className="text-[10px]">
+                          {status.replace(/_/g, " ")}: {count.toLocaleString()}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-base font-semibold">
+                Human-in-the-Loop Review Console
+              </CardTitle>
+              <Badge variant="outline" className="text-[10px]" data-testid="badge-review-queue-count">
+                <Eye className="w-2.5 h-2.5 mr-1" />
+                {reviewQueueQuery.data?.length ?? 0} pending
+              </Badge>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Review contacts where confidence is between 60-84%. Each card shows evidence from assessor, permits, corporate registry, and web research. Approve to auto-publish, reject to suppress, or reassign the decision-maker role.
+              </p>
+
+              {complianceOverviewQuery.data && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Consent Granted</p>
+                    <p className="text-lg font-bold mt-0.5 text-emerald-600" data-testid="text-compliance-granted">
+                      {complianceOverviewQuery.data.consent?.granted?.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Consent Unknown</p>
+                    <p className="text-lg font-bold mt-0.5" data-testid="text-compliance-unknown">
+                      {complianceOverviewQuery.data.consent?.unknown?.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Phone Clear</p>
+                    <p className="text-lg font-bold mt-0.5" data-testid="text-compliance-phone-clear">
+                      {complianceOverviewQuery.data.reachability?.phoneClear?.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Suppressed</p>
+                    <p className="text-lg font-bold mt-0.5 text-red-600" data-testid="text-compliance-suppressed">
+                      {complianceOverviewQuery.data.suppressions?.totalActive?.toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {reviewQueueQuery.data && reviewQueueQuery.data.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Review Queue</p>
+                  <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    {reviewQueueQuery.data.map((lead: any) => (
+                      <div key={lead.id} className="border rounded-lg p-4 space-y-3" data-testid={`review-lead-${lead.id}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-semibold truncate" data-testid={`text-review-address-${lead.id}`}>
+                                {lead.address}, {lead.city}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] shrink-0">
+                                Score: {lead.dmConfidenceScore}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>{lead.ownerName}</span>
+                              <span>|</span>
+                              <span>{lead.sqft?.toLocaleString()} sqft</span>
+                              <span>|</span>
+                              <span>Lead: {lead.leadScore}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => reviewMutation.mutate({ leadId: lead.id, action: "approve" })}
+                              disabled={reviewMutation.isPending}
+                              data-testid={`button-approve-${lead.id}`}
+                            >
+                              <ThumbsUp className="w-3 h-3 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-xs"
+                              onClick={() => reviewMutation.mutate({ leadId: lead.id, action: "reject" })}
+                              disabled={reviewMutation.isPending}
+                              data-testid={`button-reject-${lead.id}`}
+                            >
+                              <ThumbsDown className="w-3 h-3 mr-1" />
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {lead.dmConfidenceComponents && Object.entries(lead.dmConfidenceComponents).map(([key, val]: any) => (
+                            <div key={key} className="text-[10px] bg-muted/30 rounded px-2 py-1">
+                              <span className="text-muted-foreground">{key.replace(/([A-Z])/g, " $1").trim()}: </span>
+                              <span className="font-medium">{val}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {lead.contactRole && (
+                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-role-${lead.id}`}>
+                              <UserCheck className="w-2.5 h-2.5 mr-1" />
+                              {lead.contactRole}
+                            </Badge>
+                          )}
+                          {lead.managementCompany && (
+                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-mgmt-${lead.id}`}>
+                              <Users className="w-2.5 h-2.5 mr-1" />
+                              {lead.managementCompany}
+                            </Badge>
+                          )}
+                          {lead.contactPhone && (
+                            <Badge variant="outline" className="text-[10px]">
+                              <Phone className="w-2.5 h-2.5 mr-1" />
+                              {lead.contactPhone}
+                            </Badge>
+                          )}
+                          {lead.ownerPhone && !lead.contactPhone && (
+                            <Badge variant="outline" className="text-[10px]">
+                              <Phone className="w-2.5 h-2.5 mr-1" />
+                              {lead.ownerPhone}
+                            </Badge>
+                          )}
+                          {(lead.contactEmail || lead.ownerEmail) && (
+                            <Badge variant="outline" className="text-[10px]">
+                              {lead.contactEmail || lead.ownerEmail}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {lead.roleEvidence && Array.isArray(lead.roleEvidence) && lead.roleEvidence.length > 0 && (
+                          <div className="bg-muted/20 rounded p-2 space-y-1">
+                            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Evidence</p>
+                            {(lead.roleEvidence as any[]).slice(0, 3).map((candidate: any, idx: number) => (
+                              <div key={idx} className="flex items-center gap-2 text-[10px]">
+                                <span className="font-medium">{candidate.name}</span>
+                                <span className="text-muted-foreground">{candidate.role}</span>
+                                <span className="text-muted-foreground">({candidate.confidence}%)</span>
+                                {candidate.evidence?.map((e: any, i: number) => (
+                                  <span key={i} className="text-muted-foreground">{e.source}</span>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(!reviewQueueQuery.data || reviewQueueQuery.data.length === 0) && confidenceStatsQuery.data?.scored > 0 && (
+                <div className="text-center py-6 text-sm text-muted-foreground">
+                  No leads pending review. Run confidence scoring to populate the review queue.
                 </div>
               )}
             </CardContent>

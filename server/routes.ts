@@ -1566,6 +1566,190 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================================
+  // Management Attribution Endpoints
+  // ============================================================
+
+  app.post("/api/attribution/scan", async (req, res) => {
+    try {
+      const { runManagementAttribution } = await import("./management-attribution");
+      const marketId = req.body.marketId as string | undefined;
+      const result = await runManagementAttribution(marketId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Management attribution error:", error);
+      res.status(500).json({ message: "Attribution scan failed", error: error.message });
+    }
+  });
+
+  app.get("/api/attribution/stats", async (req, res) => {
+    try {
+      const { getManagementAttributionStats } = await import("./management-attribution");
+      const marketId = req.query.marketId as string | undefined;
+      const stats = await getManagementAttributionStats(marketId);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get attribution stats", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Role Inference & Decision-Maker Endpoints
+  // ============================================================
+
+  app.post("/api/roles/infer", async (req, res) => {
+    try {
+      const { runRoleInference } = await import("./role-inference");
+      const marketId = req.body.marketId as string | undefined;
+      const result = await runRoleInference(marketId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Role inference error:", error);
+      res.status(500).json({ message: "Role inference failed", error: error.message });
+    }
+  });
+
+  app.get("/api/roles/stats", async (req, res) => {
+    try {
+      const { getRoleInferenceStats } = await import("./role-inference");
+      const marketId = req.query.marketId as string | undefined;
+      const stats = await getRoleInferenceStats(marketId);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get role stats", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/decision-makers", async (req, res) => {
+    try {
+      const { getLeadDecisionMakers } = await import("./role-inference");
+      const result = await getLeadDecisionMakers(req.params.id);
+      if (!result) return res.status(404).json({ message: "Lead not found" });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get decision makers", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Compliance Gating & Suppression Endpoints
+  // ============================================================
+
+  app.get("/api/compliance/overview", async (req, res) => {
+    try {
+      const { getComplianceOverview } = await import("./compliance-gate");
+      const marketId = req.query.marketId as string | undefined;
+      const result = await getComplianceOverview(marketId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get compliance overview", error: error.message });
+    }
+  });
+
+  app.get("/api/compliance/check/:id", async (req, res) => {
+    try {
+      const { checkLeadCompliance } = await import("./compliance-gate");
+      const result = await checkLeadCompliance(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Compliance check failed", error: error.message });
+    }
+  });
+
+  app.post("/api/suppression/add", async (req, res) => {
+    try {
+      const { addToSuppressionList } = await import("./compliance-gate");
+      const result = await addToSuppressionList(req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to add suppression", error: error.message });
+    }
+  });
+
+  app.delete("/api/suppression/:id", async (req, res) => {
+    try {
+      const { removeFromSuppressionList } = await import("./compliance-gate");
+      await removeFromSuppressionList(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to remove suppression", error: error.message });
+    }
+  });
+
+  app.get("/api/suppression/stats", async (req, res) => {
+    try {
+      const { getSuppressionStats } = await import("./compliance-gate");
+      const stats = await getSuppressionStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get suppression stats", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Decision-Maker Confidence & Review Endpoints
+  // ============================================================
+
+  app.post("/api/dm-confidence/score", async (req, res) => {
+    try {
+      const { runConfidenceScoring } = await import("./dm-confidence");
+      const marketId = req.body.marketId as string | undefined;
+      const result = await runConfidenceScoring(marketId);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Confidence scoring error:", error);
+      res.status(500).json({ message: "Confidence scoring failed", error: error.message });
+    }
+  });
+
+  app.get("/api/dm-confidence/stats", async (req, res) => {
+    try {
+      const { getConfidenceStats } = await import("./dm-confidence");
+      const marketId = req.query.marketId as string | undefined;
+      const stats = await getConfidenceStats(marketId);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get confidence stats", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/dm-confidence", async (req, res) => {
+    try {
+      const { computeDecisionMakerConfidence } = await import("./dm-confidence");
+      const lead = await storage.getLeadById(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      const result = computeDecisionMakerConfidence(lead);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to compute confidence", error: error.message });
+    }
+  });
+
+  app.get("/api/dm-confidence/review-queue", async (req, res) => {
+    try {
+      const { getReviewQueue } = await import("./dm-confidence");
+      const marketId = req.query.marketId as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      const queue = await getReviewQueue(marketId, limit, offset);
+      res.json(queue);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get review queue", error: error.message });
+    }
+  });
+
+  app.post("/api/dm-confidence/review/:id", async (req, res) => {
+    try {
+      const { reviewDecisionMaker } = await import("./dm-confidence");
+      const { action, notes, newRole } = req.body;
+      if (!action) return res.status(400).json({ message: "action is required" });
+      const result = await reviewDecisionMaker(req.params.id, action, notes, newRole);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Review failed", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

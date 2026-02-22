@@ -98,6 +98,21 @@ export const leads = pgTable("leads", {
   consentDate: text("consent_date"),
   consentChannel: text("consent_channel"),
   dncRegistered: boolean("dnc_registered"),
+  managementCompany: text("management_company"),
+  managementContact: text("management_contact"),
+  managementPhone: text("management_phone"),
+  managementEmail: text("management_email"),
+  managementEvidence: jsonb("management_evidence"),
+  managementAttributedAt: timestamp("management_attributed_at"),
+  contactRole: text("contact_role"),
+  roleConfidence: integer("role_confidence"),
+  decisionMakerRank: integer("decision_maker_rank"),
+  roleEvidence: jsonb("role_evidence"),
+  dmConfidenceScore: integer("dm_confidence_score"),
+  dmConfidenceComponents: jsonb("dm_confidence_components"),
+  dmReviewStatus: text("dm_review_status").default("unreviewed"),
+  dmReviewedAt: timestamp("dm_reviewed_at"),
+  dmReviewedBy: text("dm_reviewed_by"),
   sourceType: text("source_type").default("seed"),
   sourceId: text("source_id"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -306,6 +321,34 @@ export const complianceConsent = pgTable("compliance_consent", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const suppressionList = pgTable("suppression_list", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id"),
+  entityName: text("entity_name"),
+  phone: text("phone"),
+  email: text("email"),
+  channel: text("channel").notNull(),
+  reason: text("reason").notNull(),
+  source: text("source").notNull().default("manual"),
+  addedAt: timestamp("added_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const decisionMakerReviews = pgTable("decision_maker_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  action: text("action").notNull(),
+  previousRole: text("previous_role"),
+  newRole: text("new_role"),
+  previousConfidence: integer("previous_confidence"),
+  newConfidence: integer("new_confidence"),
+  reviewerNotes: text("reviewer_notes"),
+  evidenceSummary: jsonb("evidence_summary"),
+  reviewedBy: text("reviewed_by").notNull().default("system"),
+  reviewedAt: timestamp("reviewed_at").defaultNow(),
+});
+
 export const portfolios = pgTable("portfolios", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   marketId: varchar("market_id"),
@@ -390,6 +433,8 @@ export const insertRecordedDocumentSchema = createInsertSchema(recordedDocuments
 export const insertCodeViolationSchema = createInsertSchema(codeViolations).omit({ id: true });
 export const insertBuildingPermitSchema = createInsertSchema(buildingPermits).omit({ id: true, createdAt: true });
 export const insertComplianceConsentSchema = createInsertSchema(complianceConsent).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSuppressionListSchema = createInsertSchema(suppressionList).omit({ id: true, addedAt: true });
+export const insertDecisionMakerReviewSchema = createInsertSchema(decisionMakerReviews).omit({ id: true, reviewedAt: true });
 export const insertPortfolioSchema = createInsertSchema(portfolios).omit({ id: true, createdAt: true, analyzedAt: true });
 export const insertPortfolioLeadSchema = createInsertSchema(portfolioLeads).omit({ id: true, createdAt: true });
 
@@ -423,6 +468,10 @@ export type BuildingPermit = typeof buildingPermits.$inferSelect;
 export type InsertBuildingPermit = z.infer<typeof insertBuildingPermitSchema>;
 export type ComplianceConsentRecord = typeof complianceConsent.$inferSelect;
 export type InsertComplianceConsent = z.infer<typeof insertComplianceConsentSchema>;
+export type SuppressionEntry = typeof suppressionList.$inferSelect;
+export type InsertSuppressionEntry = z.infer<typeof insertSuppressionListSchema>;
+export type DecisionMakerReview = typeof decisionMakerReviews.$inferSelect;
+export type InsertDecisionMakerReview = z.infer<typeof insertDecisionMakerReviewSchema>;
 export type Portfolio = typeof portfolios.$inferSelect;
 export type InsertPortfolio = z.infer<typeof insertPortfolioSchema>;
 export type PortfolioLead = typeof portfolioLeads.$inferSelect;
