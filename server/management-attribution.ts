@@ -68,7 +68,7 @@ function ownerDiffersFromPermitApplicant(ownerName: string, applicantName: strin
   return true;
 }
 
-async function attributeLeadManagement(lead: Lead): Promise<ManagementAttribution> {
+export async function attributeLeadManagement(lead: Lead): Promise<ManagementAttribution> {
   const evidence: ManagementEvidence[] = [];
   let mgmtCompany: string | null = null;
   let mgmtContact: string | null = null;

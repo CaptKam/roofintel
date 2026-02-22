@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Lead } from "@shared/schema";
 
 function DetailRow({
@@ -157,6 +157,69 @@ export default function LeadDetail() {
   });
 
   const [notes, setNotes] = useState("");
+  const enrichTriggered = useRef(false);
+
+  const enrichMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${id}/enrich`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Enrichment started", description: "All intelligence agents are running..." });
+    },
+    onError: () => {
+      toast({ title: "Enrichment failed", variant: "destructive" });
+    },
+  });
+
+  const leadEnrichmentStatus = (lead as any)?.enrichmentStatus;
+  const shouldPollEnrichment = enrichMutation.isSuccess || leadEnrichmentStatus === "running";
+
+  const { data: enrichmentStatus } = useQuery<{
+    leadId: string;
+    status: string;
+    steps: Array<{ name: string; status: string; detail?: string }>;
+  }>({
+    queryKey: ["/api/leads", id, "enrichment-status"],
+    queryFn: async () => {
+      const res = await fetch(`/api/leads/${id}/enrichment-status`);
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    enabled: !!id && shouldPollEnrichment,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data && (data.status === "complete" || data.status === "error" || data.status === "idle")) {
+        return false;
+      }
+      return 2000;
+    },
+  });
+
+  useEffect(() => {
+    if (enrichmentStatus?.status === "complete") {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "intelligence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "confidence"] });
+    }
+  }, [enrichmentStatus?.status, id]);
+
+  useEffect(() => {
+    if (lead && !enrichTriggered.current) {
+      const lastEnriched = (lead as any).lastEnrichedAt;
+      if (!lastEnriched) {
+        enrichTriggered.current = true;
+        enrichMutation.mutate();
+      }
+    }
+  }, [lead]);
+
+  const lastEnrichedAt = (lead as any)?.lastEnrichedAt;
+  const daysSinceEnrichment = lastEnrichedAt
+    ? Math.floor((Date.now() - new Date(lastEnrichedAt).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+  const isStale = daysSinceEnrichment !== null && daysSinceEnrichment > 30;
+  const isEnriching = enrichMutation.isPending || (enrichmentStatus?.status === "running");
 
   if (isLoading) {
     return (
@@ -199,6 +262,59 @@ export default function LeadDetail() {
           <StatusBadge status={lead.status} />
           <ScoreBadge score={lead.leadScore} />
         </div>
+      </div>
+
+      <div className="flex items-center gap-3 bg-muted/40 rounded-lg px-4 py-3">
+        <div className="flex-1 flex items-center gap-3 flex-wrap">
+          {isEnriching && enrichmentStatus?.steps && enrichmentStatus.steps.length > 0 ? (
+            <div className="flex items-center gap-2 flex-wrap flex-1">
+              <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+              <span className="text-sm font-medium">Enriching...</span>
+              <div className="flex gap-1.5 flex-wrap">
+                {enrichmentStatus.steps.map((step, i) => (
+                  <Badge
+                    key={i}
+                    variant={step.status === "complete" ? "default" : step.status === "running" ? "secondary" : step.status === "error" ? "destructive" : "outline"}
+                    className="text-[10px]"
+                    data-testid={`badge-enrich-step-${i}`}
+                  >
+                    {step.status === "running" && <Loader2 className="w-2.5 h-2.5 animate-spin mr-1" />}
+                    {step.name}{step.detail ? `: ${step.detail}` : ""}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {lastEnrichedAt ? (
+                <span className="text-sm text-muted-foreground" data-testid="text-last-enriched">
+                  Last enriched: {new Date(lastEnrichedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  {daysSinceEnrichment !== null && (
+                    <span className={isStale ? "text-amber-600 dark:text-amber-400 font-medium ml-1" : "ml-1"}>
+                      ({daysSinceEnrichment === 0 ? "today" : `${daysSinceEnrichment}d ago`})
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground" data-testid="text-never-enriched">Never enriched</span>
+              )}
+            </>
+          )}
+        </div>
+        <Button
+          size="sm"
+          variant={isStale ? "default" : "outline"}
+          onClick={() => enrichMutation.mutate()}
+          disabled={isEnriching}
+          data-testid="button-re-enrich"
+        >
+          {isEnriching ? (
+            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+          ) : (
+            <RefreshCw className="w-3 h-3 mr-1" />
+          )}
+          {isStale ? "Re-enrich (Stale)" : "Re-enrich"}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

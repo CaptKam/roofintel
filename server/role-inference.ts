@@ -103,7 +103,7 @@ function inferRoleFromContext(lead: Lead): { role: ContactRole; confidence: numb
   return { role: "Unknown", confidence: 15, signal: "insufficient_data" };
 }
 
-async function inferLeadRoles(lead: Lead): Promise<RoleCandidate[]> {
+export async function inferLeadRoles(lead: Lead): Promise<RoleCandidate[]> {
   const candidates: RoleCandidate[] = [];
 
   if (lead.contactName && lead.contactTitle) {

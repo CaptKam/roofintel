@@ -116,6 +116,8 @@ export const leads = pgTable("leads", {
   reverseAddressType: text("reverse_address_type"),
   reverseAddressBusinesses: jsonb("reverse_address_businesses"),
   reverseAddressEnrichedAt: timestamp("reverse_address_enriched_at"),
+  lastEnrichedAt: timestamp("last_enriched_at"),
+  enrichmentStatus: text("enrichment_status").default("pending"),
   sourceType: text("source_type").default("seed"),
   sourceId: text("source_id"),
   createdAt: timestamp("created_at").defaultNow(),

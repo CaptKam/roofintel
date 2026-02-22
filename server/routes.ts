@@ -22,7 +22,7 @@ import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, ge
 import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
-import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits } from "@shared/schema";
+import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable } from "@shared/schema";
 import { db } from "./storage";
 import { sql, eq } from "drizzle-orm";
 
@@ -1747,6 +1747,35 @@ export async function registerRoutes(
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Review failed", error: error.message });
+    }
+  });
+
+  app.post("/api/leads/:id/enrich", async (req, res) => {
+    try {
+      const { enrichLead } = await import("./lead-enrichment-orchestrator");
+      const progress = await enrichLead(req.params.id);
+      res.json(progress);
+    } catch (error: any) {
+      res.status(500).json({ message: "Enrichment failed", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/enrichment-status", async (req, res) => {
+    try {
+      const { getEnrichmentProgress } = await import("./lead-enrichment-orchestrator");
+      const progress = getEnrichmentProgress(req.params.id);
+      if (progress) {
+        res.json(progress);
+      } else {
+        const lead = await db.select().from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+        if (lead[0] && (lead[0] as any).enrichmentStatus === "running") {
+          res.json({ leadId: req.params.id, status: "running", steps: [] });
+        } else {
+          res.json({ leadId: req.params.id, status: "idle", steps: [] });
+        }
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get status", error: error.message });
     }
   });
 

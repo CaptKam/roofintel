@@ -32,6 +32,7 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
     - `reverse-address-enrichment`: Compares owner mailing vs property addresses, queries Google Places API to identify management companies, law firms, title companies, or corporate offices at the mailing address. Feeds discoveries into management attribution pipeline.
     - `compliance-gate`: Manages opt-outs, consent, and DNC checks.
     - `dm-confidence`: A 7-factor weighted formula for contact confidence scoring.
+    - `lead-enrichment-orchestrator`: On-demand single-lead enrichment that auto-triggers all agents (reverse address, attribution, role inference, confidence scoring, phone enrichment) when a lead is first viewed or manually re-enriched.
     - `job-scheduler`: Background job management for tasks like NOAA sync and score recalculation.
 - **Lead Scoring (v3)**: A refined scoring algorithm (0-100) optimized for roofing contractors, incorporating roof age, hail exposure, storm recency, roof area, contactability, owner type, property value, distress signals, flood risk, and property condition.
 
