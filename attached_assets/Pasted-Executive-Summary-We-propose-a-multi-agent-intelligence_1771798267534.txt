@@ -1,0 +1,167 @@
+Executive Summary
+We propose a multi-agent intelligence platform to discover and verify key decision-makers tied to commercial properties. The system ingests property identifiers from public sources (assessor records, transaction databases) and enriches them via automated agents that query business registries, permit databases, lien records, and other filings. Each agent contributes attributes (owner names, managers, addresses, phone/email) which are fused by entity-resolution processes into a cohesive identity graph. A downstream scores contacts by their role (owner, manager, facilities lead, etc.) and evidence strength (matched addresses, permits, social profiles), yielding a ranked list of likely decision-makers.
+
+Key components include:
+
+Data crawlers: Scrapers for county assessor and tax databases, SOS/LLC registries, UCC lien filings, and court records.
+Permit and licensing fetchers: APIs or scrapers for building permits, environmental permits, fire inspections, OSHA inspections, utility interconnections, etc.
+People-resolution agents: Tools that cross-reference names/addresses across Whitepages, LinkedIn, business news, and election filings to identify the same individual in multiple roles.
+Entity-resolution and scoring: ML tools (e.g. Dedupe) and graph databases (e.g. Neo4j) to cluster records and rank contact confidence.
+Monitoring agents: Watch for triggers like new permit applications, hail damage reports, or loan maturities that create fresh sales opportunities.
+We prioritize legally compliant sources (public records, open data portals, paid APIs) and respect privacy regulations. The recommended implementation uses open-source libraries (Scrapy, BeautifulSoup, Selenium) and available APIs (state SoS, Socrata, OSHA/DOL) where possible. For harder-to-access data (e.g. LinkedIn, closed court systems), we propose either licensed data or human-in-the-loop verification to avoid legal risk.
+
+Key signals of a verified decision-maker: for example, a building permit record listing “John Smith” as applicant for a reroof, a matching LinkedIn profile for John Smith at that company with the same title, and a matching phone/email from a people-search API. Each matching piece raises confidence that John Smith is the true facilities manager.
+
+Below we detail agent types, data sources, enrichment workflows, compliance issues, recommended tools, and a phased roadmap. Our goal is an enterprise-grade data product that goes beyond simple leads to an actionable Ownership & Decision-Maker Intelligence Platform – providing sales teams with territory insights and real-time alerts, not just spreadsheets.
+
+Agent Types and Data Sources
+Assessor/Property Scraper: Queries county assessor or recorder databases (via web UI or open-data API) to retrieve parcel records. Inputs are property address or parcel ID; outputs include legal owner name(s), mailing address, and sometimes ownership entity (LLC/Corp). Many counties offer searchable GIS/SQL or Socrata portals (e.g. Cook County, Austin, Maricopa)
+.
+
+Secretary of State (SoS) / Business Registry Miner: Takes an LLC/corporation name (from assessor or title search) and retrieves its filing details: registered agent, manager/member names, business addresses, and status. Data comes from state SoS websites (some via APIs or by scraping). Companies like OpenCorporates aggregate this data (covering 140+ registries)
+. For example, SOS filings list the LLC’s organizer, member/managing member, and agent
+.
+
+UCC Liens Crawler: Searches uniform commercial code (UCC) filing databases for a given entity name. A UCC search yields creditors’ names, addresses, and collateral descriptions for any liens on the entity
+. These filings can reveal banks, asset managers, or guarantors tied to the property owner entity. (Note: UCC portals vary by state; third-party services exist but may be costly.)
+
+Building Permits & Development Agent: Ingests construction/renovation permits. Many jurisdictions publish permit data (via CKAN/Socrata or PDFs). This agent searches for recent permits at the property address. Permits often list applicant/owner name, contractor/architect, contact info, and project value. Example open datasets include City of Austin’s permits and Montgomery County MD’s commercial permits
+. A permit listing a person as applicant/owner is a strong lead that they manage building operations.
+
+Fire/Environmental Inspections Agent: Queries datasets of fire marshal or EPA inspections tied to addresses. Public reports sometimes include facility manager names and contact info. (For example, OSHA’s DOL Open Data includes inspection summaries searchable by site
+.) These can surface on-site managers.
+
+CMBS/Loan Data Agent: For properties backed by securitized loans, databases (e.g. Trepp, S&P) list asset managers or servicers. While not freely open, some aggregated CMBS loan data are purchasable; the borrower record can lead to institutional owner contacts.
+
+Bankruptcy and Court Records Agent: Searches PACER (federal) and state/county court dockets for the owner entity. Bankruptcy filings in particular list debtor’s agents and attorneys, often with contact info. Court records (e.g. civil suits, mechanic’s liens) may disclose principals’ names. Many filings are text-searchable; specialized tools like tc (the-trial-courts.org) or Commercial Law League feeds can be used.
+
+News and Biz Journal Agent: Scrapes business news, press releases, and local publications for mentions of transactions or projects. Articles often name buyers/sellers by LLC and their principals (e.g. “XYZ LLC, managed by Jane Doe, purchased...”). RSS feeds or APIs (e.g. Google News API, Bing News Search) can surface these signals.
+
+Social/People Enrichment Agent: For each candidate name, queries people-finding services (Whitepages, Pipl, ZoomInfo) and LinkedIn for matching profiles. Inputs are (name + location or employer); outputs include phone, email, job title. LinkedIn itself may require a paid API or careful scraping. This agent cross-checks if a name from business filings appears as a professional at the company in question.
+
+Aggregate Graph Resolver Agent: A post-processor that merges data: e.g. links the “John Smith” from the building permit to “J. Smith” on LinkedIn and to a registered agent name on the LLC. Uses entity-resolution algorithms to cluster and match the same person across sources. Tools like the Python Dedupe library can perform fuzzy matching on names/addresses
+.
+
+Signal Monitor Agents: Continuous pipelines that watch for triggers. Examples: “New Construction Permit filed” in a city, severe weather (hail) alerts in an area (implying roof needs), changes in LLC status (new filing or dissolution), or tax lien filings. These can be implemented with cron jobs or streaming (Debezium/Wal2Json on a queue) to update leads proactively.
+
+Enrichment and Triangulation Steps
+Entity Assembly: Start with a property and its owning LLC (from assessor). Fetch SoS filings for that LLC to get names of officers and agent. Use reverse address on the mailing address: if it’s a manager’s home, search voter records, property sites, or LinkedIn for matching name.
+Cross-Reference by Address: If the owner mailing address is a different property or PO box, search that address via Google Maps (street view may show a title company or law firm name on sign) and public filings. If multiple LLCs share the same mail address, group them as a portfolio.
+Permit Triangulation: For each property, pull all permits in last several years. For each permit, note applicant/owner names. Check if permit applicant name matches an officer or manager from the SoS data. If yes, that person is almost certainly a decision-maker (they authorized work). Extract phone/email from any permit record (some jurisdictions list contact info).
+UCC + Bankruptcy: For the LLC and principals found, fetch any UCC filings. If a UCC lists a guarantor or officer, add them to the people graph. Search PACER/bankruptcy dockets for the LLC or the individual names – if found, scrape contacts.
+People Search: For each candidate name+entity pair, query LinkedIn and people-lookup APIs. E.g. find “John Doe, Facilities Manager at XYZ Properties” and confirm location matches. Collect phone/email if available (many people-finder APIs return business emails).
+Confidence Scoring: Assign each candidate person a score based on evidence: e.g. +1 for “listed as LLC manager on SOS”, +2 for “exact match on permit applicant with phone”, +3 for “verified LinkedIn profile with same job title”, +1 for shared address/phone. Aggregate to rank contacts.
+Throughout, use reverse lookups: e.g. look up the registered agent name in campaign finance databases or previous project filings; look up contractor names in other permits; link Twitter/LinkedIn via email.
+
+Compliance and Legal Considerations
+Most data (assessor, SoS, permit, court) are public records, but care is needed with personal data and scraping policies. Under the Computer Fraud and Abuse Act (CFAA), scraping publicly accessible data is generally legal
+ (hiQ v. LinkedIn ruled public data is fair use). However:
+
+Terms of Service: Many websites forbid automated scraping (especially LinkedIn, some state courts). Violating a login wall or robot.txt could risk legal action. Mitigation: use official APIs when available (e.g. Socrata, data.gov, USPS NCOA) and throttle requests.
+Privacy Laws: Even “public” data like names/addresses can be sensitive. The California Law Review warns that scraping personal information implicates privacy principles
+. To mitigate, restrict use to business contexts (contacting about commercial services) and honor “Do Not Call” lists. Do not scrape health or credit data (subject to GLBA, FCRA).
+CCPA/GLBA: If operating in California or in finance sectors, ensure compliance: CCPA exempts “publicly available” business contact info, but best practice is to treat scraped personal emails/phones as opt-out if requested. For any data considered “non-public personal information” (GLBA) or financial information, do not store or use.
+Human-in-Loop Checks: To avoid errors, any PII-heavy operations should include manual review or confirmation. E.g. before emailing a scraped contact, a human should verify the match.
+In summary, focus on open data sources and regard scraped contact info as leads rather than definitive. Provide an easy opt-out and comply with anti-spam laws (CAN-SPAM, TCPA).
+
+Tools, Libraries, and Infrastructure
+Scraping and Crawling: Use Scrapy or BeautifulSoup (Python) for open HTML APIs. For dynamic sites (some SoS portals or permit sites), use headless Selenium or Playwright. For PDF permits/court docs, use OCR libraries (Tesseract) or PDF parsers. Bulk data (CSV/JSON) from open data portals can be ingested directly.
+APIs: Where available, leverage official APIs: Socrata/ArcGIS REST (city permit data), OSHA DOL Data API, Google Places (to validate business addresses), and people-search APIs (Whitepages, Twilio Lookups). For SoS, services like Middesk or OpenCorporates API can centralize access
+.
+Database/Queue: Store data in a relational or graph database (e.g. PostgreSQL with PostGIS for address queries, or Neo4j for entity graph). Use a message queue (RabbitMQ, Kafka) for new-permit or new-LLC pipelines.
+Entity Graph: Build an identity graph where nodes = people or companies, edges = “owns”, “manages”, “contacts”. Tools like Neo4j or Amazon Neptune can facilitate graph queries.
+Entity Resolution: Libraries like Dedupe
+ or recordlinkage (Python) can merge fuzzy matches. For confidence scoring and ML, use scikit-learn or Gradient Boosting on features (name match score, number of corroborating sources, contact validity).
+Front-end/Alerts: Use dashboards (Grafana/Metabase) and notifications (email/SMS) for monitoring triggers.
+Agent-by-Agent Capability Table
+Agent / Role	Inputs	Outputs	Frequency	Confidence Methods	Recommended Tools/APIs	Engineering Effort
+Assessor Scraper	Property address/ID	Owner name(s), mailing address, PIN	On-demand / weekly refresh	Official record (very high)	County GIS API (ArcGIS, CKAN), Scrapy, Socrata	Medium (varies by county)
+SoS Entity Miner	LLC/Corp name or ID	LLC status, registered agent, manager names, addresses	On-demand per new LLC	State database (high)	State SoS web API / HTML, OpenCorporates API	Medium–High (state differences)
+Building Permit Agent	Property address	Permit records with applicant name, contractor, dates	Daily/weekly monitoring	Permit applicant = owner (strong)	Socrata/CKAN or custom scraper, Attom/Shovels (opt.)	Medium
+Fire/OSHA Inspections	Employer name or address	Inspection records, facility contact	Weekly/monthly	Public doc (moderate)	OSHA/DOL API, state OSHA sites, ECHO EPA	Low–Medium
+UCC Filings Crawler	LLC name or number	Lien records (lender, collateral, signer)	Weekly/monthly	Legal lien (high)	State UCC portals, Wolters Kluwer API	High (fragmented)
+Court Records Agent	Entity/person name	Court filings (plaintiffs, defendants, attorneys)	Monthly or by alert	Legal affidavit (high)	PACER, state court e-filing, trial court indexing	High
+News/Biz Journal Scraper	Entity name, owners	Articles with names/titles	Daily/weekly	Named mention (medium)	News APIs (Google/Bing/NewsRiver), RSS scraper	Medium
+Social/People Search	Person name + location, company	LinkedIn profile, phone/email, title	On new lead	Profile match score (moderate)	LinkedIn API/PhantomBuster, Whitepages API	Medium–High (APIs needed)
+Entity Resolver	List of person & company records	Matched individuals; confidence scores	Continuous batch	Machine learning (fuzzy matching)	Python Dedupe, NetworkX/Neo4j for graph	Medium
+Signal Monitor	Permit filings, weather alerts, etc.	Event triggers (e.g. hail, new permit)	Real-time/cron	Signal relevance model (low/med)	Webhooks, AWS SNS/SQS, Weather APIs	Low–Medium
+Human-in-Loop Verifier	Candidate contacts	Manually-verified decision-makers	Per lead	Verified by conversation (high)	Internal CRM/Survey tool, Task queue (Celery)	High (operations)
+
+Confidence methods combine data-source reliability with cross-check signals (e.g. an LLC officer listing + same name on permit yields high confidence). Effort estimates assume one developer; integration across dozens of states/cities raises complexity.
+
+End-to-End Workflow
+mermaid
+Copy
+flowchart LR
+    A[Start: Property Address/ID] --> B[Assessor/Property DB Lookup]
+    B --> C[LLC/Owner Name obtained]
+    C --> D[SoS/Business Registry Miner]
+    C --> E[Building Permits Agent]
+    C --> F[UCC Liens Crawler]
+    C --> G[Court Records Agent]
+    D --> H[Extract persons: managers, agents]
+    E --> H
+    F --> H
+    G --> H
+    H --> I[People Search & LinkedIn Agent]
+    H --> J[People Search & Whitepages]
+    I & J --> K[Aggregate Person Records]
+    K --> L[Entity Resolution (ML)]
+    L --> M[Contact Confidence Scoring]
+    M --> N[Decision-Maker List]
+    N --> O[CRM/Sales Alerts]
+    style A fill:#f9f,stroke:#333,stroke-width:1px
+    style O fill:#bbf,stroke:#333,stroke-width:1px
+Figure: Agent workflow from property to decision-maker.
+
+Implementation Roadmap
+MVP (0–3 months): Focus on a single region or state to validate pipeline.
+
+Build Assessor Scraper for that jurisdiction (e.g. scrape the county assessor site or API).
+Implement a simple SoS data fetch for the same state (via HTML scraping or API) to get owner names.
+Setup a Permit Agent using that city/county’s open permit data. Collect recent permit applicant names.
+Store data in a database and link on obvious keys (address or tax ID).
+Prototype a basic People Matching step: e.g. Google “Name + City” to find email/phone (manually or via an API).
+Milestone: Demonstrate a handful of leads with property → potential contact.
+3–6 months: Scale regionally and add automation:
+
+Expand Assessor Scrapers to multiple counties (with data pipelines).
+Use a graph DB (Neo4j or similar) for the identity graph; integrate an entity resolution library (Dedupe) to merge records.
+Add UCC and Court Agents (start with PACER or a state court API) to augment contacts.
+Integrate people-enrichment APIs (Whitepages Pro, Clearbit, ZoomInfo) to fill emails/phones.
+Develop confidence scoring logic and ranking algorithm.
+Milestone: A web interface or CRM plugin listing contacts by property with confidence levels.
+6–12 months: Improve intelligence and coverage:
+
+Implement signal monitoring: automated alerts on new permits (via RSS or APIs), weather events (e.g. hail data from NOAA), or building sale filings (county recorder).
+Connect LinkedIn/Social scraping via an authorized API or service (e.g. Phantombuster, Apollo) to auto-find profiles and verify titles.
+Build a Notification System: e.g. send daily emails or Slack updates of new high-confidence leads.
+Refine UI/UX for sales teams: territory dashboards, contact lists export, CRM sync.
+Ensure compliance: implement data retention policies, opt-out processes, and security audits.
+Milestone: A production-ready platform used by pilot customers, capable of covering multiple states with live updates.
+Beyond 12 months: Enterprise features and expansion:
+
+Scale to cover all major metros nationwide using cloud infrastructure and parallel scraping.
+License additional datasets (e.g. CoStar, attom) for completeness.
+Offer an API for external integration (sales apps).
+Possibly pivot toward full CRE intelligence (beyond services) leveraging the built graph of properties and owners.
+Signals of Verified Decision-Makers
+Examples of high-confidence indicators:
+
+Permit Applicant + Public Profile: A roofing permit lists “Alice Johnson” as the applicant for 123 Main St. A LinkedIn search finds Alice Johnson, Facilities Manager at “Main Street Properties LLC” (owner’s parent), with a matching city. Her company email is obtainable via a company domain lookup.
+Owner-Signed Filing + Contact: The SoS filing for an LLC lists “Bob Lee” as the Managing Member. A Google search of Bob’s name + company yields a press release naming him as “President” of that real estate firm. His office number appears on a contractor website or via Whitepages.
+Reverse Address + Election Data: The LLC’s registered agent address is Bob’s home. Public voting records show Bob Lee registered at that address. Nearby business listings show Bob’s company HQ in same ZIP, strengthening the link.
+LinkedIn Connection: A person found via people search (e.g. Jane, property manager) is a 2nd-degree connection of a known executive in the same firm on LinkedIn, suggesting authenticity.
+Matching Contact Points: An email address from a company (e.g. jsmith@xyzinc.com) matches a phone number found in a permit, confirming the individual is reachable at both.
+Ethical/Legal Red Flags and Mitigations
+Scraping Beyond Public View: Avoid scraping behind logins or Paywalls (e.g. paid title databases, LinkedIn without permission). Use official APIs or purchase data where required.
+Personal vs. Business Data: We focus on business contacts (emails at company domains, professional numbers). Avoid using personal home phone or non-business email for outreach to comply with privacy norms.
+Data Minimization: Only collect fields needed for qualification. Don’t store full personal profiles of private individuals (consider GDPR/GDPR-like care even for US names). Delete or anonymize data older than needed.
+Transparency: If confronted, be ready to explain data sources (all are public/business records). Provide an “opt-out” if someone asks (e.g. remove from list).
+Quality Control: False positives (wrong person with similar name) are common. Use human review before high-stakes contact. Flag low-confidence leads and avoid contacting them until vetted.
+By adhering to publicly available data and best practices (rate limits, IP rotation, human review), we mitigate legal risk. The goal is aggressive yet responsible data gathering: treat public records as fuel, not personal dossiers.
+
+Sources: Public real-estate and business registry knowledge
+; OSHA and OSHA/DOL data availability
+; privacy-law cautions on scraping
+. The above plan synthesizes industry best practices and public information sources.
