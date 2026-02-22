@@ -480,6 +480,90 @@ export default function LeadDetail() {
             </Card>
           )}
 
+          {(lead.managementCompany || lead.managementContact || lead.managementPhone || lead.contactRole) && (
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">Property Management</CardTitle>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {lead.contactRole && lead.contactRole !== "Unknown" && (
+                    <Badge variant="secondary" className="text-[10px]" data-testid="badge-contact-role">
+                      {lead.contactRole}
+                    </Badge>
+                  )}
+                  {(lead as any).dmConfidenceScore !== null && (lead as any).dmConfidenceScore !== undefined && (
+                    <Badge
+                      variant={(lead as any).dmConfidenceScore >= 85 ? "default" : (lead as any).dmConfidenceScore >= 60 ? "secondary" : "outline"}
+                      className="text-[10px]"
+                      data-testid="badge-dm-confidence"
+                    >
+                      DM: {(lead as any).dmConfidenceScore}/100
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-1">
+                {lead.managementCompany && (
+                  <DetailRow icon={Building2} label="Management Company" value={lead.managementCompany} />
+                )}
+                {lead.managementContact && (
+                  <DetailRow icon={User} label="Management Contact" value={lead.managementContact} />
+                )}
+                {lead.managementPhone && (
+                  <DetailRow
+                    icon={Phone}
+                    label="Management Phone"
+                    value={
+                      <a href={`tel:${lead.managementPhone}`} className="text-primary hover:underline" data-testid="link-mgmt-phone">
+                        {lead.managementPhone}
+                      </a>
+                    }
+                  />
+                )}
+                {lead.managementEmail && (
+                  <DetailRow
+                    icon={Mail}
+                    label="Management Email"
+                    value={
+                      <a href={`mailto:${lead.managementEmail}`} className="text-primary hover:underline">
+                        {lead.managementEmail}
+                      </a>
+                    }
+                  />
+                )}
+                {lead.contactRole && (
+                  <DetailRow icon={UserCheck} label="Decision Maker Role" value={
+                    <span className="flex items-center gap-2">
+                      {lead.contactRole}
+                      {(lead as any).roleConfidence && (
+                        <span className="text-[10px] text-muted-foreground">({(lead as any).roleConfidence}% confidence)</span>
+                      )}
+                      {(lead as any).decisionMakerRank && (
+                        <span className="text-[10px] text-muted-foreground">Rank #{(lead as any).decisionMakerRank}</span>
+                      )}
+                    </span>
+                  } />
+                )}
+                {(lead as any).managementEvidence && Array.isArray((lead as any).managementEvidence) && (lead as any).managementEvidence.length > 0 && (
+                  <div className="pt-2">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Evidence Sources</p>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {((lead as any).managementEvidence as any[]).map((ev: any, i: number) => (
+                        <Badge key={i} variant="outline" className="text-[10px]">
+                          {ev.source}: {ev.field} ({ev.confidence}%)
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(lead as any).managementAttributedAt && (
+                  <p className="text-[10px] text-muted-foreground pt-1">
+                    Attributed: {new Date((lead as any).managementAttributedAt).toLocaleDateString()}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-base font-semibold">Owner Intelligence</CardTitle>
