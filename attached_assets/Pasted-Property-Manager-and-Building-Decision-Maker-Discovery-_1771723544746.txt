@@ -1,0 +1,439 @@
+Property Manager and Building Decision‑Maker Discovery with AI Agents
+Executive summary
+Finding the real decision‑maker for a building is not “look up an owner name and scrape an email.” The hard part is separating ownership, management, and operations, then linking those entities to current, reachable people with evidence strong enough that a sophisticated buyer won’t dismiss it as “scraped junk.” The winning system behaves like a forensic workflow: it starts from a property identifier, triangulates across multiple public and semi‑public sources (assessor, recorder, permits, registries, filings, websites), resolves entities into a graph, and only then promotes contacts—each with confidence + provenance and a compliance‑safe activation path. The regulatory direction (GDPR, California data broker obligations, and outbound telemarketing controls) makes provenance, suppression, and auditability part of product quality, not “legal later.” 
+
+Assumptions: no specified tech stack or budget; the target is property manager / building decision‑maker discovery for buildings; the system may support outbound calling/emailing but must include compliance gating; coverage goals likely start in one metro/region and expand.
+
+Decision‑maker taxonomy and why “owner ≠ decision‑maker”
+A single property commonly involves multiple parties with different authority. Your agent must model these roles explicitly, or it will reliably deliver the wrong person:
+
+Legal owner (title holder / owner of record). Often an LLC or trust. This entity appears in assessor/recorder records and is the right anchor for a property graph, but not necessarily the person who answers the phone. Tax/assessor systems commonly distinguish property location from owner mailing address, enabling “where the bills go” as a practical lead. 
+
+Beneficial owner / controlling parent. The title‑holding LLC may be a shell inside a holding structure. If the owner is public (REIT, public asset manager, public operating company), SEC filings can provide deeper corporate context and sometimes property/segment disclosure. 
+
+Property management company (day‑to‑day management agent). They run leasing, tenant issues, vendor dispatch, and often influence scope decisions. They may surface in property websites/“Contact Us,” listing portals, and—crucially—on permits/inspections as the applicant/contact.
+
+Asset manager (owner’s representative). Approves capital decisions, vendor lists, and large projects. Harder to find in public records; often reachable via corporate structure, LinkedIn/website org charts, or via the property management chain.
+
+Facilities/engineering lead (on‑site operations decision‑maker). For many service/work categories, this is the real “yes/no” gatekeeper. You can often infer this role from permits/inspections and vendor interactions.
+
+Tenant decision‑maker (for tenant‑controlled improvements). Some work is tenant‑driven; a landlord contact may be irrelevant.
+
+Your AI agent should treat “decision‑maker” as a ranked set of candidates (owner rep + property manager + facilities lead), each linked to a property via specific evidence.
+
+Data sources and what they reliably reveal
+The strongest systems do not depend on one source. They use triangulation: each source contributes partial truth, and the agent assembles a defensible story.
+
+Harris County, TX Property Search
+Make a Payment in Accela Citizen Access | Santa Rosa, CA
+Texas Secretary of State Business Search
+How To Do a Business Entity Search in Kentucky | BrandSnag
+
+Core public-record sources
+Assessor / appraisal district / property tax portals.
+Typical value: owner name/entity, situs address, and owner mailing address fields (varies by jurisdiction). Concrete example: county tax search tools explicitly separate “Owner Address (mailing)” from “Property Location.” 
+
+Best use: initial owner-of-record anchor + mailing address clue (sometimes “c/o [management company]”).
+
+Recorder / County clerk official records (deeds, deeds of trust, assignments, releases).
+Typical value: grantor/grantee names, legal descriptions, lender/servicer data, execution/recording dates. Counties commonly provide official records access and certified copies for purchase. 
+
+Best use: confirm ownership changes and reduce “stale assessor” errors.
+
+Permit/inspection/CO (certificate of occupancy) portals and open-data permit datasets.
+Typical value: applicant/owner/contractor names, project addresses, sometimes contact information, plus recency. Cities often provide address-based permit record search. 
+
+Best use: identify the operational agent and vendors; capture “who is actively touching this building now.”
+
+Corporate/identity sources
+State corporate registries (Secretary of State / Division of Corporations).
+Typical value: entity status, registered agent, formation info; sometimes officer/manager details depending on state and entity type. Texas SOSDirect provides paid search access; Texas also explains registered-agent requirements. 
+
+Best use: connect owner LLC to addresses, agents, and occasionally people. Also essential for entity resolution and portfolio mapping.
+
+Real estate licensing and regulator directories.
+Property managers/brokers are often licensed (state-dependent). Examples: Texas and California provide public license lookups. 
+
+Best use: verify that a “property manager” is real, active, and tied to a firm.
+
+SEC EDGAR (for public owners/managers).
+EDGAR provides public access to corporate filings and search tools. 
+
+Best use: identify parent organizations, principal offices, investor relations contacts, and disclosures that connect operating segments to property types/regions (often not property-by-property, but still helpful).
+
+Commercial and web sources (useful, but higher risk)
+Company websites / property websites.
+Often list management company, leasing office number, or contact forms. This is frequently the lowest-friction “true contact.” Risk is lower than scraping walled platforms because you’re using the company’s own published contact channel—still, ToS and robots rules matter.
+
+Phone directories and people-search sites.
+Coverage can be broad, but accuracy and consent posture are variable; this category increases privacy and data broker risk (especially California). Prefer as “last-mile hints” rather than primary truth. 
+
+LinkedIn and similar platforms.
+High value for identifying current role holders, but high ToS enforcement sensitivity; automated crawling can violate platform terms and lead to account restrictions. LinkedIn explicitly prohibits automated crawling/indexing without express permission and documents prohibited tools/behavior. 
+
+Data source comparison table
+Definitions (so this table is usable):
+Coverage = how often the source exists for a random building in your target region; Reliability = typical correctness + update cadence; Cost = typical unit economics; Legal risk = likelihood you trigger ToS/privacy/scraping exposure if automated.
+
+Data source	Typical coverage	Reliability	Cost	Legal risk if automated	Notes
+Assessor / appraisal district / tax portal	High (US), varies by state/county	Medium–High	Low	Low	Often shows owner + mailing address fields; may lag transfers. 
+Recorder / county clerk deeds	Medium–High	High	Low–Med	Low	Better for ownership change confirmation; sometimes paywalled per-copy. 
+Permits/inspections portals + open-data permits	Medium	High for “activity,” medium for contacts	Low–Med	Low	Best “recency signal” and operational contact hints. 
+State corporate registries	High for LLC owners	Medium	Low–Med	Low	Great for entity structure; “registered agent” may be service company, not decision-maker. 
+Real-estate license lookups	Medium (depends on state and role)	High	Low	Low	Useful for verification and de-dup (license # is a strong identifier). 
+SEC EDGAR filings	Low (only public parents)	High	Free	Low	Useful for public ownership context and HQ contacts. 
+Company/property websites	Medium	Medium	Low	Low–Med	Best first-party contact channel; respect robots/ToS.
+People/phone directories	High	Low–Med	Med	High	Raises privacy/data broker risk; accuracy can be stale. 
+LinkedIn/platform profiles	High for people discovery	Medium–High	Low–Med	High	High ToS enforcement risk for automation; prefer compliant methods/partnerships. 
+
+Matching strategy: ownership vs management and entity resolution that holds up in diligence
+What “matching” must solve
+A property→decision-maker pipeline must solve four different linkage problems:
+
+Property identity resolution: “123 Main St” vs “123 N Main Street Ste 200” vs parcel ID; apartments vs buildings; multi-building campuses.
+Ownership resolution: map property → legal owner entity (and confirm recency) across assessor + recorder. 
+Management attribution: map property → management company and site/portfolio contacts from permits + websites and potentially licensing lookups. 
+People resolution: map company → individuals (roles and seniority) with “freshness,” then map individuals → reachable contact routes (not necessarily personal emails/phones).
+Entity resolution and graph approach
+The most defensible approach is a typed entity graph:
+
+Nodes: Property, Parcel, Address, OwnerEntity, ManagementEntity, Person, Phone, Email, DocumentEvidence, SourceSystem
+Edges: located_at, owned_by, managed_by, employed_by, listed_on, evidenced_by, verified_by
+This graph supports explainability: “We believe X is the property manager because they appear as the applicant contact on permits for this address (dated…), and the property’s own website lists the same management company number; license lookup confirms the firm is active.” 
+
+Practical matching heuristics that work before ML
+Even without ML, you can materially outperform naive scraping:
+
+Address normalization (USPS-like formatting), unit stripping, directional/suffix canonicalization.
+Triangulation rule: do not promote “OwnerEntity” until at least two independent sources agree (e.g., assessor + recorder). 
+Recency weighting: newer permits and recorded deeds trump older assessor snapshots. 
+Registered-agent skepticism: treat registered agents as “service contact,” not “decision-maker,” because states explicitly allow using service companies as registered agents. 
+When ML/AI becomes worth it
+Use ML where ambiguity costs money:
+
+Record linkage / dedup for entity resolution at scale (company name fuzziness, “LP/LLC” variants).
+Embedding similarity for matching noisy strings (management companies, person names) across sources.
+NER + document parsing for extracting names/roles from permits, filings, and web pages.
+LLM RAG for assembling an explainable narrative from multiple evidence documents without hallucinating.
+Legal, privacy, and anti‑scraping constraints you must design around
+This is not “lawyer food.” It determines whether you can sell the product, and whether acquirers haircut the deal.
+
+GDPR and EU outreach constraints (if any EU/UK data)
+GDPR defines personal data broadly (identifiable natural person). Email and phone are commonly in-scope. 
+
+Legitimate interests is a possible lawful basis (Article 6(1)(f)), but it requires a balancing test and strong transparency; the European Data Protection Board’s guidelines emphasize the necessity and balancing analysis. 
+
+Individuals have a right to object to direct marketing (Article 21), and you must stop processing for that purpose once they object. 
+
+If you plan EU/UK coverage, a credible baseline includes: lawful basis documentation, privacy notices, suppression/objection handling, DSAR workflows, and processing records. 
+
+California privacy and “data broker” exposure
+California’s CCPA grants consumers rights including to know, delete, and opt out of sale/sharing; the Attorney General publishes summaries and regulations. 
+
+California’s privacy regulator explains that under the Delete Act, data brokers must register and use the DROP platform; starting Aug 1, 2026, brokers must process DROP requests on a repeating cycle (every 45 days per CPPA guidance). 
+
+If your system relies heavily on third-party people directories and resells contact data, you increase the risk of being treated as a data broker (especially where you don’t have a direct relationship with the individual). 
+
+TCPA, calls/texts, and “don’t accidentally build a lawsuit machine”
+The TCPA restricts calls/texts made with an autodialer or artificial/prerecorded voice without appropriate consent; it includes private rights of action. 
+
+The FCC’s Reassigned Numbers Database exists specifically to reduce calls/texts to reassigned numbers and supports compliance use. 
+
+Practical design implication: your system must track consent status, opt-out, and number reassignment checks (if you support telemarketing-like workflows). 
+
+Anti‑scraping, ToS, CFAA, and DMCA realities
+In the US, the CFAA landscape is narrower after the Supreme Court’s Van Buren interpretation of “exceeds authorized access,” but that does not eliminate civil contract/ToS claims or other theories. 
+
+The DOJ charging policy signals restraint around prosecutions based on ToS violations alone, but it is not a civil liability shield. 
+
+Platforms can and do enforce anti-automation terms; LinkedIn’s crawling terms prohibit automated crawling without express permission and warn about prohibited tools and account restriction. 
+
+Circumventing technical access controls can implicate DMCA anticircumvention rules. 
+
+Cold-blooded product design conclusion: build a system that remains valuable if you strip out the riskiest scraping. That means leaning into official/public records, licensed datasets, and first-party customer workflows—then using AI to connect the dots.
+
+AI agent specification: what it must do, module-by-module
+This section treats the “AI agent” as an orchestrator over deterministic pipelines + ML models. It should produce not just a contact, but a defensible linkage.
+
+Overview: agent I/O contract
+Primary input (minimum):
+
+Property address (free text)
+Optional: unit/building name, parcel ID, geo pin, customer’s target role (property manager vs owner rep vs facilities).
+Primary output:
+A ranked list of candidate contacts, each with:
+
+Person name + role hypothesis (e.g., “Property Manager,” “Director of Facilities,” “Asset Manager”)
+Organization (management company or owner entity)
+Reachability channels (company phone, general inbox, direct email/phone only if compliant and verified)
+Confidence score + components
+Evidence bundle: source citations with timestamp and extraction snippets
+Compliance status flags (allowed outreach channels, suppression hits, consent state unknown/known)
+Module specs
+Property normalization and geocoding
+Purpose: Convert messy input into canonical property identifiers.
+
+Inputs: address string, optional unit, optional lat/long.
+Outputs: normalized address, geohash, candidate parcels/properties list, chosen canonical property ID.
+Data pipeline: address parser → normalization → fuzzy match against assessor/parcel datasets.
+Model types: rules + optional embedding similarity for noisy matches.
+Training/labels: small labeled set of “input addressing variations → canonical parcel” for your target region.
+Metrics: match accuracy; false match rate (most costly error); coverage rate.
+Explainability: show how the normalized match was chosen (top candidate scores, tie breakers).
+
+Common failure mode: campus/multi-building addresses.
+Mitigation: return multiple candidates + require human selection when ambiguity score is high.
+
+Source discovery and retrieval orchestrator
+Purpose: Determine “which sources apply” for this property and retrieve structured records.
+
+Inputs: canonical property ID + geography/jurisdiction.
+Outputs: fetched record set from tax/assessor, recorder, permits, corporate registry, (optional) filings and websites.
+Data pipeline: jurisdiction resolver → connector selection → fetch scheduling (rate limits, retries) → normalized record store.
+Model types: not ML-heavy; rule-based routing plus anomaly detection for fetch failures.
+Metrics: retrieval success rate; latency; cost per property.
+Compliance: implement robots.txt and ToS constraints per source; prefer APIs/open data where available. 
+
+Document parsing and entity extraction (NER + structured extraction)
+Purpose: Extract owner names, applicant contacts, company names, and role cues from semi-structured documents (permits, filings, web pages).
+
+Inputs: HTML/PDF/text records, plus source type metadata.
+Outputs: extracted entities with offsets and raw snippets: OwnerEntity, ManagementEntity, Person, Address, Phone, Email, LicenseID.
+Data pipeline: parse → (OCR if needed) → NER → post-processing → store with evidence pointers.
+Model types:
+
+NER (transformer) for organizations/people/addresses
+Regex + validators for phone/email
+LLM extraction for messy layouts (guarded, with schema constraints)
+Training/labels:
+
+Label 1–3k entities from your target jurisdictions’ permits/records for NER fine-tuning (optional; you can start with open models).
+Metrics: entity precision/recall; extraction completeness; “hallucination rate” for LLM extraction (must be near-zero).
+Explainability: each extracted field must attach to a source snippet and timestamp.
+Ownership resolution engine (owner-of-record and recency)
+Purpose: Establish the most likely current legal owner and ownership-change history.
+
+Inputs: assessor owner fields + recorder deed chain + dates.
+Outputs: OwnerEntity with confidence + “last confirmed date,” plus alternates.
+Data pipeline: align names across sources → recency weighting → conflict resolution.
+Model types: record linkage + rules.
+Metrics: correctness vs sampled ground truth deeds; conflict rate; percent of properties with “high-confidence” owner.
+
+Evidence expectations: assessor-only ownership is not enough when deed chain shows transfer. Counties provide deed access; build that into the workflow. 
+
+Management attribution engine (managed_by vs owned_by)
+Purpose: Identify day-to-day property management and operations contacts.
+
+Inputs: permit applicant/contact fields, property website contact info, licensing directories (where relevant), phone numbers on records. 
+
+Outputs: ManagementEntity and candidate managers/facilities contacts with role hypotheses and confidence.
+
+Key rule: management attribution should require at least one operational/recency source (e.g., permit records) or a first-party property contact channel (property site). 
+
+Model types:
+
+Record linkage for company names
+Embedding similarity for noisy variants
+Optional classifier: “is this company likely property management?” from website text
+Metrics: management identification precision; freshness (median “days since evidence”); user correction rate.
+
+People discovery and role ranking (decision-maker selection)
+Purpose: Convert companies into specific people to contact, prioritized by likelihood of authority.
+
+Inputs: management entity, owner entity, public filings context, licensed broker data, and (optionally) platform profiles via compliant methods. 
+
+Outputs: ranked people list with role labels, seniority, and reachability channels.
+
+Model types:
+
+Role classifier (from titles: “Property Manager,” “Facilities Director,” “Asset Manager”)
+Graph-based ranking: proximity to property + seniority + recency of evidence
+Training/labels:
+
+A labeled set of (title, company type) → role mapping; can be bootstrapped.
+Metrics: meeting-rate lift (when integrated), precision@k for “correct decision-maker,” and correction rate from users.
+Contact route assembly (email/phone) + verification
+Purpose: Produce reachable channels with deliverability-quality metadata, not just strings.
+
+Email verification inputs: email, domain DNS, SMTP response telemetry, bounce logs.
+Standards basis: SMTP is standardized (RFC 5321) and servers return reply codes indicating acceptance/rejection. 
+
+Email verification outputs: valid/invalid/risky/unknown with reason codes and timestamps.
+NDR pipeline: ingest non-delivery reports and error codes (Microsoft documents NDR/DSN structure and that NDRs contain error codes/reason details). 
+
+Phone verification inputs: phone number, portability/carrier lookup, reassigned-number check (when relevant), call outcomes.
+Why carrier lookup matters: number portability lets users keep numbers while switching providers; you cannot infer carrier from prefix reliably. 
+
+Reassigned number risk: FCC provides a reassigned numbers database designed to prevent calls to reassigned numbers. 
+
+Metrics: bounce reduction, wrong-number rate, deliverability score calibration.
+
+Provenance and audit logging system
+Purpose: Make outputs defensible and acquirer-grade.
+
+Inputs: every extracted field, match decision, verification event, suppression decision.
+Outputs: immutable evidence bundle for each contact-property link:
+
+source, retrieval timestamp, extraction snippet hash
+model version, feature vector summary, decision thresholds
+user overrides + reviewer identity/time
+Regulatory alignment: GDPR expects accountability and documentation of lawful processing; EDPB guidance emphasizes legitimate-interest analysis. 
+
+Telecom compliance alignment: FCC RND documentation explicitly discusses reporting/audit and query information used in support of TCPA compliance. 
+
+Confidence scoring: how to compute and explain it
+Use a decomposed score so you can explain it:
+
+OverallConfidence = w₁(PropertyMatch) + w₂(OwnerMatch) + w₃(ManagementMatch) + w₄(PersonRoleFit) + w₅(ContactReachability) – w₆(ConflictPenalty) – w₇(StalenessPenalty)
+
+Each component should be explainable:
+
+PropertyMatch: address vs parcel match score
+OwnerMatch: cross-source agreement (assessor + deeds)
+ManagementMatch: operational evidence (permits) + first-party listing
+PersonRoleFit: title and org context
+Reachability: verified phone/email status + last verified timestamp
+ConflictPenalty: competing owners/managers detected
+StalenessPenalty: evidence age
+Integration points, error modes, and human‑in‑the‑loop playbooks
+Integration points
+CRM sync (bi-directional). Push canonical entities and confidence/evidence into CRM as custom objects/fields; pull dispositions (“not the right person,” “new manager,” “sold building”) as ground truth for continuous learning.
+
+Outreach systems + deliverability gates. If you support email sending, ensure domain authentication guidance and bounce telemetry ingestion. Google’s admin guidance describes SPF/DKIM/DMARC and DMARC alignment requirements for reliable authentication. 
+
+Compliance automation.
+
+Suppression lists (opt-outs, objections)
+Consent tracking (especially if automating texts/calls; TCPA applies) 
+For California-facing broker-like operations, monitor data broker obligations and deletion workflows (DROP). 
+High-probability error modes and mitigations
+Mistaking the owner LLC for the operator.
+Mitigation: do not rank a contact as “decision-maker” unless company role evidence exists (permits, website, licensing directory) and staleness is acceptable. 
+
+Outdated ownership after a sale.
+Mitigation: always reconcile with recorder/deed chain when the assessor date is older or when deeds indicate a transfer. 
+
+Promoting a registered agent as the decision-maker.
+Mitigation: classify registered agents as “service-of-process contact”; require additional evidence before outreach. Texas explicitly allows contracting for registered agent services. 
+
+Platform ToS violations / account bans due to automation.
+Mitigation: use compliant acquisition methods; do not automate prohibited crawling; respect robots directives and platform policies. LinkedIn’s legal terms prohibit automated crawling without permission and warn about prohibited tools leading to restrictions. 
+
+Bad contact data causing spam complaints / lawsuits.
+Mitigation: verify contact routes (email/phone), track opt-outs, and implement reassigned-number checks if dialing/texting at scale. 
+
+Human-in-the-loop operational playbooks
+Playbook: “Confidence thresholding”
+
+Auto-publish only if OverallConfidence ≥ 0.85 and evidence comes from ≥2 independent sources with at least one “recency” source (permit/website).
+Queue for review if 0.60–0.85 or if conflict detected.
+Suppress if <0.60 or compliance flags triggered.
+Playbook: “Reviewer workflow”
+
+Reviewer sees the property card with evidence panes (assessor, recorder, permits, website, license directory). 
+Reviewer either:
+confirms candidate,
+picks alternate from ranked list,
+marks “unknown management,” or
+flags “property sold / merged / duplicate property.”
+Reviewer decision becomes labeled data for record linkage and role ranking.
+Playbook: “Verification escalation”
+
+If email is “unknown,” attempt non-invasive verification (domain-level checks, syntax), then wait for bounce telemetry rather than aggressive SMTP probing (some providers treat probing as abusive). Use NDR ingestion as ground truth. 
+If phone is “risky,” check reassigned numbers where applicable, and prefer calling a company main line first. 
+Prioritized implementation plan to 12 months
+This is staged to maximize business value while keeping legal and ToS risk from killing you later.
+
+Implementation steps with effort and team roles
+Team roles (lean but realistic):
+
+Founder/PM (you): requirements, target roles per industry, customer discovery, QA rubric
+Data engineer: source connectors, normalization, storage, provenance
+ML/AI engineer: extraction, entity resolution, ranking, confidence scoring
+Full-stack engineer: UI, reviewer workflows, CRM integrations
+Fractional privacy/compliance counsel: policy mapping, suppression, templates, DPIA basics (if EU) 
+Phase	What ships	Engineering effort	Rough time	Rough cost (order-of-magnitude)
+MVP	Property normalization + assessor + permit ingestion; basic entity graph; evidence panes; manual reviewer linking	Medium	8–12 weeks	$50k–$200k
+Early scale	Recorder/deed reconciliation; corporate registry connectors; dedup v1; confidence scoring; export/CRM push	High	12–16 weeks	$150k–$400k
+Trust + activation	Verification pipelines (NDR ingestion, phone portability checks); audit logs; compliance gating; CRM bi-directional sync	High	12–16 weeks	$200k–$600k
+Intelligent ranking	Role ranking model; embedding-based linkage; LLM RAG explanations with citations; feedback loop training	High	8–12 weeks	$150k–$500k
+
+(These ranges depend heavily on whether you buy data APIs vs build connectors.)
+
+Mermaid timeline (MVP → 12 months)
+Mar 2026
+Apr 2026
+May 2026
+Jun 2026
+Jul 2026
+Aug 2026
+Sep 2026
+Oct 2026
+Nov 2026
+Dec 2026
+Jan 2027
+Feb 2027
+Mar 2027
+Apr 2027
+May 2027
+Address normalization + property ID resolution
+Assessor ingestion + owner anchor
+Permits ingestion + applicant/contact extraction
+Recorder/deed ingestion + recency reconciliation
+Evidence UI + reviewer workflow
+Email verification + NDR ingestion
+Corporate registry connectors + entity graph v1
+Phone portability + reassigned checks
+Provenance/audit logging + suppression lists
+Record linkage + dedup v1
+Role ranking + confidence scoring v2
+CRM bi-directional sync + feedback loop
+LLM RAG explanations (with evidence citations)
+MVP foundations
+Ownership and entity resolution
+Verification and compliance
+Intelligence and integrations
+Property decision-maker discovery agent (MVP to 12 months)
+
+
+Show code
+AI agent subtask table (complexity vs revenue/accuracy impact)
+“Revenue impact” here means: how much the subtask plausibly increases willingness-to-pay and retention by improving hit rate and reducing wasted outreach.
+
+Agent subtask	Complexity	Accuracy impact	Revenue impact
+Address normalization + canonical property ID	Medium	Very high	High
+Assessor owner extraction	Low	High	Medium
+Recorder deed-chain reconciliation	High	Very high	High
+Permit ingestion + applicant/contact extraction	Medium	High	High
+Corporate registry linkage (LLC networks)	High	High	High
+Registered-agent classification (not decision-maker)	Low	Medium	Medium
+Property management attribution (managed_by)	High	Very high	Very high
+Role inference (PM vs facilities vs asset mgmt)	High	High	High
+Embedding similarity for noisy name matching	Medium	High	Medium
+Record linkage / dedup (company/person/property)	High	Very high	High
+Email verification + bounce telemetry ingestion	Medium	High	High
+Phone portability + reassigned number checks	High	Medium–High	High (risk reduction)
+Provenance/audit logging and evidence bundles	Medium	Indirect (trust)	Very high
+Compliance gating + suppression workflows	High	Indirect (risk)	Very high
+Human-in-loop review console + feedback capture	Medium	Very high	High
+
+Simple chart: how coverage improves with triangulation (illustrative)
+This is not a universal statistic; it’s a planning heuristic to show why multi-source triangulation matters.
+
+diff
+Copy
+Estimated chance of finding a usable decision-maker contact
+(illustrative, varies by region/property type)
+
+Assessor only                       | ████
++ Permits                            | ██████████
++ Recorder deeds                      | ████████████
++ Corporate registry + role inference | ████████████████
++ Website/contact channel verification| ███████████████████
+Bottom line: what makes this “agent” acquirer-grade
+Acquirers don’t pay for “we found emails.” They pay for repeatable, defensible linkage that survives compliance scrutiny:
+
+Evidence and audit are not optional: GDPR accountability and modern privacy enforcement trends reward systems that can prove provenance and honor rights. 
+Avoid brittle scraping dependencies: platforms explicitly prohibit unauthorized automation and can cut you off. 
+Verification must be grounded in real standards and telemetry: SMTP behavior is standardized (RFC 5321), and NDRs provide structured failure reasons; phone portability and reassignment require dedicated checks. 
+If you build exactly this—graph + evidence + verification + compliance gates—your AI agent becomes a trusted decision-maker discovery engine, not another list scraper.
