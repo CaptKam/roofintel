@@ -21,13 +21,13 @@ interface ConfidenceResult {
 }
 
 const WEIGHTS = {
-  propertyMatch: 0.10,
-  ownerMatch: 0.20,
-  managementMatch: 0.20,
+  propertyMatch: 0.20,
+  ownerMatch: 0.25,
+  managementMatch: 0.15,
   personRoleFit: 0.20,
-  contactReachability: 0.15,
-  conflictPenalty: 0.08,
-  stalenessPenalty: 0.07,
+  contactReachability: 0.10,
+  conflictPenalty: 0.05,
+  stalenessPenalty: 0.05,
 };
 
 function computePropertyMatch(lead: Lead): { score: number; explanations: string[] } {
@@ -150,12 +150,20 @@ function computeContactReachability(lead: Lead): { score: number; explanations: 
   const phones = [lead.ownerPhone, lead.contactPhone, lead.managingMemberPhone, lead.managementPhone].filter(Boolean);
   const emails = [lead.ownerEmail, lead.contactEmail, lead.managingMemberEmail, lead.managementEmail].filter(Boolean);
 
+  if (lead.ownerName) {
+    score += 15;
+    explanations.push("Owner identity known");
+  }
+  if (lead.ownerAddress) {
+    score += 10;
+    explanations.push("Mailing address available");
+  }
   if (phones.length > 0) {
-    score += 30 + Math.min(20, (phones.length - 1) * 10);
+    score += 25 + Math.min(15, (phones.length - 1) * 10);
     explanations.push(`${phones.length} phone number(s)`);
   }
   if (emails.length > 0) {
-    score += 25 + Math.min(15, (emails.length - 1) * 7);
+    score += 20 + Math.min(10, (emails.length - 1) * 7);
     explanations.push(`${emails.length} email(s)`);
   }
   if (lead.businessWebsite) {
@@ -167,7 +175,7 @@ function computeContactReachability(lead: Lead): { score: number; explanations: 
     score += 10;
     explanations.push("Consent granted");
   } else if (lead.consentStatus === "denied" || lead.consentStatus === "revoked") {
-    score = Math.max(0, score - 30);
+    score = Math.max(0, score - 20);
     explanations.push("Consent denied/revoked");
   }
 
@@ -223,8 +231,8 @@ function computeStalenessPenalty(lead: Lead): { score: number; explanations: str
   }));
 
   if (validDates.length === 0) {
-    penalty = 60;
-    explanations.push("No enrichment data available");
+    penalty = 20;
+    explanations.push("No enrichment timestamps yet");
   } else {
     const oldestDays = Math.max(...validDates.map(d => d.ageDays));
     const newestDays = Math.min(...validDates.map(d => d.ageDays));
@@ -319,13 +327,16 @@ export async function runConfidenceScoring(marketId?: string): Promise<{
     else suppress++;
     totalScore += result.overallScore;
 
+    const preserveManualReview = lead.dmReviewStatus === "approved" || lead.dmReviewStatus === "rejected" || lead.dmReviewStatus === "reassigned";
+    const newStatus = preserveManualReview ? lead.dmReviewStatus : (
+      result.tier === "auto_publish" ? "auto_approved" :
+      result.tier === "suppress" ? "suppressed" : "pending_review"
+    );
+
     await db.update(leads).set({
       dmConfidenceScore: result.overallScore,
       dmConfidenceComponents: result.components,
-      dmReviewStatus: lead.dmReviewStatus === "unreviewed" ? (
-        result.tier === "auto_publish" ? "auto_approved" :
-        result.tier === "suppress" ? "suppressed" : "pending_review"
-      ) : lead.dmReviewStatus,
+      dmReviewStatus: newStatus,
     } as any).where(eq(leads.id, lead.id));
   }
 
