@@ -1,0 +1,122 @@
+You are Replit Ghostwriter acting as a senior staff engineer + data engineer building a production-grade Commercial Property Contact Intelligence system.
+
+GOAL
+Build “RoofIntel Contacts” — a deterministic OSINT enrichment pipeline that, given a commercial building address (or parcel/APN), returns the best-available contact information for owners, property managers, and decision-makers, with:
+- accuracy-first (provenance + confidence scoring)
+- compliance-first (no doxxing, no illegal scraping, no bypassing paywalls, no credential stuffing, no ToS violations)
+- auditable (source URLs + timestamps + extraction method per field)
+- resilient (retries, backoff, circuit breakers, caching, queue-based jobs)
+- observable (structured logs, job traces, metrics, admin debug UI)
+
+NON-NEGOTIABLE CONSTRAINTS
+1) Only use data that is publicly available AND legally/contractually permissible to access (respect robots.txt, site ToS, and rate limits). Prefer official government sources and APIs.
+2) Do NOT scrape personal data from social networks (Facebook/Instagram), people search sites, or any source that appears to target private individuals. We are targeting professional/business contact points for commercial property ownership/management.
+3) Output must include provenance for each data point: source name, URL (or API endpoint), time fetched, and transformation steps.
+4) Every contact field must have a confidence score (0–100) and validation status.
+5) Provide a “cannot verify” status rather than guessing.
+
+TECH STACK (use these)
+- Backend: Node.js + TypeScript + Express
+- DB: PostgreSQL + Drizzle ORM
+- Jobs: BullMQ + Redis (or a simple PostgreSQL-based queue if Redis unavailable)
+- HTTP: undici or axios
+- Parsing: cheerio for HTML, pdf-parse for PDFs when needed
+- Frontend admin: React + Vite + Tailwind + shadcn/ui
+- Deployment: Replit (env vars for secrets); write a health endpoint.
+
+CORE ENTITIES (DB schema)
+Create Drizzle schemas and migrations for:
+- buildings (id, address fields, lat/lng, parcel_id/apn, county, state, created_at)
+- sources (id, name, base_url, type: API|HTML|PDF, allowed: boolean, notes)
+- building_sources (id, building_id, source_id, fetched_at, raw_payload_json, http_status, hash)
+- organizations (id, name, type: OWNER|MGMT|HOA|OTHER)
+- people (id, full_name, role_title, org_id nullable)
+- contacts (id, entity_type: ORG|PERSON|BUILDING, entity_id, contact_type: PHONE|EMAIL|WEBSITE|MAILING_ADDRESS, value, normalized_value, is_public_business: boolean)
+- contact_evidence (id, contact_id, source_id, source_url, extracted_at, extractor: RULE|LLM|MANUAL, snippet, confidence, validation: UNVERIFIED|VERIFIED|CONFLICT|STALE)
+- enrichment_jobs (id, building_id, status, stage, attempts, last_error, started_at, finished_at)
+- conflict_sets (id, building_id, contact_type, candidate_values_json, resolution: PICKED|UNRESOLVED)
+
+PIPELINE (deterministic stages)
+Implement a staged enrichment pipeline with idempotency:
+Stage A: Normalize input + geocode (optional) + county detection.
+Stage B: Parcel/assessor lookup (prefer official county appraisal district / assessor APIs when available; otherwise mark as “manual source needed”).
+Stage C: Owner extraction (owner name + mailing address + entity type).
+Stage D: Management company discovery:
+  - from recorded property management fields if present in official sources
+  - from building website if official site exists
+  - from lease brochures / PDFs that are publicly posted on reputable CRE listing sites (only if ToS permits; prefer sources that provide feeds/APIs)
+Stage E: Contact harvesting for orgs:
+  - website domain discovery
+  - parse “Contact”, “About”, “Property Management”, and tenant portal pages
+  - extract business phones/emails using strict regex + context rules (avoid personal emails if context suggests private)
+Stage F: Validation:
+  - phone: normalize to E.164, check plausible area code, optionally use lightweight validation rules (no paid phone validation APIs unless configured)
+  - email: syntax + domain MX check (optional), and match domain to org site
+Stage G: Scoring + conflict resolution:
+  - compute confidence from source trust, recency, corroboration count, domain match, and extraction quality
+  - if conflicts, store all candidates; pick highest score if margin >= threshold, else mark unresolved.
+
+SOURCE TRUST MODEL
+Create a source reputation table (hardcoded config in /src/config/sourceTrust.ts) with base scores:
+- Government assessor/recorder: 90–100
+- Official org website: 75–90
+- Reputable CRE brochures (public PDFs): 60–80
+- Aggregators/directories: 30–60 (only if ToS permits and business-focused)
+In scoring, multiply by:
+- Recency factor (newer = higher)
+- Corroboration factor (# independent sources matching)
+- Domain match factor (email domain matches org website domain)
+- Extraction factor (clean context vs footer spam)
+
+COMPLIANCE GUARDRAILS (implement in code)
+- A centralized “SourcePolicy” module that blocks disallowed domains and checks robots.txt where applicable.
+- Rate limiting per domain and global concurrency limits.
+- User-Agent string that identifies the app.
+- Store only minimal raw HTML/PDF snippets needed for audit; avoid storing entire pages when unnecessary.
+- Provide an “opt-out” mechanism for organizations (blocklist table).
+
+API ENDPOINTS
+Implement:
+POST /api/buildings/enrich  { address or building_id } -> starts job, returns job id
+GET  /api/jobs/:id -> status + stage + progress + errors
+GET  /api/buildings/:id/contacts -> returns best contacts + evidence + confidence + conflicts
+GET  /api/buildings/search?q= -> search
+GET  /health -> ok
+
+ADMIN UI
+Create a simple admin dashboard:
+- search building
+- view enrichment job timeline (stages, durations, errors)
+- contacts table with confidence badges
+- evidence drawer showing sources + snippets + timestamps
+- conflict resolution UI (manual pick override writes resolution + audit trail)
+
+ENGINEERING REQUIREMENTS
+- Write code in a clean folder structure:
+  /src/server (Express app)
+  /src/jobs (queue, processors, stages)
+  /src/enrichment (extractors, validators, scorers)
+  /src/db (drizzle schemas, migrations)
+  /src/config (source trust, policies)
+  /src/ui (admin React app)
+- Use TypeScript strict mode.
+- Add unit tests for:
+  - phone normalization
+  - email validation
+  - scoring
+  - dedupe/merge logic
+- Add structured logging (pino) with job_id and building_id in every log line.
+- Ensure idempotency: rerunning enrichment does not create duplicate contacts; it updates evidence and recomputes best contact.
+- Implement robust retry with exponential backoff and a max attempts limit.
+- Provide seed data and a demo script:
+  npm run enrich:demo -- --address="123 Main St, Dallas, TX"
+- Document all env vars in README:
+  DATABASE_URL, REDIS_URL, GEOCODE_API_KEY(optional), ALLOWED_SOURCES_MODE=strict|open
+
+IMPORTANT: DO NOT fake data. If a source isn’t available, return “unknown” and log the reason.
+IMPORTANT: If you implement any web fetching, respect robots.txt and domain rate limits. If a domain disallows, skip and record.
+
+DELIVERABLES
+1) Full working codebase implementing above
+2) README with setup + limitations + compliance notes
+3) Example response JSON for a building showing contacts + evidence + confidence
