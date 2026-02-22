@@ -1750,6 +1750,29 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/reverse-address/stats", async (_req, res) => {
+    try {
+      const { getReverseAddressStats } = await import("./reverse-address-enrichment");
+      const stats = await getReverseAddressStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get stats", error: error.message });
+    }
+  });
+
+  app.post("/api/reverse-address/scan", async (req, res) => {
+    try {
+      const schema = z.object({ marketId: z.string().optional(), batchSize: z.number().int().min(1).max(500).optional() });
+      const parsed = schema.safeParse(req.body);
+      const { marketId, batchSize } = parsed.success ? parsed.data : { marketId: undefined, batchSize: 200 };
+      const { runReverseAddressEnrichment } = await import("./reverse-address-enrichment");
+      const result = await runReverseAddressEnrichment(marketId, batchSize || 200);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Scan failed", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

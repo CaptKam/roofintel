@@ -49,6 +49,7 @@ import {
   ThumbsUp,
   ThumbsDown,
   BarChart3,
+  MapPin,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -729,6 +730,30 @@ export default function Admin() {
     },
     onError: (err: any) => {
       toast({ title: "Review failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const reverseAddressStatsQuery = useQuery<any>({
+    queryKey: ["/api/reverse-address/stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/reverse-address/stats");
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const reverseAddressScanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/reverse-address/scan", { marketId: dfwMarket?.id, batchSize: 200 });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Reverse Address Scan Complete", description: `Enriched ${data.enriched} leads, skipped ${data.skipped}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/reverse-address/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/attribution/stats"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Scan failed", description: err?.message, variant: "destructive" });
     },
   });
 
@@ -1984,6 +2009,69 @@ export default function Admin() {
                             {role}: {count.toLocaleString()}
                           </Badge>
                         ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">
+                  Reverse Address Enrichment
+                </CardTitle>
+                <Button
+                  size="sm"
+                  onClick={() => reverseAddressScanMutation.mutate()}
+                  disabled={reverseAddressScanMutation.isPending || !dfwMarket}
+                  data-testid="button-reverse-address-scan"
+                >
+                  {reverseAddressScanMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <MapPin className="w-3 h-3 mr-1" />
+                  )}
+                  Scan Addresses
+                </Button>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Compares owner mailing addresses vs. property addresses. When they differ, queries Google Places to identify what business is at the mailing address — management company, law firm, title company, or corporate HQ.
+                </p>
+
+                {reverseAddressStatsQuery.data && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Different Addr</p>
+                        <p className="text-lg font-bold mt-0.5" data-testid="text-reverse-different">
+                          {reverseAddressStatsQuery.data.withDifferentAddress?.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Enriched</p>
+                        <p className="text-lg font-bold mt-0.5" data-testid="text-reverse-enriched">
+                          {reverseAddressStatsQuery.data.enriched?.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="bg-muted/50 rounded-lg p-3">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Mgmt Found</p>
+                        <p className="text-lg font-bold mt-0.5" data-testid="text-reverse-mgmt">
+                          {reverseAddressStatsQuery.data.mgmtDiscovered?.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    {reverseAddressStatsQuery.data.byType && Object.keys(reverseAddressStatsQuery.data.byType).length > 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {Object.entries(reverseAddressStatsQuery.data.byType)
+                          .filter(([type]: any) => type !== "same_as_property")
+                          .sort((a: any, b: any) => b[1] - a[1])
+                          .map(([type, count]: any) => (
+                            <Badge key={type} variant="outline" className="text-[10px]">
+                              {type.replace(/_/g, " ")}: {count.toLocaleString()}
+                            </Badge>
+                          ))}
                       </div>
                     )}
                   </div>

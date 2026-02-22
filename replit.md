@@ -29,6 +29,7 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
     - `owner-intelligence` & `network-agent`: Comprehensive system for identifying property owners, resolving entities, discovering ownership portfolios, and linking LLC chains.
     - `entity-resolution`: Deterministic and probabilistic matching for lead deduplication and clustering.
     - `management-attribution` & `role-inference`: Engines to differentiate property managers from owners and rank decision-makers.
+    - `reverse-address-enrichment`: Compares owner mailing vs property addresses, queries Google Places API to identify management companies, law firms, title companies, or corporate offices at the mailing address. Feeds discoveries into management attribution pipeline.
     - `compliance-gate`: Manages opt-outs, consent, and DNC checks.
     - `dm-confidence`: A 7-factor weighted formula for contact confidence scoring.
     - `job-scheduler`: Background job management for tasks like NOAA sync and score recalculation.
@@ -44,6 +45,7 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **Relationship Network Agent**: Discovers and scores property portfolios by linking ownership connections.
 - **Predictive Hail Monitoring**: Integrates Xweather for advanced hail threat forecasting and alerts.
 - **Decision-Maker Discovery**: Management attribution (manager vs owner separation), role inference & ranking (8 role types with authority scoring), compliance gating (opt-out/consent/DNC), decomposed confidence scoring (7-factor formula with auto-publish/review/suppress tiers), human-in-the-loop review console
+- **Reverse Address Enrichment**: Automatic mailing-vs-property address comparison with Google Places lookup to discover management companies, law firms, title companies, and corporate offices at owner mailing addresses
 - **Admin**: Centralized management for property sources, storm data, contact enrichment, and system settings.
 
 ## External Dependencies

@@ -564,6 +564,53 @@ export default function LeadDetail() {
             </Card>
           )}
 
+          {(lead as any).reverseAddressType && (lead as any).reverseAddressType !== "same_as_property" && (
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">Reverse Address Lookup</CardTitle>
+                <Badge
+                  variant={(lead as any).reverseAddressType === "management_office" ? "default" : "secondary"}
+                  className="text-[10px]"
+                  data-testid="badge-reverse-address-type"
+                >
+                  {((lead as any).reverseAddressType || "").replace(/_/g, " ")}
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-2">
+                {lead.ownerAddress && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Owner Mailing Address</p>
+                      <p className="text-sm" data-testid="text-owner-mailing-address">{lead.ownerAddress}</p>
+                    </div>
+                  </div>
+                )}
+                {Array.isArray((lead as any).reverseAddressBusinesses) && (lead as any).reverseAddressBusinesses.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Businesses Found at Address</p>
+                    {((lead as any).reverseAddressBusinesses as any[]).slice(0, 5).map((biz: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between text-sm bg-muted/30 rounded px-2.5 py-1.5">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-3 h-3 text-muted-foreground shrink-0" />
+                          <span className="font-medium" data-testid={`text-reverse-biz-${i}`}>{biz.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[9px]">
+                          {(biz.classification || "").replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(lead as any).reverseAddressEnrichedAt && (
+                  <p className="text-[10px] text-muted-foreground pt-1">
+                    Enriched: {new Date((lead as any).reverseAddressEnrichedAt).toLocaleDateString()}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-base font-semibold">Owner Intelligence</CardTitle>
