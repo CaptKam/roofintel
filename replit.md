@@ -34,6 +34,10 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
     - `dm-confidence`: A 7-factor weighted formula for contact confidence scoring.
     - `lead-enrichment-orchestrator`: On-demand single-lead enrichment that auto-triggers all agents (reverse address, attribution, role inference, confidence scoring, phone enrichment) when a lead is first viewed or manually re-enriched.
     - `job-scheduler`: Background job management for tasks like NOAA sync and score recalculation.
+    - `evidence-recorder`: Batch evidence recording with source trust scoring, corroboration counting, conflict detection, and auto-resolution (15-point margin threshold). Records contact evidence from all 16 agents.
+    - `contact-validation`: E.164 phone normalization, MX-based email domain validation, phone structure validation (TX area codes, toll-free, invalid patterns), email syntax validation with disposable domain detection.
+    - `source-policy`: Compliance module with robots.txt checking, per-domain rate limiting (in-memory), blocked domain list (social media, people search sites), proper User-Agent header, and database-backed blocklist integration.
+    - `source-trust`: Trust configuration for 30+ data sources (DCAD: 95, TX Comptroller: 92, Google Places: 75, etc.) with type and category classification.
 - **Lead Scoring (v3)**: A refined scoring algorithm (0-100) optimized for roofing contractors, incorporating roof age, hail exposure, storm recency, roof area, contactability, owner type, property value, distress signals, flood risk, and property condition.
 
 **Feature Specifications:**

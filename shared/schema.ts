@@ -415,6 +415,88 @@ export const entityMerges = pgTable("entity_merges", {
   mergedAt: timestamp("merged_at").defaultNow(),
 });
 
+export const contactEvidence = pgTable("contact_evidence", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  entityType: text("entity_type").notNull().default("LEAD"),
+  entityId: varchar("entity_id"),
+  contactType: text("contact_type").notNull(),
+  contactValue: text("contact_value").notNull(),
+  normalizedValue: text("normalized_value"),
+  isPublicBusiness: boolean("is_public_business").default(true),
+  sourceName: text("source_name").notNull(),
+  sourceUrl: text("source_url"),
+  sourceType: text("source_type").notNull().default("API"),
+  extractedAt: timestamp("extracted_at").defaultNow(),
+  extractorMethod: text("extractor_method").notNull().default("RULE"),
+  rawSnippet: text("raw_snippet"),
+  confidence: integer("confidence").notNull().default(50),
+  sourceTrustScore: integer("source_trust_score").notNull().default(50),
+  recencyFactor: real("recency_factor").notNull().default(1.0),
+  corroborationCount: integer("corroboration_count").notNull().default(1),
+  domainMatchFactor: real("domain_match_factor").notNull().default(0),
+  extractionQuality: real("extraction_quality").notNull().default(0.7),
+  computedScore: real("computed_score").notNull().default(50),
+  validationStatus: text("validation_status").notNull().default("UNVERIFIED"),
+  validationDetail: text("validation_detail"),
+  validatedAt: timestamp("validated_at"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const conflictSets = pgTable("conflict_sets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  contactType: text("contact_type").notNull(),
+  candidateValues: jsonb("candidate_values").notNull(),
+  winnerEvidenceId: varchar("winner_evidence_id"),
+  resolution: text("resolution").notNull().default("UNRESOLVED"),
+  resolvedBy: text("resolved_by"),
+  resolvedAt: timestamp("resolved_at"),
+  scoreMargin: real("score_margin"),
+  auditTrail: jsonb("audit_trail"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const enrichmentJobs = pgTable("enrichment_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  status: text("status").notNull().default("queued"),
+  currentStage: text("current_stage"),
+  stages: jsonb("stages"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  lastError: text("last_error"),
+  startedAt: timestamp("started_at"),
+  finishedAt: timestamp("finished_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const sourceBlocklist = pgTable("source_blocklist", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  domain: text("domain"),
+  entityName: text("entity_name"),
+  reason: text("reason").notNull(),
+  blockedBy: text("blocked_by").notNull().default("system"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertContactEvidenceSchema = createInsertSchema(contactEvidence).omit({ id: true, createdAt: true });
+export const insertConflictSetSchema = createInsertSchema(conflictSets).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertEnrichmentJobSchema = createInsertSchema(enrichmentJobs).omit({ id: true, createdAt: true });
+export const insertSourceBlocklistSchema = createInsertSchema(sourceBlocklist).omit({ id: true, createdAt: true });
+
+export type ContactEvidence = typeof contactEvidence.$inferSelect;
+export type InsertContactEvidence = z.infer<typeof insertContactEvidenceSchema>;
+export type ConflictSet = typeof conflictSets.$inferSelect;
+export type InsertConflictSet = z.infer<typeof insertConflictSetSchema>;
+export type EnrichmentJob = typeof enrichmentJobs.$inferSelect;
+export type InsertEnrichmentJob = z.infer<typeof insertEnrichmentJobSchema>;
+export type SourceBlocklistEntry = typeof sourceBlocklist.$inferSelect;
+export type InsertSourceBlocklistEntry = z.infer<typeof insertSourceBlocklistSchema>;
+
 export const insertDuplicateClusterSchema = createInsertSchema(duplicateClusters).omit({ id: true, createdAt: true, reviewedAt: true, mergedAt: true });
 export const insertEntityMergeSchema = createInsertSchema(entityMerges).omit({ id: true, mergedAt: true });
 

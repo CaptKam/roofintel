@@ -49,11 +49,17 @@ import {
   ShieldAlert,
   Ban,
   RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Eye,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
-import type { Lead } from "@shared/schema";
+import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
 
 function DetailRow({
   icon: Icon,
@@ -125,6 +131,46 @@ export default function LeadDetail() {
     queryKey: ["/api/leads", id, "permits"],
     enabled: !!lead,
   });
+
+  const { data: evidence } = useQuery<ContactEvidence[]>({
+    queryKey: ["/api/leads", id, "evidence"],
+    enabled: !!lead,
+  });
+
+  const { data: conflicts } = useQuery<ConflictSet[]>({
+    queryKey: ["/api/leads", id, "conflicts"],
+    enabled: !!lead,
+  });
+
+  const validateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${id}/validate-contacts`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "evidence"] });
+      toast({ title: "Contacts validated" });
+    },
+  });
+
+  const resolveConflictMutation = useMutation({
+    mutationFn: async ({ conflictId, pickedEvidenceId }: { conflictId: string; pickedEvidenceId: string }) => {
+      const res = await apiRequest("POST", `/api/conflicts/${conflictId}/resolve`, { pickedEvidenceId, resolvedBy: "admin" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "conflicts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "evidence"] });
+      toast({ title: "Conflict resolved" });
+    },
+  });
+
+  const { data: enrichmentJobHistory } = useQuery<EnrichmentJob[]>({
+    queryKey: ["/api/leads", id, "enrichment-jobs"],
+    enabled: !!lead,
+  });
+
+  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
 
   const runIntelMutation = useMutation({
     mutationFn: async () => {
@@ -909,6 +955,253 @@ export default function LeadDetail() {
                     </div>
                   </div>
                 ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {evidence && evidence.length > 0 && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-semibold">Contact Evidence</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-[10px]" data-testid="badge-evidence-count">
+                      {evidence.length} record{evidence.length !== 1 ? "s" : ""}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => validateMutation.mutate()}
+                      disabled={validateMutation.isPending}
+                      data-testid="button-validate-contacts"
+                    >
+                      {validateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                      <span className="ml-1">Validate</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setEvidenceExpanded(!evidenceExpanded)}
+                      data-testid="button-toggle-evidence"
+                    >
+                      {evidenceExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 pt-0">
+                {!evidenceExpanded ? (
+                  <div className="space-y-2">
+                    {Object.entries(
+                      evidence.reduce((acc: Record<string, ContactEvidence[]>, ev) => {
+                        const key = ev.contactType;
+                        if (!acc[key]) acc[key] = [];
+                        acc[key].push(ev);
+                        return acc;
+                      }, {})
+                    ).map(([type, items]) => (
+                      <div key={type} className="flex items-center justify-between py-1.5">
+                        <div className="flex items-center gap-2">
+                          {type === "PHONE" && <Phone className="w-3.5 h-3.5 text-muted-foreground" />}
+                          {type === "EMAIL" && <Mail className="w-3.5 h-3.5 text-muted-foreground" />}
+                          {type !== "PHONE" && type !== "EMAIL" && <Database className="w-3.5 h-3.5 text-muted-foreground" />}
+                          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{type}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-mono">{items.length}</span>
+                          {items.some(i => i.validationStatus === "VERIFIED") && (
+                            <CheckCircle className="w-3 h-3 text-green-500" />
+                          )}
+                          {items.some(i => i.validationStatus === "INVALID") && (
+                            <XCircle className="w-3 h-3 text-red-500" />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {evidence.map((ev, i) => (
+                      <div key={ev.id} className="border rounded-lg p-3 space-y-2" data-testid={`evidence-item-${i}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px]">{ev.contactType}</Badge>
+                            <span className="text-sm font-mono">{ev.normalizedValue || ev.contactValue}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {ev.validationStatus === "VERIFIED" && (
+                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">Verified</Badge>
+                            )}
+                            {ev.validationStatus === "INVALID" && (
+                              <Badge variant="destructive" className="text-[10px]">Invalid</Badge>
+                            )}
+                            {ev.validationStatus === "UNVERIFIED" && (
+                              <Badge variant="secondary" className="text-[10px]">Unverified</Badge>
+                            )}
+                            <span className="text-xs font-mono font-medium">{Math.round(ev.computedScore)}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Database className="w-3 h-3" />
+                            <span>{ev.sourceName}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Shield className="w-3 h-3" />
+                            <span>Trust: {ev.sourceTrustScore}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Fingerprint className="w-3 h-3" />
+                            <span>{ev.extractorMethod}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Layers className="w-3 h-3" />
+                            <span>Corr: {ev.corroborationCount}</span>
+                          </div>
+                          {ev.sourceUrl && (
+                            <a
+                              href={ev.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1 col-span-2 hover:underline"
+                              data-testid={`link-evidence-source-${i}`}
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span className="truncate">{(() => { try { return new URL(ev.sourceUrl!).hostname; } catch { return ev.sourceUrl; } })()}</span>
+                            </a>
+                          )}
+                          {ev.extractedAt && (
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>{new Date(ev.extractedAt).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                          {ev.validationDetail && (
+                            <div className="col-span-2 text-[10px] italic">{ev.validationDetail}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {conflicts && conflicts.length > 0 && (
+            <Card className="shadow-sm border-amber-200 dark:border-amber-800">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    Contact Conflicts
+                  </CardTitle>
+                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600" data-testid="badge-conflict-count">
+                    {conflicts.filter(c => c.resolution === "UNRESOLVED").length} unresolved
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-4">
+                {conflicts.map((conflict, ci) => {
+                  const candidates = (conflict.candidateValues as Array<{ value: string; score: number; evidenceId: string; source: string }>) || [];
+                  const isResolved = conflict.resolution !== "UNRESOLVED";
+                  return (
+                    <div key={conflict.id} className={`border rounded-lg p-3 space-y-2 ${isResolved ? "opacity-60" : ""}`} data-testid={`conflict-item-${ci}`}>
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="text-[10px]">{conflict.contactType}</Badge>
+                        {isResolved ? (
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">
+                            {conflict.resolution}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            Needs Review
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {candidates.map((candidate, ki) => (
+                          <div key={ki} className="flex items-center justify-between gap-2 py-1 px-2 rounded bg-muted/50">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="text-sm font-mono truncate">{candidate.value}</span>
+                              <span className="text-[10px] text-muted-foreground flex-shrink-0">{candidate.source}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="text-xs font-mono font-medium">{Math.round(candidate.score)}</span>
+                              {!isResolved && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => resolveConflictMutation.mutate({ conflictId: conflict.id, pickedEvidenceId: candidate.evidenceId })}
+                                  disabled={resolveConflictMutation.isPending}
+                                  data-testid={`button-pick-candidate-${ci}-${ki}`}
+                                >
+                                  Pick
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {conflict.scoreMargin !== null && conflict.scoreMargin !== undefined && (
+                        <div className="text-[10px] text-muted-foreground">Score margin: {conflict.scoreMargin.toFixed(1)} points</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentJobHistory && enrichmentJobHistory.length > 0 && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-semibold">Enrichment Timeline</CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 pt-0">
+                <div className="space-y-3">
+                  {enrichmentJobHistory.slice(0, 5).map((job, ji) => {
+                    const stages = (job.stages as Array<{ name: string; status: string; startedAt?: string; finishedAt?: string; error?: string }>) || [];
+                    const duration = job.startedAt && job.finishedAt
+                      ? Math.round((new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()) / 1000)
+                      : null;
+                    return (
+                      <div key={job.id} className="border rounded-lg p-3 space-y-2" data-testid={`enrichment-job-${ji}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {job.status === "complete" && <CheckCircle className="w-3.5 h-3.5 text-green-500" />}
+                            {job.status === "running" && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
+                            {job.status === "error" && <XCircle className="w-3.5 h-3.5 text-red-500" />}
+                            {job.status === "queued" && <Clock className="w-3.5 h-3.5 text-muted-foreground" />}
+                            <span className="text-xs font-medium capitalize">{job.status}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            {duration !== null && <span>{duration}s</span>}
+                            {job.createdAt && <span>{new Date(job.createdAt).toLocaleString()}</span>}
+                          </div>
+                        </div>
+                        {stages.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {stages.map((stage, si) => (
+                              <Badge
+                                key={si}
+                                variant={stage.status === "complete" ? "default" : stage.status === "error" ? "destructive" : "secondary"}
+                                className="text-[9px]"
+                              >
+                                {stage.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        {job.lastError && (
+                          <div className="text-[10px] text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-1.5 font-mono">
+                            {job.lastError}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </CardContent>
             </Card>
           )}

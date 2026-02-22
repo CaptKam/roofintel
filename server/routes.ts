@@ -17,12 +17,15 @@ import { startJobScheduler } from "./job-scheduler";
 import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMonitorStatus } from "./storm-monitor";
 import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweatherStatus, getActiveThreats } from "./xweather-hail";
 import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus } from "./owner-intelligence";
+import { recordBatchEvidence, getEvidenceForLead, getConflictsForLead, resolveConflict, type EvidenceInput } from "./evidence-recorder";
+import { validateAllEvidenceForLead, normalizePhoneE164, isValidPhoneStructure, validateEmailSyntax } from "./contact-validation";
+import { getRateLimitStatus, isDomainBlocked } from "./config/sourcePolicy";
 import { getSkipTraceStatus } from "./skip-trace-agent";
 import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, getDallasRecordsStatus, addRecordedDocument } from "./dallas-records-agent";
 import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
-import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable } from "@shared/schema";
+import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs } from "@shared/schema";
 import { db } from "./storage";
 import { sql, eq } from "drizzle-orm";
 
@@ -865,6 +868,94 @@ export async function registerRoutes(
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to get intelligence data" });
+    }
+  });
+
+  app.get("/api/leads/:id/evidence", async (req, res) => {
+    try {
+      const evidence = await getEvidenceForLead(req.params.id);
+      res.json(evidence);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get evidence data" });
+    }
+  });
+
+  app.get("/api/leads/:id/conflicts", async (req, res) => {
+    try {
+      const conflicts = await getConflictsForLead(req.params.id);
+      res.json(conflicts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get conflict data" });
+    }
+  });
+
+  app.post("/api/conflicts/:id/resolve", async (req, res) => {
+    try {
+      const { pickedEvidenceId, resolvedBy } = req.body;
+      if (!pickedEvidenceId) return res.status(400).json({ message: "pickedEvidenceId required" });
+      await resolveConflict(req.params.id, pickedEvidenceId, resolvedBy || "admin");
+      res.json({ message: "Conflict resolved" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to resolve conflict" });
+    }
+  });
+
+  app.post("/api/leads/:id/validate-contacts", async (req, res) => {
+    try {
+      const result = await validateAllEvidenceForLead(req.params.id);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to validate contacts" });
+    }
+  });
+
+  app.get("/api/compliance/rate-limits", async (_req, res) => {
+    try {
+      res.json(getRateLimitStatus());
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get rate limit status" });
+    }
+  });
+
+  app.post("/api/validate/phone", async (req, res) => {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ message: "phone required" });
+    const normalized = normalizePhoneE164(phone);
+    const validation = isValidPhoneStructure(phone);
+    res.json({ normalized, display: normalized ? `(${normalized.slice(2,5)}) ${normalized.slice(5,8)}-${normalized.slice(8)}` : null, ...validation });
+  });
+
+  app.post("/api/validate/email", async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "email required" });
+    const validation = validateEmailSyntax(email);
+    res.json(validation);
+  });
+
+  app.get("/api/leads/:id/enrichment-jobs", async (req, res) => {
+    try {
+      const jobs = await db
+        .select()
+        .from(enrichmentJobs)
+        .where(eq(enrichmentJobs.leadId, req.params.id))
+        .orderBy(sql`created_at DESC`)
+        .limit(20);
+      res.json(jobs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get enrichment jobs" });
+    }
+  });
+
+  app.get("/api/admin/enrichment-jobs", async (_req, res) => {
+    try {
+      const jobs = await db
+        .select()
+        .from(enrichmentJobs)
+        .orderBy(sql`created_at DESC`)
+        .limit(100);
+      res.json(jobs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get enrichment jobs" });
     }
   });
 

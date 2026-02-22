@@ -3,6 +3,7 @@ import type { Lead, InsertIntelligenceClaim } from "@shared/schema";
 import * as cheerio from "cheerio";
 import { runSkipTraceAgent } from "./skip-trace-agent";
 import { runSocialIntelPipeline } from "./social-intel-agents";
+import { recordBatchEvidence, detectAndStoreConflicts, type EvidenceInput } from "./evidence-recorder";
 
 // ============================================================
 // TYPES
@@ -1499,6 +1500,121 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
 }
 
 // ============================================================
+// PROVENANCE RECORDING
+// ============================================================
+
+async function recordProvenanceFromDossier(leadId: string, result: IntelligenceResult): Promise<void> {
+  try {
+    const evidenceInputs: EvidenceInput[] = [];
+    const dossier = result.dossier;
+
+    for (const person of dossier.realPeople) {
+      evidenceInputs.push({
+        leadId,
+        contactType: "PERSON",
+        contactValue: person.name,
+        sourceName: person.source || "Owner Intelligence",
+        confidence: person.confidence,
+        extractorMethod: "RULE",
+        rawSnippet: person.title ? `${person.name} - ${person.title}` : person.name,
+      });
+      if (person.phone) {
+        evidenceInputs.push({
+          leadId,
+          contactType: "PHONE",
+          contactValue: person.phone,
+          sourceName: person.source || "Owner Intelligence",
+          confidence: person.confidence,
+          extractorMethod: "RULE",
+        });
+      }
+      if (person.email) {
+        evidenceInputs.push({
+          leadId,
+          contactType: "EMAIL",
+          contactValue: person.email,
+          sourceName: person.source || "Owner Intelligence",
+          confidence: person.confidence,
+          extractorMethod: "RULE",
+        });
+      }
+    }
+
+    for (const contact of dossier.buildingContacts) {
+      evidenceInputs.push({
+        leadId,
+        contactType: "BUILDING_CONTACT",
+        contactValue: contact.name,
+        sourceName: contact.source || "Building Contacts",
+        confidence: contact.confidence,
+        extractorMethod: "RULE",
+        rawSnippet: `${contact.name} (${contact.role})`,
+      });
+      if (contact.phone) {
+        evidenceInputs.push({
+          leadId,
+          contactType: "PHONE",
+          contactValue: contact.phone,
+          sourceName: contact.source || "Building Contacts",
+          confidence: contact.confidence,
+        });
+      }
+      if (contact.email) {
+        evidenceInputs.push({
+          leadId,
+          contactType: "EMAIL",
+          contactValue: contact.email,
+          sourceName: contact.source || "Building Contacts",
+          confidence: contact.confidence,
+        });
+      }
+    }
+
+    for (const phone of dossier.phones) {
+      evidenceInputs.push({
+        leadId,
+        contactType: "PHONE",
+        contactValue: phone.phone,
+        sourceName: phone.source || "Owner Intelligence",
+        confidence: 60,
+        extractorMethod: "RULE",
+      });
+    }
+
+    for (const email of dossier.emails) {
+      evidenceInputs.push({
+        leadId,
+        contactType: "EMAIL",
+        contactValue: email.email,
+        sourceName: email.source || "Owner Intelligence",
+        confidence: email.verified ? 80 : 50,
+        extractorMethod: "RULE",
+      });
+    }
+
+    for (const hit of dossier.skipTraceHits) {
+      evidenceInputs.push({
+        leadId,
+        contactType: hit.fieldName.toUpperCase(),
+        contactValue: hit.fieldValue,
+        sourceName: hit.source || "Skip Trace",
+        sourceUrl: hit.sourceUrl,
+        confidence: hit.confidence,
+        extractorMethod: hit.parsingMethod || "RULE",
+      });
+    }
+
+    if (evidenceInputs.length > 0) {
+      await recordBatchEvidence(evidenceInputs);
+      await detectAndStoreConflicts(leadId, "PHONE");
+      await detectAndStoreConflicts(leadId, "EMAIL");
+    }
+  } catch (err: any) {
+    console.error(`[Evidence] Failed to record provenance for lead ${leadId}:`, err.message);
+  }
+}
+
+// ============================================================
 // BATCH RUNNER
 // ============================================================
 
@@ -1566,6 +1682,7 @@ export async function runOwnerIntelligenceBatch(
             intelligenceSources: result.sources,
             intelligenceAt: new Date(),
           } as any);
+          await recordProvenanceFromDossier(lead.id, result);
         }
         enriched += ownerLeads.length;
       } else {
