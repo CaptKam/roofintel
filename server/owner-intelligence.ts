@@ -1504,11 +1504,11 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
 
 export async function runOwnerIntelligenceBatch(
   marketId?: string,
-  options: { batchSize?: number; delayMs?: number } = {}
+  options: { batchSize?: number; delayMs?: number; processAll?: boolean } = {}
 ): Promise<{ processed: number; enriched: number; skipped: number; errors: number; total: number }> {
   const { leads: allLeads } = await storage.getLeads(marketId ? { marketId } : undefined);
   const eligibleLeads = allLeads.filter(lead =>
-    !lead.intelligenceAt &&
+    (options.processAll ? true : !lead.intelligenceAt) &&
     lead.ownerName &&
     (lead.ownerType === "LLC" || lead.ownerType === "Corporation" || lead.ownerType === "LP")
   );
@@ -1517,7 +1517,7 @@ export async function runOwnerIntelligenceBatch(
     return { processed: 0, enriched: 0, skipped: allLeads.length, errors: 0, total: allLeads.length };
   }
 
-  const batchSize = options.batchSize || 10;
+  const batchSize = options.processAll ? eligibleLeads.length : (options.batchSize || 10);
   const delayMs = options.delayMs || 2000;
   let enriched = 0;
   let skipped = 0;

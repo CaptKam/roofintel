@@ -553,6 +553,19 @@ export default function Admin() {
     },
   });
 
+  const ownerIntelligenceAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/intelligence/run", { processAll: true });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Intelligence pipeline started for ALL leads", description: data.message });
+    },
+    onError: () => {
+      toast({ title: "Failed to start pipeline", variant: "destructive" });
+    },
+  });
+
   const networkAnalysisMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/network/analyze", { marketId: dfwMarket?.id });
@@ -1686,7 +1699,7 @@ export default function Admin() {
                   <Button
                     size="sm"
                     onClick={() => ownerIntelligenceMutation.mutate()}
-                    disabled={ownerIntelligenceMutation.isPending}
+                    disabled={ownerIntelligenceMutation.isPending || ownerIntelligenceAllMutation.isPending}
                     data-testid="button-run-owner-intelligence"
                   >
                     {ownerIntelligenceMutation.isPending ? (
@@ -1694,7 +1707,21 @@ export default function Admin() {
                     ) : (
                       <Play className="w-3 h-3" />
                     )}
-                    Run Intelligence Pipeline
+                    Run Next Batch (10)
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => ownerIntelligenceAllMutation.mutate()}
+                    disabled={ownerIntelligenceMutation.isPending || ownerIntelligenceAllMutation.isPending}
+                    data-testid="button-run-owner-intelligence-all"
+                  >
+                    {ownerIntelligenceAllMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Play className="w-3 h-3" />
+                    )}
+                    Run All Leads
                   </Button>
                 </div>
               </CardContent>

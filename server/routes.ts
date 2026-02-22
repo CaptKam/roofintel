@@ -768,15 +768,16 @@ export async function registerRoutes(
 
   app.post("/api/intelligence/run", async (req, res) => {
     try {
-      const { marketId, batchSize } = req.body;
-      const parsedBatchSize = Math.min(Math.max(Number(batchSize) || 10, 1), 50);
+      const { marketId, batchSize, processAll } = req.body;
+      const parsedBatchSize = processAll ? 99999 : Math.min(Math.max(Number(batchSize) || 10, 1), 50);
 
       res.json({
-        message: "Owner intelligence pipeline started (16 agents)",
+        message: processAll ? "Owner intelligence pipeline started for ALL leads (16 agents)" : "Owner intelligence pipeline started (16 agents)",
         batchSize: parsedBatchSize,
+        processAll: !!processAll,
       });
 
-      runOwnerIntelligenceBatch(marketId, { batchSize: parsedBatchSize }).then((result) => {
+      runOwnerIntelligenceBatch(marketId, { batchSize: parsedBatchSize, processAll: !!processAll }).then((result) => {
         console.log(`[Intelligence] Complete: ${result.enriched} enriched, ${result.skipped} skipped, ${result.errors} errors`);
       }).catch((err) => {
         console.error("[Intelligence] Failed:", err);
