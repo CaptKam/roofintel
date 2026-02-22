@@ -252,41 +252,53 @@ export async function analyzeNetwork(marketId?: string): Promise<{
 
   const fuzzyThreshold = 0.8;
   const ownerKeys = Array.from(ownerIndex.keys());
-  for (let i = 0; i < ownerKeys.length; i++) {
-    for (let j = i + 1; j < ownerKeys.length; j++) {
-      if (similarity(ownerKeys[i], ownerKeys[j]) >= fuzzyThreshold) {
-        const leadsA = ownerIndex.get(ownerKeys[i])!;
-        const leadsB = ownerIndex.get(ownerKeys[j])!;
-        const firstA = leadsA[0];
-        const firstB = leadsB[0];
+  console.log(`[Network Agent] Running fuzzy matching on ${ownerKeys.length} unique owner keys...`);
 
-        let clusterA = leadToCluster.get(firstA);
-        let clusterB = leadToCluster.get(firstB);
+  const prefixBuckets = new Map<string, string[]>();
+  for (const key of ownerKeys) {
+    const prefix = key.substring(0, 4);
+    const bucket = prefixBuckets.get(prefix) || [];
+    bucket.push(key);
+    prefixBuckets.set(prefix, bucket);
+  }
 
-        if (clusterA === undefined) clusterA = findOrCreateCluster(firstA);
-        if (clusterB === undefined) clusterB = findOrCreateCluster(firstB);
+  let fuzzyMatches = 0;
+  for (const [, bucket] of Array.from(prefixBuckets.entries())) {
+    for (let i = 0; i < bucket.length; i++) {
+      for (let j = i + 1; j < bucket.length; j++) {
+        if (similarity(bucket[i], bucket[j]) >= fuzzyThreshold) {
+          fuzzyMatches++;
+          const leadsA = ownerIndex.get(bucket[i])!;
+          const leadsB = ownerIndex.get(bucket[j])!;
+          const firstA = leadsA[0];
+          const firstB = leadsB[0];
 
-        const merged = mergeClusters(clusterA, clusterB);
+          let clusterA = leadToCluster.get(firstA);
+          let clusterB = leadToCluster.get(firstB);
 
-        for (const lid of [...leadsA, ...leadsB]) {
-          const existing = leadToCluster.get(lid);
-          if (existing !== undefined && existing !== merged) {
-            mergeClusters(merged, existing);
-          } else if (existing === undefined) {
-            clusters[merged].leadIds.add(lid);
-            leadToCluster.set(lid, merged);
-            clusters[merged].linkReasons.set(lid, "Fuzzy owner name match");
+          if (clusterA === undefined) clusterA = findOrCreateCluster(firstA);
+          if (clusterB === undefined) clusterB = findOrCreateCluster(firstB);
+
+          const merged = mergeClusters(clusterA, clusterB);
+
+          for (const lid of [...leadsA, ...leadsB]) {
+            const existing = leadToCluster.get(lid);
+            if (existing !== undefined && existing !== merged) {
+              mergeClusters(merged, existing);
+            } else if (existing === undefined) {
+              clusters[merged].leadIds.add(lid);
+              leadToCluster.set(lid, merged);
+              clusters[merged].linkReasons.set(lid, "Fuzzy owner name match");
+            }
           }
         }
       }
     }
   }
+  console.log(`[Network Agent] Fuzzy matching found ${fuzzyMatches} additional matches`);
 
   const validClusters = clusters.filter((c) => c.leadIds.size >= 2);
   console.log(`[Network Agent] Found ${validClusters.length} portfolio clusters with 2+ properties`);
-
-  await db.delete(portfolioLeads);
-  await db.delete(portfolios);
 
   const leadMap = new Map<string, Lead>();
   for (const lead of allLeads) leadMap.set(lead.id, lead);
@@ -374,6 +386,9 @@ export async function analyzeNetwork(marketId?: string): Promise<{
 
     portfoliosCreated++;
     leadsLinked += clusterLeads.length;
+    if (portfoliosCreated % 100 === 0) {
+      console.log(`[Network Agent] Saved ${portfoliosCreated}/${validClusters.length} portfolios...`);
+    }
   }
 
   console.log(`[Network Agent] Created ${portfoliosCreated} portfolios linking ${leadsLinked} leads`);

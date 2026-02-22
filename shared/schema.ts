@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, bigint, real, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -315,7 +315,7 @@ export const portfolios = pgTable("portfolios", {
   propertyCount: integer("property_count").notNull().default(0),
   totalSqft: integer("total_sqft").notNull().default(0),
   totalRoofArea: integer("total_roof_area").notNull().default(0),
-  totalValue: integer("total_value").notNull().default(0),
+  totalValue: bigint("total_value", { mode: "number" }).notNull().default(0),
   avgLeadScore: integer("avg_lead_score").notNull().default(0),
   totalHailEvents: integer("total_hail_events").notNull().default(0),
   claimWindowCount: integer("claim_window_count").notNull().default(0),
