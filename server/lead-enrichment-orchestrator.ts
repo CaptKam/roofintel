@@ -20,6 +20,7 @@ export interface EnrichmentProgress {
 const activeEnrichments = new Map<string, EnrichmentProgress>();
 
 const STEP_NAMES = [
+  "Owner Intelligence (16 Agents)",
   "Reverse Address Lookup",
   "Management Attribution",
   "Role Inference",
@@ -48,17 +49,53 @@ async function fetchLead(leadId: string): Promise<Lead | null> {
   return rows[0] || null;
 }
 
-async function runReverseAddressStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+async function runOwnerIntelligenceStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
   updateStep(progress, 0, "running");
   try {
+    if (lead.ownerIntelligence && lead.intelligenceScore && lead.intelligenceScore > 0) {
+      updateStep(progress, 0, "skipped", `Already scored: ${lead.intelligenceScore}/100`);
+      return lead;
+    }
+    if (!lead.ownerName) {
+      updateStep(progress, 0, "skipped", "No owner name for intelligence lookup");
+      return lead;
+    }
+    const { runOwnerIntelligence } = await import("./owner-intelligence");
+    const result = await runOwnerIntelligence(lead);
+
+    const updates: any = {
+      ownerIntelligence: result.dossier,
+      intelligenceScore: result.score,
+      intelligenceSources: result.sources,
+      intelligenceAt: new Date(),
+    };
+    if (result.managingMember && !lead.contactName) updates.contactName = result.managingMember;
+    if (result.managingMemberTitle) updates.contactRole = result.managingMemberTitle;
+    if (result.managingMemberPhone && !lead.ownerPhone) updates.ownerPhone = result.managingMemberPhone;
+    if (result.managingMemberEmail && !lead.ownerEmail) updates.ownerEmail = result.managingMemberEmail;
+    if (result.llcChain && result.llcChain.length > 0) updates.llcChain = result.llcChain;
+
+    await db.update(leads).set(updates).where(eq(leads.id, lead.id));
+    const detail = `${result.dossier.realPeople?.length || 0} people, score: ${result.score}/100, ${result.sources.length} sources`;
+    updateStep(progress, 0, "complete", detail);
+    return (await fetchLead(lead.id)) || lead;
+  } catch (err: any) {
+    updateStep(progress, 0, "error", err.message);
+    return lead;
+  }
+}
+
+async function runReverseAddressStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+  updateStep(progress, 1, "running");
+  try {
     if (!lead.ownerAddress || lead.reverseAddressEnrichedAt) {
-      updateStep(progress, 0, "skipped", lead.reverseAddressEnrichedAt ? "Already enriched" : "No owner address");
+      updateStep(progress, 1, "skipped", lead.reverseAddressEnrichedAt ? "Already enriched" : "No owner address");
       return lead;
     }
     const { enrichLeadReverseAddress } = await import("./reverse-address-enrichment");
     const result = await enrichLeadReverseAddress(lead);
     if (!result) {
-      updateStep(progress, 0, "skipped", "Same address as property");
+      updateStep(progress, 1, "skipped", "Same address as property");
       await db.update(leads).set({
         reverseAddressType: "same_as_property",
         reverseAddressEnrichedAt: new Date(),
@@ -90,19 +127,19 @@ async function runReverseAddressStep(lead: Lead, progress: EnrichmentProgress): 
     }
 
     await db.update(leads).set(updates).where(eq(leads.id, lead.id));
-    updateStep(progress, 0, "complete", `Found: ${result.addressType.replace(/_/g, " ")}`);
+    updateStep(progress, 1, "complete", `Found: ${result.addressType.replace(/_/g, " ")}`);
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 0, "error", err.message);
+    updateStep(progress, 1, "error", err.message);
     return lead;
   }
 }
 
 async function runAttributionStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
-  updateStep(progress, 1, "running");
+  updateStep(progress, 2, "running");
   try {
     if (lead.managementCompany && lead.managementEvidence) {
-      updateStep(progress, 1, "skipped", "Already attributed");
+      updateStep(progress, 2, "skipped", "Already attributed");
       return lead;
     }
     const { attributeLeadManagement } = await import("./management-attribution");
@@ -119,22 +156,22 @@ async function runAttributionStep(lead: Lead, progress: EnrichmentProgress): Pro
       if (result.managementEmail) updates.managementEmail = result.managementEmail;
 
       await db.update(leads).set(updates).where(eq(leads.id, lead.id));
-      updateStep(progress, 1, "complete", result.managementCompany ? `Found: ${result.managementCompany}` : `${result.evidence.length} evidence items`);
+      updateStep(progress, 2, "complete", result.managementCompany ? `Found: ${result.managementCompany}` : `${result.evidence.length} evidence items`);
     } else {
-      updateStep(progress, 1, "complete", "No management company found");
+      updateStep(progress, 2, "complete", "No management company found");
     }
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 1, "error", err.message);
+    updateStep(progress, 2, "error", err.message);
     return lead;
   }
 }
 
 async function runRoleInferenceStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
-  updateStep(progress, 2, "running");
+  updateStep(progress, 3, "running");
   try {
     if (lead.contactRole && lead.contactRole !== "Unknown" && lead.roleConfidence && lead.roleConfidence > 30) {
-      updateStep(progress, 2, "skipped", `Already: ${lead.contactRole} (${lead.roleConfidence}%)`);
+      updateStep(progress, 3, "skipped", `Already: ${lead.contactRole} (${lead.roleConfidence}%)`);
       return lead;
     }
     const { inferLeadRoles } = await import("./role-inference");
@@ -149,19 +186,19 @@ async function runRoleInferenceStep(lead: Lead, progress: EnrichmentProgress): P
         roleEvidence: best.evidence,
       };
       await db.update(leads).set(updates).where(eq(leads.id, lead.id));
-      updateStep(progress, 2, "complete", `${best.role} (${best.confidence}%)`);
+      updateStep(progress, 3, "complete", `${best.role} (${best.confidence}%)`);
     } else {
-      updateStep(progress, 2, "complete", "Insufficient data for role inference");
+      updateStep(progress, 3, "complete", "Insufficient data for role inference");
     }
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 2, "error", err.message);
+    updateStep(progress, 3, "error", err.message);
     return lead;
   }
 }
 
 async function runConfidenceScoringStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
-  updateStep(progress, 3, "running");
+  updateStep(progress, 4, "running");
   try {
     const { computeDecisionMakerConfidence } = await import("./dm-confidence");
     const result = computeDecisionMakerConfidence(lead);
@@ -177,29 +214,29 @@ async function runConfidenceScoringStep(lead: Lead, progress: EnrichmentProgress
     }
 
     await db.update(leads).set(reviewUpdates).where(eq(leads.id, lead.id));
-    updateStep(progress, 3, "complete", `Score: ${result.overallScore}/100 (${result.tier})`);
+    updateStep(progress, 4, "complete", `Score: ${result.overallScore}/100 (${result.tier})`);
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 3, "error", err.message);
+    updateStep(progress, 4, "error", err.message);
     return lead;
   }
 }
 
 async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
-  updateStep(progress, 4, "running");
+  updateStep(progress, 5, "running");
   try {
     if (lead.ownerPhone || lead.phoneEnrichedAt) {
-      updateStep(progress, 4, "skipped", lead.ownerPhone ? "Phone already exists" : "Already attempted");
+      updateStep(progress, 5, "skipped", lead.ownerPhone ? "Phone already exists" : "Already attempted");
       return lead;
     }
     if (!lead.ownerName) {
-      updateStep(progress, 4, "skipped", "No owner name for lookup");
+      updateStep(progress, 5, "skipped", "No owner name for lookup");
       return lead;
     }
 
     const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     if (!apiKey) {
-      updateStep(progress, 4, "skipped", "No Google Places API key");
+      updateStep(progress, 5, "skipped", "No Google Places API key");
       return lead;
     }
 
@@ -223,7 +260,7 @@ async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress):
               phoneEnrichedAt: new Date(),
               phoneSource: "Google Places",
             } as any).where(eq(leads.id, lead.id));
-            updateStep(progress, 4, "complete", `Found: ${detailData.result.formatted_phone_number}`);
+            updateStep(progress, 5, "complete", `Found: ${detailData.result.formatted_phone_number}`);
             return (await fetchLead(lead.id)) || lead;
           }
         }
@@ -231,10 +268,10 @@ async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress):
     }
 
     await db.update(leads).set({ phoneEnrichedAt: new Date() } as any).where(eq(leads.id, lead.id));
-    updateStep(progress, 4, "complete", "No phone found");
+    updateStep(progress, 5, "complete", "No phone found");
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 4, "error", err.message);
+    updateStep(progress, 5, "error", err.message);
     return lead;
   }
 }
@@ -257,7 +294,8 @@ export async function enrichLead(leadId: string): Promise<EnrichmentProgress> {
 
   (async () => {
     try {
-      lead = await runReverseAddressStep(lead!, progress);
+      lead = await runOwnerIntelligenceStep(lead!, progress);
+      lead = await runReverseAddressStep(lead, progress);
       lead = await runAttributionStep(lead, progress);
       lead = await runRoleInferenceStep(lead, progress);
       lead = await runConfidenceScoringStep(lead, progress);
