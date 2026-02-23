@@ -516,6 +516,31 @@ export const insertPmCompanySchema = createInsertSchema(pmCompanies).omit({ id: 
 export type PmCompany = typeof pmCompanies.$inferSelect;
 export type InsertPmCompany = z.infer<typeof insertPmCompanySchema>;
 
+export const rooftopOwners = pgTable("rooftop_owners", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  personName: text("person_name").notNull(),
+  normalizedName: text("normalized_name").notNull(),
+  role: text("role").notNull(),
+  title: text("title"),
+  confidence: integer("confidence").notNull().default(50),
+  source: text("source").notNull(),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  portfolioGroupId: varchar("portfolio_group_id"),
+  propertyCount: integer("property_count").notNull().default(1),
+  totalPortfolioValue: bigint("total_portfolio_value", { mode: "number" }),
+  totalPortfolioSqft: integer("total_portfolio_sqft"),
+  resolvedAt: timestamp("resolved_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRooftopOwnerSchema = createInsertSchema(rooftopOwners).omit({ id: true, createdAt: true, resolvedAt: true });
+export type RooftopOwner = typeof rooftopOwners.$inferSelect;
+export type InsertRooftopOwner = z.infer<typeof insertRooftopOwnerSchema>;
+
 export const insertContactEvidenceSchema = createInsertSchema(contactEvidence).omit({ id: true, createdAt: true });
 export const insertConflictSetSchema = createInsertSchema(conflictSets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEnrichmentJobSchema = createInsertSchema(enrichmentJobs).omit({ id: true, createdAt: true });

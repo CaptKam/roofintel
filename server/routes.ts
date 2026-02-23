@@ -2002,6 +2002,57 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/leads/:id/rooftop-owner", async (req, res) => {
+    try {
+      const { getRooftopOwner } = await import("./rooftop-owner-resolver");
+      const result = await getRooftopOwner(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portfolio/top", async (req, res) => {
+    try {
+      const { getTopPortfolioOwners } = await import("./rooftop-owner-resolver");
+      const limit = parseInt(req.query.limit as string) || 25;
+      const result = await getTopPortfolioOwners(limit);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/portfolio/owner/:normalizedName", async (req, res) => {
+    try {
+      const { getPortfolioProperties } = await import("./rooftop-owner-resolver");
+      const normalizedName = decodeURIComponent(req.params.normalizedName);
+      const result = await getPortfolioProperties(normalizedName);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/rooftop-owners/rebuild", async (req, res) => {
+    try {
+      const { resolveRooftopOwners, buildPortfolioGroups } = await import("./rooftop-owner-resolver");
+      console.log("[API] Starting rooftop owner resolution...");
+      const resolveResult = await resolveRooftopOwners();
+      console.log(`[API] Resolved ${resolveResult.people} people from ${resolveResult.processed} leads`);
+      const portfolioResult = await buildPortfolioGroups();
+      console.log(`[API] Built ${portfolioResult.groups} portfolio groups (${portfolioResult.multiProperty} multi-property)`);
+      res.json({
+        ...resolveResult,
+        portfolioGroups: portfolioResult.groups,
+        multiPropertyOwners: portfolioResult.multiProperty,
+      });
+    } catch (error: any) {
+      console.error("[API] Rooftop owner rebuild failed:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);
