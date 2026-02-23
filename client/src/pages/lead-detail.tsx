@@ -195,6 +195,29 @@ export default function LeadDetail() {
     enabled: !!lead,
   });
 
+  const { data: decisionMakers } = useQuery<{
+    ownershipStructure: string;
+    ownershipLabel: string;
+    ownershipConfidence: number;
+    ownershipSignals: Array<{ factor: string; value: string; weight: number; direction: string }>;
+    decisionMakers: Array<{
+      name: string;
+      title: string | null;
+      role: string;
+      tier: "primary" | "secondary" | "operational";
+      titleRelevance: number;
+      confidence: number;
+      combinedScore: number;
+      phone: string | null;
+      email: string | null;
+      source: string;
+      reasoning: string;
+    }>;
+  }>({
+    queryKey: ["/api/leads", id, "decision-makers"],
+    enabled: !!lead,
+  });
+
   const markWrongMutation = useMutation({
     mutationFn: async (evidenceId: string) => {
       const res = await apiRequest("POST", `/api/evidence/${evidenceId}/mark-wrong`, { feedback: "Wrong number" });
@@ -567,34 +590,68 @@ export default function LeadDetail() {
         </div>
 
         <div className="space-y-6">
-          {rooftopOwner && rooftopOwner.primary && (
+          {(decisionMakers || (rooftopOwner && rooftopOwner.primary)) && (
             <Card className="shadow-sm" data-testid="card-rooftop-owner">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base font-semibold">Who Controls This Roof</CardTitle>
+                {decisionMakers && (
+                  <span className="text-[10px] text-muted-foreground font-medium mt-0.5" data-testid="text-ownership-structure">
+                    {decisionMakers.ownershipLabel} · {decisionMakers.ownershipConfidence}% confidence
+                  </span>
+                )}
               </CardHeader>
               <CardContent className="p-6 pt-0 space-y-3">
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium" data-testid="text-rooftop-owner-name">{rooftopOwner.primary.name}</span>
-                    <span className="text-[10px] text-muted-foreground">{rooftopOwner.primary.confidence}%</span>
+                {decisionMakers && decisionMakers.decisionMakers.length > 0 ? (
+                  <div className="space-y-3">
+                    {decisionMakers.decisionMakers.map((dm, i) => (
+                      <div key={`${dm.name}-${dm.tier}`} className={`space-y-1 ${i > 0 ? "pt-2 border-t" : ""}`} data-testid={`dm-contact-${dm.tier}`}>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded ${
+                            dm.tier === "primary" ? "bg-primary/10 text-primary" :
+                            dm.tier === "secondary" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
+                            "bg-muted text-muted-foreground"
+                          }`} data-testid={`badge-tier-${dm.tier}`}>
+                            {dm.tier}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">Relevance {dm.titleRelevance}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium" data-testid={`text-dm-name-${dm.tier}`}>{dm.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{dm.combinedScore} pts</span>
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {dm.title || dm.role} · via {dm.source}
+                        </div>
+                        {dm.phone && (
+                          <a href={`tel:${dm.phone}`} className="text-[11px] font-mono block" data-testid={`link-dm-phone-${dm.tier}`}>{dm.phone}</a>
+                        )}
+                        {dm.email && (
+                          <a href={`mailto:${dm.email}`} className="text-[11px] font-mono block" data-testid={`link-dm-email-${dm.tier}`}>{dm.email}</a>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {rooftopOwner.primary.title || rooftopOwner.primary.role} · via {rooftopOwner.primary.source}
+                ) : rooftopOwner && rooftopOwner.primary ? (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium" data-testid="text-rooftop-owner-name">{rooftopOwner.primary.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{rooftopOwner.primary.confidence}%</span>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {rooftopOwner.primary.title || rooftopOwner.primary.role} · via {rooftopOwner.primary.source}
+                    </div>
+                    {rooftopOwner.primary.phone && (
+                      <a href={`tel:${rooftopOwner.primary.phone}`} className="text-[11px] font-mono block" data-testid="link-owner-phone">{rooftopOwner.primary.phone}</a>
+                    )}
+                    {rooftopOwner.primary.email && (
+                      <a href={`mailto:${rooftopOwner.primary.email}`} className="text-[11px] font-mono block" data-testid="link-owner-email">{rooftopOwner.primary.email}</a>
+                    )}
                   </div>
-                </div>
-
-                {rooftopOwner.primary.phone && (
-                  <div className="text-[11px]">
-                    <a href={`tel:${rooftopOwner.primary.phone}`} className="font-mono">{rooftopOwner.primary.phone}</a>
-                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">No decision makers resolved yet</p>
                 )}
-                {rooftopOwner.primary.email && (
-                  <div className="text-[11px]">
-                    <a href={`mailto:${rooftopOwner.primary.email}`} className="font-mono">{rooftopOwner.primary.email}</a>
-                  </div>
-                )}
 
-                {rooftopOwner.primary.propertyCount > 1 && (
+                {rooftopOwner && rooftopOwner.primary && rooftopOwner.primary.propertyCount > 1 && (
                   <a
                     href={`/portfolios?owner=${encodeURIComponent(rooftopOwner.primary.name)}`}
                     className="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline pt-1"
@@ -606,32 +663,20 @@ export default function LeadDetail() {
                   </a>
                 )}
 
-                {rooftopOwner.otherProperties.length > 0 && (
+                {rooftopOwner && rooftopOwner.otherProperties && rooftopOwner.otherProperties.length > 0 && (
                   <div className="space-y-1 pt-1 border-t">
                     <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground pt-2">Other Properties</div>
                     {rooftopOwner.otherProperties.slice(0, 3).map((prop) => (
-                      <a key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center justify-between py-1 text-[11px] hover:bg-muted/50 rounded px-1 -mx-1" data-testid={`link-portfolio-property-${prop.leadId}`}>
+                      <a key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center justify-between py-1 text-[11px] rounded px-1 -mx-1" data-testid={`link-portfolio-property-${prop.leadId}`}>
                         <span className="truncate">{prop.address}, {prop.city}</span>
                         <span className="text-muted-foreground ml-2 flex-shrink-0">Score {prop.leadScore}</span>
                       </a>
                     ))}
-                    {rooftopOwner.otherProperties.length > 3 && (
-                      <a href={`/portfolios?owner=${encodeURIComponent(rooftopOwner.primary.name)}`} className="text-[10px] text-primary hover:underline">
+                    {rooftopOwner.otherProperties.length > 3 && rooftopOwner.primary && (
+                      <a href={`/portfolios?owner=${encodeURIComponent(rooftopOwner.primary.name)}`} className="text-[10px] text-primary hover:underline" data-testid="link-more-properties">
                         +{rooftopOwner.otherProperties.length - 3} more
                       </a>
                     )}
-                  </div>
-                )}
-
-                {rooftopOwner.allPeople.length > 1 && (
-                  <div className="space-y-1 pt-1 border-t">
-                    <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground pt-2">Other Connected People</div>
-                    {rooftopOwner.allPeople.filter(p => !p.isPrimary).slice(0, 4).map((person) => (
-                      <div key={person.id} className="flex items-center justify-between text-[11px] py-0.5">
-                        <span>{person.name}</span>
-                        <span className="text-muted-foreground">{person.title || person.role}</span>
-                      </div>
-                    ))}
                   </div>
                 )}
               </CardContent>

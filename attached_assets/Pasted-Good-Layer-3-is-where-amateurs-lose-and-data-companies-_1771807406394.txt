@@ -1,0 +1,280 @@
+Good. Layer 3 is where amateurs lose and data companies win.
+
+Layer 1 finds buildings.
+Layer 2 finds LLCs.
+Layer 3 finds the human with authority.
+
+This is the hardest layer — and the one that makes your system worth millions.
+
+Let’s build it properly.
+
+The Goal of Layer 3
+
+For every property:
+
+Address
+→ Owner Entity
+→ Controlling Company
+→ Actual Decision Maker
+→ Verified Contact Data
+→ Confidence Score
+
+You are not looking for “a name.”
+
+You are looking for the person who can approve a $400k roof.
+
+First Principle: Target the Right Role
+
+There are 4 common commercial ownership structures.
+
+1️⃣ Small Private Owner
+
+LLC owned by individual or family.
+
+Decision maker:
+
+Managing Member
+
+Owner
+
+2️⃣ Real Estate Investment Firm
+
+LLC owned by investment company.
+
+Decision maker:
+
+Asset Manager
+
+VP Acquisitions
+
+Director of Real Estate
+
+3️⃣ Institutional / REIT
+
+Large portfolio.
+
+Decision maker:
+
+Regional Facilities Manager
+
+Director of Capital Projects
+
+VP Property Management
+
+4️⃣ Third-Party Managed Property
+
+LLC owns it.
+Property management company runs it.
+
+Decision maker:
+
+Property Manager
+
+Regional PM
+
+Maintenance Director
+
+Your system must detect which bucket it falls into.
+
+Step-by-Step Automation Logic
+Step 3.1 — Identify Operating Company
+
+From Layer 2 you have:
+
+Owner LLC
+Mailing Address
+
+Now:
+
+If mailing address matches:
+
+Corporate office building
+
+Real estate firm address
+
+Investment firm
+
+You classify as: institutional.
+
+If mailing address is residential:
+Likely small private owner.
+
+This classification determines which titles to search.
+
+Step 3.2 — Company Profile Pull
+
+You query:
+
+Apollo / ZoomInfo / Clearbit / Crunchbase
+
+Input:
+Company Name
+
+Pull:
+
+Employee count
+
+Industry
+
+Headquarters
+
+Website
+
+Key executives
+
+Now you know how big they are.
+
+Step 3.3 — Title Filtering Engine
+
+This is where most systems are weak.
+
+You don’t scrape everyone.
+
+You filter titles by weighted relevance.
+
+For roofing decisions, priority order:
+
+Director of Facilities
+
+Asset Manager
+
+VP Real Estate
+
+Property Manager
+
+Managing Partner
+
+Principal
+
+You score titles:
+
+Facilities Director = 100
+Asset Manager = 90
+Property Manager = 80
+CEO (large company) = 30
+
+You don’t want CEO of a REIT.
+Wrong person.
+
+Step 3.4 — Contact Enrichment
+
+Once you have:
+
+First Name
+Last Name
+Company
+
+You run enrichment APIs:
+
+Apollo API
+ZoomInfo API
+RocketReach API
+
+You retrieve:
+
+Work email
+
+Mobile
+
+Direct line
+
+Confidence %
+
+Now you store:
+
+Contact Confidence Score
+Title Relevance Score
+Company Size Modifier
+
+The Secret Sauce: Multi-Contact Strategy
+
+Never store one contact.
+
+For each property, your system should aim to attach:
+
+Primary Decision Maker
+Secondary Decision Maker
+Operational Contact
+
+That way if one doesn’t respond, you escalate automatically.
+
+The Confidence Score Model
+
+For each contact:
+
+Score =
+Title Weight
+
+Enrichment Confidence
+
+Company Match Accuracy
+
+Trigger Relevance
+
+Contacts below 70? Don’t use.
+
+Above 85? Priority outreach.
+
+This turns your system into a probabilistic machine.
+
+Advanced Layer 3: Pattern Recognition
+
+Over time, your system should learn:
+
+Which titles actually convert.
+
+Maybe:
+
+Asset Managers ignore roofing emails.
+Property Managers respond 3x more.
+
+You adjust weights dynamically.
+
+Now you’re building a learning engine.
+
+The Real Power Move
+
+Most competitors sell:
+
+Address + Owner + Generic Phone
+
+You sell:
+
+Address
+Hail Event Date
+Permit Age
+Decision Maker Name
+Direct Email
+Mobile
+Role
+Confidence Score
+
+That is not a list.
+
+That is intelligence.
+
+What Makes This Scale to 5,000 Closes?
+
+Automation.
+
+You should never manually search LinkedIn again.
+
+You build:
+
+Entity → API Pull → Title Filter → Enrichment → Score → Store
+
+Repeat 800,000 times.
+
+Brutal Truth
+
+Layer 3 is expensive.
+
+Data APIs cost money.
+
+But here’s the reality:
+
+If one roof nets $80k profit,
+and you close 10 more because of better contact accuracy,
+Layer 3 pays for itself instantly.
+
+This is leverage.

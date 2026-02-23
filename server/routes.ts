@@ -1820,17 +1820,6 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/leads/:id/decision-makers", async (req, res) => {
-    try {
-      const { getLeadDecisionMakers } = await import("./role-inference");
-      const result = await getLeadDecisionMakers(req.params.id);
-      if (!result) return res.status(404).json({ message: "Lead not found" });
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: "Failed to get decision makers", error: error.message });
-    }
-  });
-
   // ============================================================
   // Compliance Gating & Suppression Endpoints
   // ============================================================
@@ -2037,18 +2026,95 @@ export async function registerRoutes(
   app.post("/api/rooftop-owners/rebuild", async (req, res) => {
     try {
       const { resolveRooftopOwners, buildPortfolioGroups } = await import("./rooftop-owner-resolver");
+      const { classifyAndAssignDecisionMakers } = await import("./ownership-classifier");
       console.log("[API] Starting rooftop owner resolution...");
       const resolveResult = await resolveRooftopOwners();
       console.log(`[API] Resolved ${resolveResult.people} people from ${resolveResult.processed} leads`);
       const portfolioResult = await buildPortfolioGroups();
       console.log(`[API] Built ${portfolioResult.groups} portfolio groups (${portfolioResult.multiProperty} multi-property)`);
+      console.log("[API] Running ownership classification & decision-maker assignment...");
+      const classifyResult = await classifyAndAssignDecisionMakers();
+      console.log(`[API] Classified ${classifyResult.classified} leads, ${classifyResult.withDecisionMakers} with decision makers`);
       res.json({
         ...resolveResult,
         portfolioGroups: portfolioResult.groups,
         multiPropertyOwners: portfolioResult.multiProperty,
+        classified: classifyResult.classified,
+        withDecisionMakers: classifyResult.withDecisionMakers,
+        byStructure: classifyResult.byStructure,
       });
     } catch (error: any) {
       console.error("[API] Rooftop owner rebuild failed:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/decision-makers", async (req, res) => {
+    try {
+      const leadId = req.params.id;
+      const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const storedStructure = lead.ownershipStructure || null;
+      const storedSignals = lead.ownershipSignals || null;
+      const storedDms = lead.decisionMakers || null;
+
+      if (storedStructure && storedSignals && storedDms) {
+        const LABELS: Record<string, string> = {
+          small_private: "Small Private Owner",
+          investment_firm: "Real Estate Investment Firm",
+          institutional_reit: "Institutional / REIT",
+          third_party_managed: "Third-Party Managed",
+        };
+        const signals = storedSignals as any[];
+        const totalWeight = signals.reduce((s: number, sig: any) => s + sig.weight, 0);
+        const matchWeight = signals.filter((sig: any) => sig.direction === storedStructure).reduce((s: number, sig: any) => s + sig.weight, 0);
+        const confidence = totalWeight > 0 ? Math.min(95, Math.round((matchWeight / totalWeight) * 100)) : 25;
+
+        return res.json({
+          ownershipStructure: storedStructure,
+          ownershipLabel: LABELS[storedStructure] || storedStructure,
+          ownershipConfidence: confidence,
+          ownershipSignals: storedSignals,
+          decisionMakers: storedDms,
+        });
+      }
+
+      const { classifyOwnershipStructure, selectDecisionMakers, getPortfolioSizeForLead } = await import("./ownership-classifier");
+      const { extractPeopleFromLead } = await import("./rooftop-owner-resolver");
+
+      const portfolioSize = await getPortfolioSizeForLead(lead);
+      const classification = classifyOwnershipStructure(lead, portfolioSize);
+      const people = extractPeopleFromLead(lead);
+      const dms = selectDecisionMakers(people, classification.structure, lead);
+
+      await db.update(leadsTable).set({
+        ownershipStructure: classification.structure,
+        ownershipSignals: classification.signals as any,
+        decisionMakers: dms as any,
+      } as any).where(eq(leadsTable.id, leadId));
+
+      res.json({
+        ownershipStructure: classification.structure,
+        ownershipLabel: classification.label,
+        ownershipConfidence: classification.confidence,
+        ownershipSignals: classification.signals,
+        decisionMakers: dms,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/decision-makers/classify", async (req, res) => {
+    try {
+      const { classifyAndAssignDecisionMakers } = await import("./ownership-classifier");
+      console.log("[API] Starting ownership classification & decision-maker assignment...");
+      const result = await classifyAndAssignDecisionMakers();
+      console.log(`[API] Classified ${result.classified} leads, ${result.withDecisionMakers} with decision makers`);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[API] Classification failed:", error);
       res.status(500).json({ message: error.message });
     }
   });

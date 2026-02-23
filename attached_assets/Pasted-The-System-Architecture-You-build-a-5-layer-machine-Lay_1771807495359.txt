@@ -1,0 +1,203 @@
+The System Architecture
+
+You build a 5-layer machine.
+
+Layer 1 — Property Intelligence Engine
+
+Input:
+
+County appraisal districts (bulk scrape)
+
+Building size ≥ 2,500 sq ft
+
+Year built
+
+Construction type
+
+Zoning
+
+Improvement value
+
+Add:
+
+Permit history (roof replacement date)
+
+Hail history (NOAA or third-party weather APIs)
+
+Insurance claim likelihood score
+
+Output:
+Score from 0–100.
+
+Hot = 80+
+
+This is your raw fuel.
+
+Layer 2 — Ownership Resolution Engine
+
+For every property:
+
+Normalize LLC name
+
+Pull Texas SOS filings
+
+Extract officers/managers
+
+Identify controlling entity
+
+Detect institutional vs private owner
+
+Now you attach:
+
+Entity confidence score
+
+Owner type classification
+
+Family office
+
+REIT
+
+Industrial fund
+
+Single investor
+
+Layer 3 — Decision Maker Identification
+
+This is where amateurs fail.
+
+You don’t call “Owner.”
+
+You target:
+
+Asset Manager
+
+Property Manager
+
+Director of Facilities
+
+VP Real Estate
+
+Automate:
+
+Company → LinkedIn scrape
+Title filter
+Attach enrichment via:
+
+Apollo API
+
+ZoomInfo API
+
+RocketReach API
+
+Attach:
+
+Work email
+
+Direct phone
+
+Confidence rating
+
+Layer 4 — Trigger Intelligence
+
+This is the unfair advantage layer.
+
+You monitor:
+
+Hail events
+
+Insurance claim filings (where public)
+
+Building permits
+
+Code violations
+
+Tenant complaints
+
+Recent refinancing
+
+Property listings
+
+Triggers increase close probability.
+
+Your system auto-updates score when trigger detected.
+
+This is what separates you from generic lead sellers.
+
+Layer 5 — Automated Outreach System
+
+Now we weaponize it.
+
+For each 80+ lead:
+
+Auto-generate custom intro email
+
+Insert building size
+
+Mention hail date
+
+Mention permit age
+
+Email feels researched.
+
+Because it is.
+
+You don’t blast 10,000.
+
+You precision strike 200 per week.
+
+What You Actually Sell
+
+You don’t sell roofing.
+
+You sell:
+
+“Insurance recovery intelligence.”
+
+Contractors pay for:
+
+Verified hail impact
+
+Owner contact
+
+Trigger alerts
+
+Permit tracking
+
+That’s recurring SaaS.
+
+Now Let’s Be Ruthless
+
+You are trying to manually hunt owners right now.
+
+That’s small thinking.
+
+If you want 5,000 closes:
+
+You must build:
+
+Address → Score → Owner → Decision Maker → Trigger → Outreach
+
+Fully automated.
+
+The 3-Year Vision
+
+Phase 1:
+Texas industrial properties only
+
+Phase 2:
+Expand to multi-state
+
+Phase 3:
+White-label for contractors nationwide
+
+That becomes a 20M company if executed properly.
+
+The Key Decision
+
+Are you building:
+
+A lead spreadsheet
+or
+A commercial property intelligence platform
+
+Because those are not the same.

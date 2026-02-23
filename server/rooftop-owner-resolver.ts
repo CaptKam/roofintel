@@ -33,7 +33,7 @@ interface ExtractedPerson {
   email: string | null;
 }
 
-function extractPeopleFromLead(lead: any): ExtractedPerson[] {
+export function extractPeopleFromLead(lead: any): ExtractedPerson[] {
   const people: ExtractedPerson[] = [];
   const seen = new Set<string>();
 
