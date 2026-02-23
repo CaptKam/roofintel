@@ -80,26 +80,18 @@ async function createEdge(
   if (edgeSet.has(edgeKey) || edgeSet.has(reverseKey)) return;
   edgeSet.add(edgeKey);
 
-  const existing = await db.select({ id: graphEdges.id })
-    .from(graphEdges)
-    .where(and(
-      eq(graphEdges.sourceNodeId, sourceId),
-      eq(graphEdges.targetNodeId, targetId),
-      eq(graphEdges.edgeType, edgeType)
-    ))
-    .limit(1);
-
-  if (existing.length > 0) return;
-
-  await db.insert(graphEdges).values({
-    sourceNodeId: sourceId,
-    targetNodeId: targetId,
-    edgeType,
-    label: label || edgeType.replace(/_/g, " "),
-    weight,
-    evidence,
-    metadata: metadata || {},
-  });
+  try {
+    await db.insert(graphEdges).values({
+      sourceNodeId: sourceId,
+      targetNodeId: targetId,
+      edgeType,
+      label: label || edgeType.replace(/_/g, " "),
+      weight,
+      evidence,
+      metadata: metadata || {},
+    });
+  } catch {
+  }
 }
 
 let activeBuildRunId: string | null = null;
@@ -128,6 +120,10 @@ export async function buildRelationshipGraph(): Promise<string> {
       return activeBuildRunId;
     }
   }
+
+  await db.update(graphBuildRuns)
+    .set({ status: "error", error: "Superseded by new build", completedAt: new Date() })
+    .where(eq(graphBuildRuns.status, "running"));
 
   nodeCache.clear();
   edgeSet.clear();
@@ -326,7 +322,7 @@ async function buildGraphAsync(runId: string, allLeads: any[]): Promise<void> {
       }
 
       leadsProcessed++;
-      if (leadsProcessed % 500 === 0) {
+      if (leadsProcessed % 200 === 0) {
         nodesCreated = nodeCache.size;
         await db.update(graphBuildRuns).set({
           leadsProcessed,
