@@ -12,24 +12,43 @@ interface ParsedContractor {
   workDescription: string | null;
 }
 
+function extractPhone(text: string): { phone: string | null; remaining: string } {
+  const patterns = [
+    /\((\d{3})\)\s*(\d{3})[- .]?(\d{4})/,
+    /\b1?[- .]?(\d{3})[- .](\d{3})[- .](\d{4})\b/,
+    /\/(\d{3})(\d{3})(\d{4})/,
+    /\b(\d{3})\.(\d{3})\.(\d{4})\b/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const groups = match.slice(1);
+      let a: string, b: string, c: string;
+      if (groups.length === 1 && groups[0].length === 10) {
+        a = groups[0].slice(0,3); b = groups[0].slice(3,6); c = groups[0].slice(6);
+      } else {
+        [a, b, c] = groups.length >= 3 ? groups : [groups[0], groups[1] || "", groups[2] || ""];
+      }
+      if (a && b && c && a.length === 3 && b.length === 3 && c.length === 4) {
+        return { phone: `(${a}) ${b}-${c}`, remaining: text.replace(match[0], "") };
+      }
+    }
+  }
+  return { phone: null, remaining: text };
+}
+
 function parseContractorField(raw: string): { name: string; phone: string | null; email: string | null; address: string | null } {
   if (!raw || raw.trim().length < 3) return { name: raw?.trim() || "", phone: null, email: null, address: null };
 
   let cleaned = raw.trim();
 
-  const phoneMatch = cleaned.match(/\((\d{3})\)\s*(\d{3})[- ]?(\d{4})/);
-  const phone = phoneMatch ? `(${phoneMatch[1]}) ${phoneMatch[2]}-${phoneMatch[3]}` : null;
+  const { phone, remaining: afterPhone } = extractPhone(cleaned);
 
-  const slashPhoneMatch = !phoneMatch ? cleaned.match(/\/(\d{10})/) : null;
-  const altPhone = slashPhoneMatch ? `(${slashPhoneMatch[1].slice(0,3)}) ${slashPhoneMatch[1].slice(3,6)}-${slashPhoneMatch[1].slice(6)}` : null;
-  const finalPhone = phone || altPhone;
-
-  const emailMatch = cleaned.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  const emailMatch = afterPhone.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
   const email = emailMatch ? emailMatch[1].toLowerCase() : null;
 
-  let namePart = cleaned;
-  if (phoneMatch) namePart = namePart.replace(phoneMatch[0], "");
-  if (slashPhoneMatch) namePart = namePart.replace(slashPhoneMatch[0], "");
+  let namePart = afterPhone;
   if (emailMatch) namePart = namePart.replace(emailMatch[0], "");
 
   let address: string | null = null;
@@ -38,7 +57,7 @@ function parseContractorField(raw: string): { name: string; phone: string | null
   const addressPatterns = [
     /(\d+\s+(?:N\.?|S\.?|E\.?|W\.?|NORTH|SOUTH|EAST|WEST)?\s*[A-Z0-9].*?,\s*[A-Z]+.*?,\s*[A-Z]{2}\s+\d{5})/i,
     /(P\.?O\.?\s*BOX\s+\d+.*?,\s*[A-Z]+.*?,\s*[A-Z]{2}\s+\d{5})/i,
-    /(\d+\s+[A-Z][\w\s]+(?:ST|AVE|BLVD|DR|RD|LN|CT|PL|WAY|PKWY|HWY|FM|TRAIL|ROW|CIRCLE)[\w\s]*?,\s*[A-Z]+.*?,\s*[A-Z]{2}\s+\d{5})/i,
+    /(\d+\s+[A-Z][\w\s]+(?:ST|AVE|BLVD|DR|RD|LN|CT|PL|WAY|PKWY|HWY|FM|TRAIL|ROW|CIRCLE|STE|SUITE)[\w\s#]*?,\s*[A-Z]+.*?,\s*[A-Z]{2}\s+\d{5})/i,
   ];
 
   for (const pattern of addressPatterns) {
@@ -57,11 +76,11 @@ function parseContractorField(raw: string): { name: string; phone: string | null
     .replace(/\s+/g, " ")
     .trim();
 
-  if (name.length < 2 || name === ", ,   () -") {
+  if (name.length < 2 || /^[,\s().-]+$/.test(name)) {
     return { name: "", phone: null, email: null, address: null };
   }
 
-  return { name, phone: finalPhone, email, address };
+  return { name, phone, email, address };
 }
 
 export async function syncPermitContractorsToLeads(): Promise<{ updated: number; totalContractors: number; newlyLinked: number }> {
@@ -72,7 +91,14 @@ export async function syncPermitContractorsToLeads(): Promise<{ updated: number;
     SET lead_id = l.id
     FROM leads l
     WHERE bp.lead_id IS NULL
-      AND LOWER(TRIM(l.address)) = LOWER(SPLIT_PART(TRIM(bp.address), ' Ste:', 1))
+      AND LOWER(TRIM(l.address)) = LOWER(
+        REGEXP_REPLACE(
+          TRIM(bp.address),
+          '\s+(Ste|STE|Suite|SUITE|Unit|UNIT|Apt|APT|#)\s*:?\s*\S+$',
+          '',
+          'i'
+        )
+      )
   `);
   const newlyLinked = (linked as any).rowCount || 0;
   console.log(`[Permit Sync] Newly linked ${newlyLinked} permits by address match`);

@@ -516,6 +516,63 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
 
+          {(lead as any).permitContractors && (lead as any).permitContractors.length > 0 && (
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">Contractor Intelligence</CardTitle>
+                <Badge variant="secondary" className="ml-auto">{(lead as any).permitContractors.length} contractor{(lead as any).permitContractors.length !== 1 ? 's' : ''}</Badge>
+              </CardHeader>
+              <CardContent className="p-6 pt-0">
+                <div className="space-y-3">
+                  {((lead as any).permitContractors as Array<{name: string; phone: string | null; email: string | null; address: string | null; permitType: string; permitDate: string | null; workDescription: string | null}>).map((c, i) => {
+                    const isRoofing = (c.permitType || '').toLowerCase().includes('roof') || (c.workDescription || '').toLowerCase().includes('roof');
+                    return (
+                      <div
+                        key={i}
+                        className={`p-4 rounded-md border text-sm ${isRoofing ? 'border-orange-400/30 bg-orange-50 dark:bg-orange-950/20' : ''}`}
+                        data-testid={`contractor-${i}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <HardHat className="w-4 h-4 text-muted-foreground" />
+                            <span className="font-medium text-sm" data-testid={`contractor-name-${i}`}>{c.name}</span>
+                            {isRoofing && <Badge variant="default" className="text-[10px]">Roofing</Badge>}
+                          </div>
+                          <Badge variant="outline" className="text-[10px]" data-testid={`contractor-type-${i}`}>{c.permitType}</Badge>
+                        </div>
+                        <div className="flex items-center gap-4 mt-2 flex-wrap">
+                          {c.phone && (
+                            <a href={`tel:${c.phone}`} className="text-xs text-foreground flex items-center gap-1 underline-offset-2 hover:underline" data-testid={`contractor-phone-${i}`}>
+                              <Phone className="w-3 h-3" /> {c.phone}
+                            </a>
+                          )}
+                          {c.email && (
+                            <a href={`mailto:${c.email}`} className="text-xs text-foreground flex items-center gap-1 underline-offset-2 hover:underline" data-testid={`contractor-email-${i}`}>
+                              <Mail className="w-3 h-3" /> {c.email}
+                            </a>
+                          )}
+                          {c.permitDate && (
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> {c.permitDate}
+                            </span>
+                          )}
+                        </div>
+                        {c.address && (
+                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                            <MapPin className="w-3 h-3" /> {c.address}
+                          </p>
+                        )}
+                        {c.workDescription && (
+                          <p className="text-xs text-muted-foreground mt-1 truncate" data-testid={`contractor-desc-${i}`}>{c.workDescription}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {permitHistory && permitHistory.length > 0 && (
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
