@@ -90,6 +90,7 @@ export const leads = pgTable("leads", {
   lastViolationDate: text("last_violation_date"),
   permitCount: integer("permit_count").default(0),
   lastPermitDate: text("last_permit_date"),
+  permitContractors: jsonb("permit_contractors"),
   distressScore: integer("distress_score").default(0),
   leadScore: integer("lead_score").notNull().default(0),
   status: text("status").notNull().default("new"),
