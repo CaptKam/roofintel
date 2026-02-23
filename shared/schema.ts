@@ -440,6 +440,12 @@ export const contactEvidence = pgTable("contact_evidence", {
   validationStatus: text("validation_status").notNull().default("UNVERIFIED"),
   validationDetail: text("validation_detail"),
   validatedAt: timestamp("validated_at"),
+  phoneLineType: text("phone_line_type"),
+  carrierName: text("carrier_name"),
+  suppressedAt: timestamp("suppressed_at"),
+  suppressedReason: text("suppressed_reason"),
+  suppressedBy: text("suppressed_by"),
+  lastVerifiedAt: timestamp("last_verified_at"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -482,6 +488,33 @@ export const sourceBlocklist = pgTable("source_blocklist", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const pmCompanies = pgTable("pm_companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: text("company_name").notNull(),
+  normalizedName: text("normalized_name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  website: text("website"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  contactPerson: text("contact_person"),
+  contactTitle: text("contact_title"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  propertiesManaged: integer("properties_managed").default(0),
+  source: text("source"),
+  confidence: integer("confidence").default(50),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPmCompanySchema = createInsertSchema(pmCompanies).omit({ id: true, createdAt: true, updatedAt: true });
+export type PmCompany = typeof pmCompanies.$inferSelect;
+export type InsertPmCompany = z.infer<typeof insertPmCompanySchema>;
 
 export const insertContactEvidenceSchema = createInsertSchema(contactEvidence).omit({ id: true, createdAt: true });
 export const insertConflictSetSchema = createInsertSchema(conflictSets).omit({ id: true, createdAt: true, updatedAt: true });

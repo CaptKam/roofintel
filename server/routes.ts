@@ -20,6 +20,10 @@ import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus 
 import { recordBatchEvidence, getEvidenceForLead, getConflictsForLead, resolveConflict, type EvidenceInput } from "./evidence-recorder";
 import { validateAllEvidenceForLead, normalizePhoneE164, isValidPhoneStructure, validateEmailSyntax } from "./contact-validation";
 import { getRateLimitStatus, isDomainBlocked } from "./config/sourcePolicy";
+import { lookupPhone, verifyAllPhonesForLead, isTwilioConfigured } from "./twilio-lookup";
+import { markWrongNumber, markConfirmedGood, suppressContact, unsuppressContact } from "./contact-feedback";
+import { buildContactPath } from "./contact-ranking";
+import { seedPmCompanies, findPmCompany, addPmCompany, getAllPmCompanies } from "./pm-company-manager";
 import { getSkipTraceStatus } from "./skip-trace-agent";
 import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, getDallasRecordsStatus, addRecordedDocument } from "./dallas-records-agent";
 import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats } from "./permits-agent";
@@ -956,6 +960,105 @@ export async function registerRoutes(
       res.json(jobs);
     } catch (error) {
       res.status(500).json({ message: "Failed to get enrichment jobs" });
+    }
+  });
+
+  app.get("/api/leads/:id/contact-path", async (req, res) => {
+    try {
+      const path = await buildContactPath(req.params.id);
+      res.json(path);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to build contact path" });
+    }
+  });
+
+  app.post("/api/evidence/:id/mark-wrong", async (req, res) => {
+    try {
+      const { feedback } = req.body;
+      const result = await markWrongNumber(req.params.id, feedback || "Wrong number reported by contractor");
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to mark wrong" });
+    }
+  });
+
+  app.post("/api/evidence/:id/confirm-good", async (req, res) => {
+    try {
+      await markConfirmedGood(req.params.id);
+      res.json({ message: "Confirmed" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to confirm" });
+    }
+  });
+
+  app.post("/api/evidence/:id/suppress", async (req, res) => {
+    try {
+      const { reason } = req.body;
+      await suppressContact(req.params.id, reason || "Manual suppression");
+      res.json({ message: "Suppressed" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to suppress" });
+    }
+  });
+
+  app.post("/api/evidence/:id/unsuppress", async (req, res) => {
+    try {
+      await unsuppressContact(req.params.id);
+      res.json({ message: "Unsuppressed" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to unsuppress" });
+    }
+  });
+
+  app.post("/api/leads/:id/verify-phones", async (req, res) => {
+    try {
+      if (!isTwilioConfigured()) {
+        return res.status(400).json({ message: "Twilio not configured. Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN." });
+      }
+      const result = await verifyAllPhonesForLead(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to verify phones" });
+    }
+  });
+
+  app.post("/api/validate/phone-lookup", async (req, res) => {
+    try {
+      const { phone } = req.body;
+      if (!phone) return res.status(400).json({ message: "phone required" });
+      const result = await lookupPhone(phone);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to lookup phone" });
+    }
+  });
+
+  app.get("/api/pm-companies", async (_req, res) => {
+    try {
+      const companies = await getAllPmCompanies();
+      res.json(companies);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get PM companies" });
+    }
+  });
+
+  app.post("/api/pm-companies", async (req, res) => {
+    try {
+      const { companyName, phone, email, website, address, city, contactPerson, contactTitle, contactPhone, contactEmail } = req.body;
+      if (!companyName) return res.status(400).json({ message: "companyName required" });
+      const id = await addPmCompany({ companyName, phone, email, website, address, city, contactPerson, contactTitle, contactPhone, contactEmail, source: "manual" });
+      res.json({ id, message: "PM company added" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to add PM company" });
+    }
+  });
+
+  app.post("/api/pm-companies/seed", async (_req, res) => {
+    try {
+      const count = await seedPmCompanies();
+      res.json({ seeded: count });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to seed PM companies" });
     }
   });
 

@@ -1,6 +1,8 @@
-import { storage } from "./storage";
+import { storage, db } from "./storage";
 import { importNoaaHailData } from "./noaa-importer";
 import { calculateScore } from "./seed";
+import { contactEvidence } from "@shared/schema";
+import { eq, and, lt, sql } from "drizzle-orm";
 
 async function ensureDefaultJobs() {
   const existing = await storage.getJobByName("noaa_hail_sync");
@@ -78,6 +80,31 @@ async function runScoreRecalc() {
   }
 }
 
+async function runContactFreshnessCheck() {
+  console.log("[Job] Running contact freshness check...");
+  try {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+
+    const result = await db
+      .update(contactEvidence)
+      .set({
+        validationStatus: "STALE",
+        validationDetail: "Contact data over 60 days old — needs re-verification",
+      })
+      .where(
+        and(
+          eq(contactEvidence.isActive, true),
+          lt(contactEvidence.extractedAt, sixtyDaysAgo),
+          sql`${contactEvidence.validationStatus} IS DISTINCT FROM 'STALE'`
+        )
+      );
+
+    console.log("[Job] Contact freshness check complete");
+  } catch (error) {
+    console.error("[Job] Contact freshness check error:", error);
+  }
+}
+
 const FOUR_HOURS = 4 * 60 * 60 * 1000;
 
 export function startJobScheduler() {
@@ -87,6 +114,7 @@ export function startJobScheduler() {
     try {
       await runNoaaSync();
       await runScoreRecalc();
+      await runContactFreshnessCheck();
     } catch (error) {
       console.error("[Scheduler] Error:", error);
     }

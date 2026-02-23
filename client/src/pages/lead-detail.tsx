@@ -55,6 +55,8 @@ import {
   XCircle,
   Clock,
   Eye,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -168,6 +170,43 @@ export default function LeadDetail() {
   const { data: enrichmentJobHistory } = useQuery<EnrichmentJob[]>({
     queryKey: ["/api/leads", id, "enrichment-jobs"],
     enabled: !!lead,
+  });
+
+  const { data: contactPath } = useQuery<{
+    leadId: string;
+    phones: Array<{ rank: number; evidenceId: string; contactType: string; value: string; displayValue: string; effectiveScore: number; reasons: string[]; warnings: string[]; lineType: string | null; carrierName: string | null; sourceName: string; sourceCount: number; validationStatus: string; isRecommended: boolean; ageInDays: number }>;
+    emails: Array<{ rank: number; evidenceId: string; contactType: string; value: string; displayValue: string; effectiveScore: number; reasons: string[]; warnings: string[]; lineType: string | null; sourceName: string; sourceCount: number; validationStatus: string; isRecommended: boolean; ageInDays: number }>;
+    bestPhone: any;
+    bestEmail: any;
+    overallConfidence: "high" | "medium" | "low" | "none";
+    warnings: string[];
+  }>({
+    queryKey: ["/api/leads", id, "contact-path"],
+    enabled: !!lead,
+  });
+
+  const markWrongMutation = useMutation({
+    mutationFn: async (evidenceId: string) => {
+      const res = await apiRequest("POST", `/api/evidence/${evidenceId}/mark-wrong`, { feedback: "Wrong number" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "evidence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "contact-path"] });
+      toast({ title: "Contact marked as wrong" });
+    },
+  });
+
+  const confirmGoodMutation = useMutation({
+    mutationFn: async (evidenceId: string) => {
+      const res = await apiRequest("POST", `/api/evidence/${evidenceId}/confirm-good`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "evidence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "contact-path"] });
+      toast({ title: "Contact confirmed" });
+    },
   });
 
   const [evidenceExpanded, setEvidenceExpanded] = useState(false);
@@ -518,6 +557,98 @@ export default function LeadDetail() {
         </div>
 
         <div className="space-y-6">
+          {contactPath && (contactPath.phones.length > 0 || contactPath.emails.length > 0) && (
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base font-semibold">Call Sheet</CardTitle>
+                  <span className="text-[11px] text-muted-foreground capitalize" data-testid="badge-contact-path-confidence">
+                    {contactPath.overallConfidence} confidence
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-4">
+                {contactPath.phones.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Phones</div>
+                    {contactPath.phones.map((phone, i) => (
+                      <div key={phone.evidenceId} className="py-2 border-b last:border-0" data-testid={`call-sheet-phone-${i}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <a href={`tel:${phone.value}`} className="text-sm font-mono font-medium" data-testid={`link-call-phone-${i}`}>
+                              {phone.displayValue}
+                            </a>
+                            {phone.lineType && (
+                              <span className="text-[10px] text-muted-foreground">{phone.lineType}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {phone.isRecommended && <span className="text-[10px] font-medium text-primary">Best</span>}
+                            <span className="text-[10px] text-muted-foreground" data-testid={`text-phone-score-${i}`}>{Math.round(phone.effectiveScore)}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            {phone.sourceCount} {phone.sourceCount === 1 ? "source" : "sources"}
+                            {phone.validationStatus === "VERIFIED" || phone.validationStatus === "CONFIRMED" ? " · Verified" : ""}
+                          </span>
+                          <div className="flex gap-0.5">
+                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => confirmGoodMutation.mutate(phone.evidenceId)} disabled={confirmGoodMutation.isPending} data-testid={`button-confirm-phone-${i}`}>
+                              <ThumbsUp className="w-3 h-3" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => markWrongMutation.mutate(phone.evidenceId)} disabled={markWrongMutation.isPending} data-testid={`button-wrong-phone-${i}`}>
+                              <ThumbsDown className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                        {phone.warnings.length > 0 && (
+                          <div className="text-[10px] text-muted-foreground mt-0.5">{phone.warnings.join(" · ")}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {contactPath.emails.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Emails</div>
+                    {contactPath.emails.map((email, i) => (
+                      <div key={email.evidenceId} className="py-2 border-b last:border-0" data-testid={`call-sheet-email-${i}`}>
+                        <div className="flex items-center justify-between">
+                          <a href={`mailto:${email.value}`} className="text-sm font-mono font-medium truncate" data-testid={`link-email-${i}`}>
+                            {email.displayValue}
+                          </a>
+                          <div className="flex items-center gap-2">
+                            {email.isRecommended && <span className="text-[10px] font-medium text-primary">Best</span>}
+                            <span className="text-[10px] text-muted-foreground">{Math.round(email.effectiveScore)}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-[10px] text-muted-foreground">
+                            {email.sourceCount} {email.sourceCount === 1 ? "source" : "sources"}
+                            {email.validationStatus === "VERIFIED" ? " · Verified" : ""}
+                          </span>
+                          <div className="flex gap-0.5">
+                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => confirmGoodMutation.mutate(email.evidenceId)} disabled={confirmGoodMutation.isPending} data-testid={`button-confirm-email-${i}`}>
+                              <ThumbsUp className="w-3 h-3" />
+                            </Button>
+                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => markWrongMutation.mutate(email.evidenceId)} disabled={markWrongMutation.isPending} data-testid={`button-wrong-email-${i}`}>
+                              <ThumbsDown className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {contactPath.warnings.length > 0 && (
+                  <div className="text-[10px] text-muted-foreground pt-1">
+                    {contactPath.warnings.join(" · ")}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-base font-semibold">Owner / Contact</CardTitle>
