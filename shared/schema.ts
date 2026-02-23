@@ -544,6 +544,53 @@ export const insertRooftopOwnerSchema = createInsertSchema(rooftopOwners).omit({
 export type RooftopOwner = typeof rooftopOwners.$inferSelect;
 export type InsertRooftopOwner = z.infer<typeof insertRooftopOwnerSchema>;
 
+export const graphNodes = pgTable("graph_nodes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  nodeType: text("node_type").notNull(),
+  label: text("label").notNull(),
+  normalizedLabel: text("normalized_label").notNull(),
+  entityId: varchar("entity_id"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const graphEdges = pgTable("graph_edges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceNodeId: varchar("source_node_id").notNull(),
+  targetNodeId: varchar("target_node_id").notNull(),
+  edgeType: text("edge_type").notNull(),
+  label: text("label"),
+  weight: real("weight").notNull().default(1.0),
+  evidence: text("evidence"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const graphBuildRuns = pgTable("graph_build_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  status: text("status").notNull().default("pending"),
+  nodesCreated: integer("nodes_created").notNull().default(0),
+  edgesCreated: integer("edges_created").notNull().default(0),
+  leadsProcessed: integer("leads_processed").notNull().default(0),
+  totalLeads: integer("total_leads").notNull().default(0),
+  currentPhase: text("current_phase"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGraphNodeSchema = createInsertSchema(graphNodes).omit({ id: true, createdAt: true });
+export const insertGraphEdgeSchema = createInsertSchema(graphEdges).omit({ id: true, createdAt: true });
+export const insertGraphBuildRunSchema = createInsertSchema(graphBuildRuns).omit({ id: true, createdAt: true });
+
+export type GraphNode = typeof graphNodes.$inferSelect;
+export type InsertGraphNode = z.infer<typeof insertGraphNodeSchema>;
+export type GraphEdge = typeof graphEdges.$inferSelect;
+export type InsertGraphEdge = z.infer<typeof insertGraphEdgeSchema>;
+export type GraphBuildRun = typeof graphBuildRuns.$inferSelect;
+export type InsertGraphBuildRun = z.infer<typeof insertGraphBuildRunSchema>;
+
 export const insertContactEvidenceSchema = createInsertSchema(contactEvidence).omit({ id: true, createdAt: true });
 export const insertConflictSetSchema = createInsertSchema(conflictSets).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertEnrichmentJobSchema = createInsertSchema(enrichmentJobs).omit({ id: true, createdAt: true });

@@ -15,6 +15,7 @@ import LeadDetail from "@/pages/lead-detail";
 import MapStorms from "@/pages/map-storms";
 import Admin from "@/pages/admin";
 import Portfolios from "@/pages/portfolios";
+import NetworkExplorer from "@/pages/network-explorer";
 
 function Router() {
   return (
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/leads" component={Leads} />
       <Route path="/leads/:id" component={LeadDetail} />
       <Route path="/portfolios" component={Portfolios} />
+      <Route path="/network" component={NetworkExplorer} />
       <Route path="/map" component={MapStorms} />
       <Route path="/admin" component={Admin} />
       <Route component={NotFound} />

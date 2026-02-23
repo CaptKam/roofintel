@@ -2119,6 +2119,76 @@ export async function registerRoutes(
     }
   });
 
+  // ============================================================
+  // Relationship Graph endpoints
+  // ============================================================
+
+  app.post("/api/graph/build", async (req, res) => {
+    try {
+      const { buildRelationshipGraph } = await import("./graph-engine");
+      const runId = await buildRelationshipGraph();
+      res.json({ runId, message: "Graph build started" });
+    } catch (error: any) {
+      console.error("[API] Graph build failed:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/graph/build/status", async (req, res) => {
+    try {
+      const { getBuildRunStatus, getActiveBuildRunId } = await import("./graph-engine");
+      const runId = (req.query.runId as string) || getActiveBuildRunId() || undefined;
+      const status = await getBuildRunStatus(runId);
+      res.json(status || { status: "none" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/graph/stats", async (req, res) => {
+    try {
+      const { getGraphStats } = await import("./graph-engine");
+      const stats = await getGraphStats();
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/graph/node/:nodeId", async (req, res) => {
+    try {
+      const { getNodeWithEdges } = await import("./graph-engine");
+      const depth = parseInt(req.query.depth as string) || 1;
+      const result = await getNodeWithEdges(req.params.nodeId, Math.min(depth, 3));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/graph/search", async (req, res) => {
+    try {
+      const { searchGraphNodes } = await import("./graph-engine");
+      const query = req.query.q as string;
+      const nodeType = req.query.type as string | undefined;
+      if (!query) return res.json([]);
+      const results = await searchGraphNodes(query, nodeType, 20);
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/graph/lead/:leadId", async (req, res) => {
+    try {
+      const { getNodesByLeadId } = await import("./graph-engine");
+      const result = await getNodesByLeadId(req.params.leadId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);
