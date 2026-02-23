@@ -2119,6 +2119,17 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/permits/sync-contractors", async (req, res) => {
+    try {
+      const { syncPermitContractorsToLeads } = await import("./permit-contractor-sync");
+      const result = await syncPermitContractorsToLeads();
+      res.json(result);
+    } catch (error: any) {
+      console.error("[API] Permit contractor sync failed:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ============================================================
   // Relationship Graph endpoints
   // ============================================================
