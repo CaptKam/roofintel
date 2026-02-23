@@ -52,6 +52,228 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/dashboard/command-center", async (_req, res) => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const now = new Date();
+      const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const [
+        heroResult,
+        pipelineResult,
+        coverageResult,
+        priorityResult,
+        stormPulseResult,
+        stormAffectedResult,
+        scoreDistResult,
+        topValueResult,
+        competitorResult,
+      ] = await Promise.all([
+        db.execute(sql`
+          SELECT
+            COUNT(*)::int AS total_leads,
+            COALESCE(SUM(total_value), 0)::bigint AS total_pipeline_value,
+            COUNT(*) FILTER (WHERE hail_events > 0 AND lead_score >= 60 AND (owner_phone IS NOT NULL OR contact_phone IS NOT NULL))::int AS actionable_leads,
+            COALESCE(ROUND(AVG(lead_score)::numeric, 1), 0)::float AS avg_score,
+            COUNT(*) FILTER (WHERE lead_score >= 80)::int AS hot_leads
+          FROM leads
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*) FILTER (WHERE status = 'new')::int AS new,
+            COUNT(*) FILTER (WHERE status = 'contacted')::int AS contacted,
+            COUNT(*) FILTER (WHERE status = 'qualified')::int AS qualified,
+            COUNT(*) FILTER (WHERE status = 'proposal')::int AS proposal,
+            COUNT(*) FILTER (WHERE status = 'closed')::int AS closed
+          FROM leads
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE owner_phone IS NOT NULL OR contact_phone IS NOT NULL)::int AS has_phone,
+            COUNT(*) FILTER (WHERE owner_email IS NOT NULL OR contact_email IS NOT NULL)::int AS has_email,
+            COUNT(*) FILTER (WHERE managing_member IS NOT NULL)::int AS has_decision_maker,
+            COUNT(*) FILTER (WHERE ownership_structure IS NOT NULL)::int AS has_ownership_classified,
+            COUNT(*) FILTER (WHERE enrichment_status = 'complete')::int AS enriched,
+            COUNT(*) FILTER (WHERE permit_contractors IS NOT NULL)::int AS has_permit_data
+          FROM leads
+        `),
+        db.execute(sql`
+          SELECT
+            id, address, city, lead_score, roof_last_replaced, hail_events,
+            last_hail_date, claim_window_open, owner_name,
+            COALESCE(managing_member, contact_name) AS contact_name,
+            COALESCE(owner_phone, contact_phone, managing_member_phone) AS contact_phone,
+            total_value
+          FROM leads
+          WHERE lead_score >= 50
+            AND (owner_phone IS NOT NULL OR contact_phone IS NOT NULL OR managing_member_phone IS NOT NULL)
+          ORDER BY lead_score DESC, hail_events DESC
+          LIMIT 10
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*) FILTER (WHERE event_date >= ${d30})::int AS recent_30d,
+            COUNT(*) FILTER (WHERE event_date >= ${d7})::int AS recent_7d,
+            AVG(hail_size) FILTER (WHERE event_date >= ${d30})::float AS avg_hail_size_30d
+          FROM hail_events
+        `),
+        db.execute(sql`
+          SELECT COUNT(*)::int AS affected
+          FROM leads
+          WHERE last_hail_date >= ${d30}
+        `),
+        db.execute(sql`
+          SELECT
+            CASE
+              WHEN lead_score BETWEEN 0 AND 20 THEN '0-20'
+              WHEN lead_score BETWEEN 21 AND 40 THEN '21-40'
+              WHEN lead_score BETWEEN 41 AND 60 THEN '41-60'
+              WHEN lead_score BETWEEN 61 AND 80 THEN '61-80'
+              WHEN lead_score BETWEEN 81 AND 100 THEN '81-100'
+            END AS range,
+            COUNT(*)::int AS count
+          FROM leads
+          GROUP BY 1
+          ORDER BY 1
+        `),
+        db.execute(sql`
+          SELECT id, address, total_value, lead_score, owner_name
+          FROM leads
+          WHERE total_value IS NOT NULL
+          ORDER BY total_value DESC
+          LIMIT 5
+        `),
+        db.execute(sql`
+          SELECT permit_contractors
+          FROM leads
+          WHERE permit_contractors IS NOT NULL
+        `),
+      ]);
+
+      const hero = (heroResult as any).rows[0];
+      const pipe = (pipelineResult as any).rows[0];
+      const cov = (coverageResult as any).rows[0];
+      const priorityRows = (priorityResult as any).rows;
+      const stormPulse = (stormPulseResult as any).rows[0];
+      const stormAffected = (stormAffectedResult as any).rows[0];
+      const scoreRows = (scoreDistResult as any).rows;
+      const topValueRows = (topValueResult as any).rows;
+      const contractorRows = (competitorResult as any).rows;
+
+      const total = cov.total || 1;
+      const pct = (v: number) => Math.round((v / total) * 100);
+
+      const priorityActions = priorityRows.map((r: any) => {
+        const roofAge = r.roof_last_replaced ? currentYear - r.roof_last_replaced : null;
+        const reasons: string[] = [];
+        if (roofAge !== null && roofAge > 15) reasons.push("Old roof");
+        if (r.hail_events > 0) reasons.push("Recent hail");
+        if (r.contact_phone) reasons.push("Has phone");
+        if (r.claim_window_open) reasons.push("Claim window open");
+        if (r.total_value && r.total_value > 500000) reasons.push("High value");
+        return {
+          id: r.id,
+          address: r.address,
+          city: r.city,
+          leadScore: r.lead_score,
+          roofAge,
+          hailEvents: r.hail_events,
+          lastHailDate: r.last_hail_date || null,
+          claimWindowOpen: r.claim_window_open || false,
+          ownerName: r.owner_name,
+          contactName: r.contact_name || null,
+          contactPhone: r.contact_phone || null,
+          totalValue: r.total_value || null,
+          reason: reasons.length > 0 ? reasons.join(" + ") : "High score",
+        };
+      });
+
+      // Filter function to exclude garbage contractor names
+      const isValidContractorName = (name: string): boolean => {
+        if (!name || name.length < 3) return false;
+        // Filter names that are only punctuation/whitespace
+        if (/^[,\s().\-]+$/.test(name)) return false;
+        // Filter common non-meaningful values
+        const normalized = name.toUpperCase();
+        if (["N/A", "NONE", "UNKNOWN", "TBD", "NA"].includes(normalized)) return false;
+        return true;
+      };
+
+      const contractorMap = new Map<string, { count: number; recentDate: string | null }>();
+      for (const row of contractorRows) {
+        try {
+          const contractors = typeof row.permit_contractors === "string"
+            ? JSON.parse(row.permit_contractors)
+            : row.permit_contractors;
+          if (Array.isArray(contractors)) {
+            for (const c of contractors) {
+              const name = (c.name || c.contractor || "").trim();
+              if (!isValidContractorName(name)) continue;
+              const existing = contractorMap.get(name);
+              const permitDate = c.date || c.issued_date || null;
+              if (existing) {
+                existing.count++;
+                if (permitDate && (!existing.recentDate || permitDate > existing.recentDate)) {
+                  existing.recentDate = permitDate;
+                }
+              } else {
+                contractorMap.set(name, { count: 1, recentDate: permitDate });
+              }
+            }
+          }
+        } catch {}
+      }
+      const competitors = Array.from(contractorMap.entries())
+        .map(([name, data]) => ({ name, permitCount: data.count, recentPermit: data.recentDate }))
+        .sort((a, b) => b.permitCount - a.permitCount)
+        .slice(0, 8);
+
+      res.json({
+        totalLeads: hero.total_leads,
+        totalPipelineValue: Number(hero.total_pipeline_value),
+        actionableLeads: hero.actionable_leads,
+        avgScore: hero.avg_score,
+        hotLeads: hero.hot_leads,
+        pipeline: {
+          new: pipe.new,
+          contacted: pipe.contacted,
+          qualified: pipe.qualified,
+          proposal: pipe.proposal,
+          closed: pipe.closed,
+        },
+        coverage: {
+          hasPhone: pct(cov.has_phone),
+          hasEmail: pct(cov.has_email),
+          hasDecisionMaker: pct(cov.has_decision_maker),
+          hasOwnershipClassified: pct(cov.has_ownership_classified),
+          enriched: pct(cov.enriched),
+          hasPermitData: pct(cov.has_permit_data),
+        },
+        priorityActions,
+        stormPulse: {
+          recentEvents30d: stormPulse.recent_30d,
+          recentEvents7d: stormPulse.recent_7d,
+          avgHailSize30d: stormPulse.avg_hail_size_30d || null,
+          affectedLeads30d: stormAffected.affected,
+        },
+        competitors,
+        scoreDistribution: scoreRows.map((r: any) => ({ range: r.range, count: r.count })),
+        topValueLeads: topValueRows.map((r: any) => ({
+          id: r.id,
+          address: r.address,
+          totalValue: r.total_value,
+          leadScore: r.lead_score,
+          ownerName: r.owner_name,
+        })),
+      });
+    } catch (error) {
+      console.error("Command center error:", error);
+      res.status(500).json({ message: "Failed to load command center data" });
+    }
+  });
+
   app.get("/api/dashboard/stats", async (req, res) => {
     try {
       const marketId = req.query.marketId as string | undefined;

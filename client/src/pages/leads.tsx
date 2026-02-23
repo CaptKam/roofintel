@@ -29,7 +29,9 @@ import {
   ChevronLeft,
   User,
   Phone,
+  Mail,
   Fingerprint,
+  HardHat,
   Download,
 } from "lucide-react";
 import type { Lead } from "@shared/schema";
@@ -305,25 +307,18 @@ export default function Leads() {
                     {lead.ownerType === "LLC" && (
                       <Badge variant="outline" className="text-[10px]">{lead.llcName || "LLC"}</Badge>
                     )}
-                    {(lead as any).ownershipFlag && (
-                      <Badge variant="destructive" className="text-[10px]" data-testid={`badge-ownership-${lead.id}`}>
-                        {(lead as any).ownershipFlag}
-                      </Badge>
+                    {lead.claimWindowOpen && (
+                      <Badge variant="default" className="text-[9px]" data-testid={`badge-claimable-${lead.id}`}>Claimable</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-4 mt-1 flex-wrap">
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <MapPin className="w-3 h-3" />
-                      {lead.city}, {lead.county} Co.
+                      {lead.city}
                     </span>
                     <span className="text-xs text-muted-foreground flex items-center gap-1">
                       <Ruler className="w-3 h-3" />
                       {lead.sqft.toLocaleString()} sqft
-                      {lead.stories > 1 && ` (~${Math.round(lead.sqft / lead.stories).toLocaleString()} roof)`}
-                    </span>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Building2 className="w-3 h-3" />
-                      {lead.zoning}
                     </span>
                     {lead.roofLastReplaced && (
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -334,26 +329,41 @@ export default function Leads() {
                     {lead.hailEvents > 0 && (
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <CloudLightning className="w-3 h-3" />
-                        {lead.hailEvents} hail hit{lead.hailEvents > 1 ? "s" : ""}
-                        {lead.claimWindowOpen && (
-                          <Badge variant="default" className="text-[9px] ml-0.5">Claimable</Badge>
-                        )}
+                        {lead.hailEvents} hail
                       </span>
                     )}
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <User className="w-3 h-3" />
+                    <span className="text-xs text-muted-foreground truncate max-w-[160px]">
                       {lead.ownerName}
                     </span>
-                    {lead.managingMember && (
-                      <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <Fingerprint className="w-3 h-3" />
-                        {lead.managingMember}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {(lead.ownerPhone || lead.contactPhone) && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-foreground bg-muted px-1.5 py-0.5 rounded" data-testid={`signal-phone-${lead.id}`}>
+                        <Phone className="w-2.5 h-2.5" />
+                        Phone
                       </span>
                     )}
-                    {(lead.ownerPhone || lead.contactPhone) && (
-                      <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <Phone className="w-3 h-3" />
-                        {lead.ownerPhone || lead.contactPhone}
+                    {(lead.ownerEmail || lead.contactEmail) && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-foreground bg-muted px-1.5 py-0.5 rounded" data-testid={`signal-email-${lead.id}`}>
+                        <Mail className="w-2.5 h-2.5" />
+                        Email
+                      </span>
+                    )}
+                    {lead.managingMember && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-foreground bg-muted px-1.5 py-0.5 rounded" data-testid={`signal-dm-${lead.id}`}>
+                        <Fingerprint className="w-2.5 h-2.5" />
+                        DM
+                      </span>
+                    )}
+                    {(lead as any).permitContractors && (lead as any).permitContractors.length > 0 && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded" data-testid={`signal-permits-${lead.id}`}>
+                        <HardHat className="w-2.5 h-2.5" />
+                        {(lead as any).permitContractors.length}
+                      </span>
+                    )}
+                    {lead.totalValue && lead.totalValue > 0 && (
+                      <span className="text-[10px] text-muted-foreground ml-1 tabular-nums">
+                        {lead.totalValue >= 1_000_000 ? `$${(lead.totalValue / 1_000_000).toFixed(1)}M` : `$${(lead.totalValue / 1_000).toFixed(0)}K`}
                       </span>
                     )}
                   </div>
