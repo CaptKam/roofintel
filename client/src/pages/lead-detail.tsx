@@ -129,8 +129,7 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
 
   const hunterRemaining = usage?.hunter?.remaining ?? 0;
   const pdlRemaining = usage?.pdl?.remaining ?? 0;
-  const gpRemaining = usage?.googlePlaces?.remaining ?? 0;
-  const gpCost = usage?.googlePlaces?.estimatedCost ?? 0;
+  const gpUsed = usage?.googlePlaces?.used ?? 0;
   const serperAvailable = usage?.serperConfigured ?? false;
 
   const googlePlacesMutation = useMutation({
@@ -314,7 +313,7 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
         size="sm"
         variant="outline"
         onClick={() => googlePlacesMutation.mutate()}
-        disabled={googlePlacesMutation.isPending || gpRemaining <= 0}
+        disabled={googlePlacesMutation.isPending}
         className="text-xs"
         data-testid="button-google-places-enrich"
       >
@@ -323,8 +322,7 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
         ) : (
           <MapPinned className="w-3 h-3 mr-1" />
         )}
-        Google Places ({gpRemaining})
-        {gpCost > 0 && <span className="ml-1 text-muted-foreground">${gpCost}</span>}
+        Google Places ({gpUsed} used)
       </Button>
       {serperAvailable && (
         <Button

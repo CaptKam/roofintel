@@ -379,7 +379,15 @@ export async function registerRoutes(
   app.get("/api/leads/:id/graph-intelligence", async (req, res) => {
     try {
       const intel = await getGraphIntelligence(req.params.id);
-      res.json(intel || { hasData: false });
+      res.json(intel || { 
+        hasData: false, 
+        lastBuilt: null, 
+        sharedOfficers: [], 
+        sharedAgents: [], 
+        mailingClusters: [], 
+        networkContacts: [], 
+        connectedPropertyCount: 0 
+      });
     } catch (error: any) {
       console.error("Graph intelligence error:", error);
       res.status(500).json({ error: error.message });
@@ -400,17 +408,6 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Lead update error:", error);
       res.status(500).json({ message: "Failed to update lead" });
-    }
-  });
-
-  app.get("/api/leads/:id/graph-intelligence", async (req, res) => {
-    try {
-      const { getGraphIntelligence } = await import("./graph-engine");
-      const intel = await getGraphIntelligence(req.params.id);
-      res.json(intel || { hasData: false });
-    } catch (error) {
-      console.error("Graph intelligence error:", error);
-      res.status(500).json({ message: "Failed to load graph intelligence" });
     }
   });
 

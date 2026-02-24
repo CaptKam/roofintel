@@ -45,7 +45,6 @@ export async function getGooglePlacesUsage() {
     month: row.month,
     lastUsedAt: row.lastUsedAt,
     estimatedCost: Math.round(estimatedCost * 100) / 100,
-    freeCreditRemaining: Math.max(0, Math.round((200 - estimatedCost) * 100) / 100),
   };
 }
 

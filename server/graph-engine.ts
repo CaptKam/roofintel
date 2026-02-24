@@ -159,6 +159,8 @@ export async function getGraphIntelligence(leadId: string) {
   // 8. Last built timestamp
   const [lastEdge] = await db.select({ timestamp: sql<string>`max(created_at)` }).from(graphEdges);
 
+  const connectedProperties = await getConnectedPropertyCount(ownerNode.id);
+
   return {
     hasData: true,
     lastBuilt: lastEdge?.timestamp || null,
@@ -166,8 +168,44 @@ export async function getGraphIntelligence(leadId: string) {
     sharedAgents: sharedAgents.rows,
     mailingClusters: mailingClusters.rows,
     networkContacts: networkContacts.rows,
-    connectedPropertyCount: 0 // Placeholder
+    connectedPropertyCount: (connectedProperties as any).rows[0]?.count || 0
   };
+}
+
+async function getConnectedPropertyCount(ownerNodeId: number) {
+  const result = await db.execute(sql`
+    WITH connected_entities AS (
+      -- Shared officers
+      SELECT DISTINCT n2.id
+      FROM ${graphNodes} n
+      JOIN ${graphEdges} e ON (e.source_id = n.id OR e.target_id = n.id)
+      JOIN ${graphNodes} lo ON (lo.id = CASE WHEN e.source_id = n.id THEN e.target_id ELSE e.source_id END)
+      JOIN ${graphEdges} e2 ON (e2.source_id = lo.id OR e2.target_id = lo.id)
+      JOIN ${graphNodes} n2 ON (n2.id = CASE WHEN e2.source_id = lo.id THEN e2.target_id ELSE e2.source_id END)
+      WHERE n.id = ${ownerNodeId}
+      AND lo.type = 'person'
+      AND n2.type = 'entity'
+      AND n2.id != ${ownerNodeId}
+      
+      UNION
+      
+      -- Shared address
+      SELECT DISTINCT n2.id
+      FROM ${graphNodes} n
+      JOIN ${graphEdges} e ON (e.source_id = n.id OR e.target_id = n.id)
+      JOIN ${graphNodes} la ON (la.id = CASE WHEN e.source_id = n.id THEN e.target_id ELSE e.source_id END)
+      JOIN ${graphEdges} e2 ON (e2.source_id = la.id OR e2.target_id = la.id)
+      JOIN ${graphNodes} n2 ON (n2.id = CASE WHEN e2.source_id = la.id THEN e2.target_id ELSE e2.source_id END)
+      WHERE n.id = ${ownerNodeId}
+      AND la.type = 'address'
+      AND n2.type = 'entity'
+      AND n2.id != ${ownerNodeId}
+    )
+    SELECT COUNT(l.id)::int as count
+    FROM connected_entities ce
+    JOIN ${leads} l ON l.owner_name = (SELECT name FROM ${graphNodes} WHERE id = ce.id)
+  `);
+  return result;
 }
 
 export async function buildRelationshipGraph() {
