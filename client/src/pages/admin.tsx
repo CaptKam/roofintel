@@ -95,6 +95,144 @@ interface ComplianceStatus {
   dncRegistered: number;
 }
 
+function CoverageBar({ label, value, total, icon }: { label: string; value: number; total: number; icon?: JSX.Element }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+  return (
+    <div className="space-y-1" data-testid={`coverage-${label.toLowerCase().replace(/\s+/g, '-')}`}>
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          {icon}
+          {label}
+        </span>
+        <span className="font-medium">{value.toLocaleString()} <span className="text-muted-foreground font-normal">/ {total.toLocaleString()} ({pct}%)</span></span>
+      </div>
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${pct >= 50 ? 'bg-emerald-500' : pct >= 20 ? 'bg-amber-500' : 'bg-red-400'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DataCoveragePanel() {
+  const { data, isLoading } = useQuery<{
+    total: number;
+    coverage: Record<string, number>;
+    enrichment: Record<string, number>;
+    phoneSources: { source: string; count: number }[];
+    contactSources: { source: string; count: number }[];
+    evidenceSources: { source: string; count: number }[];
+  }>({ queryKey: ["/api/admin/data-coverage"] });
+
+  if (isLoading) return <Skeleton className="h-64" />;
+  if (!data) return <div className="text-muted-foreground text-sm">Failed to load coverage data</div>;
+
+  const t = data.total;
+  const c = data.coverage;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Leads</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold" data-testid="text-total-leads">{t.toLocaleString()}</div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Enriched</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold" data-testid="text-enriched-count">{(data.enrichment.enriched || 0).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">Full pipeline completed</p>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">With Phone</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold" data-testid="text-phone-count">{(c.phone || 0).toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">{t > 0 ? Math.round(((c.phone || 0) / t) * 100) : 0}% of leads</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" /> Contact Data Coverage
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <CoverageBar label="Owner Name" value={c.ownerName || 0} total={t} icon={<Users className="h-3.5 w-3.5" />} />
+          <CoverageBar label="Phone Number" value={c.phone || 0} total={t} icon={<Phone className="h-3.5 w-3.5" />} />
+          <CoverageBar label="Email Address" value={c.email || 0} total={t} icon={<Globe className="h-3.5 w-3.5" />} />
+          <CoverageBar label="Contact Person" value={c.contactPerson || 0} total={t} icon={<UserCheck className="h-3.5 w-3.5" />} />
+          <CoverageBar label="Business Website" value={c.website || 0} total={t} icon={<Globe className="h-3.5 w-3.5" />} />
+          <CoverageBar label="Managing Member" value={c.managingMember || 0} total={t} icon={<UserSearch className="h-3.5 w-3.5" />} />
+          <CoverageBar label="Management Company" value={c.managementCompany || 0} total={t} icon={<Building2 className="h-3.5 w-3.5" />} />
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Database className="h-4 w-4" /> Public Records Coverage
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <CoverageBar label="TX Taxpayer ID" value={c.taxpayerId || 0} total={t} icon={<Fingerprint className="h-3.5 w-3.5" />} />
+          <CoverageBar label="SOS File Number" value={c.sosFileNumber || 0} total={t} icon={<FileText className="h-3.5 w-3.5" />} />
+          <CoverageBar label="Intelligence Score" value={c.intelligenceScore || 0} total={t} icon={<Target className="h-3.5 w-3.5" />} />
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {data.phoneSources.length > 0 && (
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Phone Sources</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {data.phoneSources.map(s => (
+                  <div key={s.source} className="flex justify-between text-sm" data-testid={`phone-source-${s.source}`}>
+                    <span className="text-muted-foreground">{s.source}</span>
+                    <Badge variant="secondary">{s.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {data.evidenceSources.length > 0 && (
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Evidence Sources</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {data.evidenceSources.map(s => (
+                  <div key={s.source} className="flex justify-between text-sm" data-testid={`evidence-source-${s.source}`}>
+                    <span className="text-muted-foreground">{s.source}</span>
+                    <Badge variant="secondary">{s.count}</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EnrichmentCreditsCard() {
   const { data: usage, isLoading } = useQuery<{
     hunter: { used: number; limit: number; remaining: number; month: string };
@@ -168,7 +306,7 @@ function CreditMeter({ label, description, used, limit, icon, testId }: {
   description: string;
   used: number;
   limit: number;
-  icon: React.ReactNode;
+  icon: JSX.Element;
   testId: string;
 }) {
   const remaining = Math.max(0, limit - used);
@@ -949,6 +1087,7 @@ export default function Admin() {
 
       <Tabs defaultValue="property-sources" className="space-y-6">
         <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">
+          <TabsTrigger value="data-coverage" className="rounded-lg text-[13px] font-medium" data-testid="tab-data-coverage">Data Coverage</TabsTrigger>
           <TabsTrigger value="property-sources" className="rounded-lg text-[13px] font-medium" data-testid="tab-property-sources">Property Sources</TabsTrigger>
           <TabsTrigger value="storm-data" className="rounded-lg text-[13px] font-medium" data-testid="tab-storm-data">Storm Data</TabsTrigger>
           <TabsTrigger value="contact-enrichment" className="rounded-lg text-[13px] font-medium" data-testid="tab-contact-enrichment">Contact Enrichment</TabsTrigger>
@@ -956,6 +1095,10 @@ export default function Admin() {
           <TabsTrigger value="roofing-permits" className="rounded-lg text-[13px] font-medium" data-testid="tab-roofing-permits">Roofing Permits</TabsTrigger>
           <TabsTrigger value="system" className="rounded-lg text-[13px] font-medium" data-testid="tab-system">System</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="data-coverage" className="space-y-6">
+          <DataCoveragePanel />
+        </TabsContent>
 
         <TabsContent value="property-sources" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

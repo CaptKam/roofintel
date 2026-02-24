@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import type { Lead } from "@shared/schema";
+import { recordEvidence } from "./evidence-recorder";
 
 const TX_OPEN_DATA_API = "https://data.texas.gov/resource/9cir-efmm.json";
 
@@ -19,6 +20,11 @@ interface TxOpenDataRecord {
   sos_status_date: string;
   sos_status_code: string;
   right_to_transact_business_code: string;
+  outlet_address?: string;
+  outlet_city?: string;
+  outlet_state?: string;
+  outlet_zip?: string;
+  outlet_phone?: string;
 }
 
 function cleanCompanyName(name: string): string {
@@ -95,6 +101,15 @@ function formatOrgType(code: string): string {
   return types[code] || code;
 }
 
+function normalizeOutletPhone(phone?: string): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  const last10 = digits.slice(-10);
+  if (last10 === "0000000000" || last10 === "1111111111" || last10 === "1234567890") return null;
+  return `(${last10.slice(0, 3)}) ${last10.slice(3, 6)}-${last10.slice(6)}`;
+}
+
 export async function enrichLeadContacts(
   marketId?: string,
   options: { batchSize?: number; delayMs?: number } = {}
@@ -126,7 +141,7 @@ export async function enrichLeadContacts(
   const uniqueOwners = Array.from(ownerGroups.entries());
   const batch = uniqueOwners.slice(0, batchSize);
 
-  console.log(`[Contact Enrichment] Processing ${batch.length} unique owners (${eligibleLeads.length} eligible leads) via Texas Open Data Portal`);
+  console.log(`[Contact Enrichment] Processing ${batch.length} unique owners (${eligibleLeads.length} eligible leads) via Texas Open Data Portal (with outlet phone/address extraction)`);
 
   const importRun = await storage.createImportRun({
     type: "contact_enrichment",
@@ -167,6 +182,14 @@ export async function enrichLeadContacts(
         match.taxpayer_zip,
       ].filter(Boolean).join(", ");
 
+      const outletPhone = normalizeOutletPhone(match.outlet_phone);
+      const outletAddr = [
+        match.outlet_address,
+        match.outlet_city,
+        match.outlet_state,
+        match.outlet_zip,
+      ].filter(Boolean).join(", ");
+
       const updates: Partial<Lead> = {
         taxpayerId: match.taxpayer_number,
         sosFileNumber: sosFileNum || null,
@@ -180,8 +203,63 @@ export async function enrichLeadContacts(
         updates.officerTitle = match.right_to_transact_business_code === "A" ? "Active" : "Inactive";
       }
 
+      if (outletPhone) {
+        (updates as any).ownerPhone = (updates as any).ownerPhone || outletPhone;
+        (updates as any).phoneSource = (updates as any).phoneSource || "TX Sales Tax Outlet";
+      }
+
       for (const lead of ownerLeads) {
-        await storage.updateLead(lead.id, updates);
+        const leadUpdates = { ...updates } as any;
+        if (outletPhone && lead.ownerPhone) {
+          delete leadUpdates.ownerPhone;
+          delete leadUpdates.phoneSource;
+        }
+        await storage.updateLead(lead.id, leadUpdates);
+
+        if (outletPhone) {
+          try {
+            await recordEvidence({
+              leadId: lead.id,
+              entityType: "LEAD",
+              entityId: lead.id,
+              contactType: "phone",
+              contactValue: outletPhone,
+              normalizedValue: outletPhone.replace(/\D/g, ""),
+              isPublicBusiness: true,
+              sourceName: "TX Comptroller Sales Tax",
+              sourceUrl: `https://data.texas.gov/resource/9cir-efmm.json?taxpayer_number=${match.taxpayer_number}`,
+              sourceType: "API",
+              extractorMethod: "RULE",
+              rawSnippet: `Outlet phone for ${match.taxpayer_name}: ${outletPhone}` +
+                (outletAddr ? ` at ${outletAddr}` : ""),
+              confidence: 85,
+            });
+          } catch (evErr: any) {
+            console.error(`[Contact Enrichment] Failed to record outlet phone evidence for lead ${lead.id}:`, evErr.message);
+          }
+        }
+
+        if (outletAddr && outletAddr.length > 5) {
+          try {
+            await recordEvidence({
+              leadId: lead.id,
+              entityType: "LEAD",
+              entityId: lead.id,
+              contactType: "address",
+              contactValue: outletAddr,
+              normalizedValue: outletAddr.toUpperCase(),
+              isPublicBusiness: true,
+              sourceName: "TX Comptroller Sales Tax",
+              sourceUrl: `https://data.texas.gov/resource/9cir-efmm.json?taxpayer_number=${match.taxpayer_number}`,
+              sourceType: "API",
+              extractorMethod: "RULE",
+              rawSnippet: `Outlet address for ${match.taxpayer_name}: ${outletAddr}`,
+              confidence: 85,
+            });
+          } catch (evErr: any) {
+            console.error(`[Contact Enrichment] Failed to record outlet address evidence for lead ${lead.id}:`, evErr.message);
+          }
+        }
       }
       enriched += ownerLeads.length;
 

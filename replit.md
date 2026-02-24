@@ -32,7 +32,11 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
     - `reverse-address-enrichment`: Compares owner mailing vs property addresses, queries Google Places API to identify management companies, law firms, title companies, or corporate offices at the mailing address. Feeds discoveries into management attribution pipeline.
     - `compliance-gate`: Manages opt-outs, consent, and DNC checks.
     - `dm-confidence`: A 7-factor weighted formula for contact confidence scoring.
-    - `lead-enrichment-orchestrator`: On-demand single-lead enrichment that auto-triggers all agents (reverse address, attribution, role inference, confidence scoring, phone enrichment) when a lead is first viewed or manually re-enriched.
+    - `lead-enrichment-orchestrator`: On-demand single-lead enrichment that auto-triggers all agents (owner intelligence, reverse address, building tenant/manager discovery, management attribution, role inference, confidence scoring, skip trace, phone enrichment) when a lead is first viewed or manually re-enriched.
+    - `tad-agent`: Automated property fetching from Tarrant Appraisal District (TAD) ArcGIS REST API for Fort Worth area commercial properties.
+    - `collin-cad-agent`: Automated property fetching from Collin CAD ArcGIS API for Plano/Frisco/McKinney area.
+    - `denton-cad-agent`: Automated property fetching from Denton CAD FeatureServer for Denton/Lewisville/Flower Mound area.
+    - `skip-trace-agent`: Multi-source skip trace combining building permits, sales tax permits, TCEQ, WHOIS, reverse address, and email pattern discovery.
     - `ownership-classifier`: Classifies leads into 4 ownership structure buckets (small_private, investment_firm, institutional_reit, third_party_managed) using entity patterns, LLC chain depth, mailing address type, portfolio size, and property value. Computes title relevance scores per structure and selects Primary/Secondary/Operational decision makers with fallback logic.
     - `job-scheduler`: Background job management for tasks like NOAA sync and score recalculation.
     - `evidence-recorder`: Batch evidence recording with source trust scoring, corroboration counting, conflict detection, and auto-resolution (15-point margin threshold). Records contact evidence from all 16 agents.
@@ -45,7 +49,8 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **Dashboard**: Provides key statistics, score distribution, and top-scoring leads.
 - **Leads Management**: Filterable and searchable leads list, detailed lead view with property, owner, hail, and contact info.
 - **Map & Storms**: Interactive map view, live hail tracker, and predictive hail threat visualization.
-- **Data Imports**: Support for NOAA hail data, DCAD properties, and generic property CSVs.
+- **Data Imports**: Support for NOAA hail data, DCAD properties, Tarrant CAD, Collin CAD, Denton CAD, and generic property CSVs. Full DFW 4-county coverage.
+- **Data Coverage Dashboard**: Admin tab showing real-time data completeness metrics — coverage bars for owner names, phones, emails, contacts, websites, managing members, taxpayer IDs, SOS numbers. Phone/evidence source breakdowns.
 - **Contact & Phone Enrichment**: Automated processes to find owner contact information using various data sources. Includes manual-only Hunter.io (email discovery, 25/mo free) and People Data Labs (person/company enrichment, 100/mo free) integrations with per-month usage tracking and credit countdown UI.
 - **Enrichment Credits Dashboard**: Admin page shows real-time API credit usage for Hunter.io and PDL with progress bars, remaining counts, and monthly reset countdown. Lead detail page has manual enrich buttons showing remaining credits.
 - **Web Research Agent**: Scans business websites to identify decision-makers and their contact details.

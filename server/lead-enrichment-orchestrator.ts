@@ -22,6 +22,7 @@ const activeEnrichments = new Map<string, EnrichmentProgress>();
 const STEP_NAMES = [
   "Owner Intelligence (16 Agents)",
   "Reverse Address Lookup",
+  "Building Tenant & Manager Discovery",
   "Management Attribution",
   "Role Inference",
   "Confidence Scoring",
@@ -131,11 +132,57 @@ async function runReverseAddressStep(lead: Lead, progress: EnrichmentProgress): 
   }
 }
 
-async function runAttributionStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+async function runBuildingDiscoveryStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
   updateStep(progress, 2, "running");
   try {
+    if (!lead.latitude || !lead.longitude) {
+      updateStep(progress, 2, "skipped", "No coordinates for nearby search");
+      return lead;
+    }
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) {
+      updateStep(progress, 2, "skipped", "No Google Places API key");
+      return lead;
+    }
+
+    const { googlePlacesEnhancedAgent } = await import("./social-intel-agents");
+    const result = await googlePlacesEnhancedAgent(lead);
+
+    const updates: any = {};
+    if (result.contacts.length > 0) {
+      const mgmtContact = result.contacts.find(c => c.role === "property_manager" || c.role === "building_manager");
+      if (mgmtContact) {
+        if (!lead.managementCompany) updates.managementCompany = mgmtContact.company;
+        if (mgmtContact.phone && !lead.managementPhone) updates.managementPhone = mgmtContact.phone;
+      }
+    }
+
+    if (result.people.length > 0 && !lead.contactName) {
+      const best = result.people.sort((a, b) => b.confidence - a.confidence)[0];
+      updates.contactName = best.name;
+      if (best.title) updates.contactTitle = best.title;
+      if (best.phone && !lead.ownerPhone) updates.ownerPhone = best.phone;
+      if (best.email && !lead.ownerEmail) updates.ownerEmail = best.email;
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await db.update(leads).set(updates).where(eq(leads.id, lead.id));
+    }
+
+    const detail = `${result.contacts.length} building contacts, ${result.people.length} people`;
+    updateStep(progress, 2, "complete", detail);
+    return (await fetchLead(lead.id)) || lead;
+  } catch (err: any) {
+    updateStep(progress, 2, "error", err.message);
+    return lead;
+  }
+}
+
+async function runAttributionStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+  updateStep(progress, 3, "running");
+  try {
     if (lead.managementCompany && lead.managementEvidence) {
-      updateStep(progress, 2, "skipped", "Already attributed");
+      updateStep(progress, 3, "skipped", "Already attributed");
       return lead;
     }
     const { attributeLeadManagement } = await import("./management-attribution");
@@ -152,22 +199,22 @@ async function runAttributionStep(lead: Lead, progress: EnrichmentProgress): Pro
       if (result.managementEmail) updates.managementEmail = result.managementEmail;
 
       await db.update(leads).set(updates).where(eq(leads.id, lead.id));
-      updateStep(progress, 2, "complete", result.managementCompany ? `Found: ${result.managementCompany}` : `${result.evidence.length} evidence items`);
+      updateStep(progress, 3, "complete", result.managementCompany ? `Found: ${result.managementCompany}` : `${result.evidence.length} evidence items`);
     } else {
-      updateStep(progress, 2, "complete", "No management company found");
+      updateStep(progress, 3, "complete", "No management company found");
     }
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 2, "error", err.message);
+    updateStep(progress, 3, "error", err.message);
     return lead;
   }
 }
 
 async function runRoleInferenceStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
-  updateStep(progress, 3, "running");
+  updateStep(progress, 4, "running");
   try {
     if (lead.contactRole && lead.contactRole !== "Unknown" && lead.roleConfidence && lead.roleConfidence > 30) {
-      updateStep(progress, 3, "skipped", `Already: ${lead.contactRole} (${lead.roleConfidence}%)`);
+      updateStep(progress, 4, "skipped", `Already: ${lead.contactRole} (${lead.roleConfidence}%)`);
       return lead;
     }
     const { inferLeadRoles } = await import("./role-inference");
@@ -182,19 +229,19 @@ async function runRoleInferenceStep(lead: Lead, progress: EnrichmentProgress): P
         roleEvidence: best.evidence,
       };
       await db.update(leads).set(updates).where(eq(leads.id, lead.id));
-      updateStep(progress, 3, "complete", `${best.role} (${best.confidence}%)`);
+      updateStep(progress, 4, "complete", `${best.role} (${best.confidence}%)`);
     } else {
-      updateStep(progress, 3, "complete", "Insufficient data for role inference");
+      updateStep(progress, 4, "complete", "Insufficient data for role inference");
     }
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 3, "error", err.message);
+    updateStep(progress, 4, "error", err.message);
     return lead;
   }
 }
 
 async function runConfidenceScoringStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
-  updateStep(progress, 4, "running");
+  updateStep(progress, 5, "running");
   try {
     const { computeDecisionMakerConfidence } = await import("./dm-confidence");
     const result = computeDecisionMakerConfidence(lead);
@@ -210,64 +257,43 @@ async function runConfidenceScoringStep(lead: Lead, progress: EnrichmentProgress
     }
 
     await db.update(leads).set(reviewUpdates).where(eq(leads.id, lead.id));
-    updateStep(progress, 4, "complete", `Score: ${result.overallScore}/100 (${result.tier})`);
+    updateStep(progress, 5, "complete", `Score: ${result.overallScore}/100 (${result.tier})`);
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 4, "error", err.message);
+    updateStep(progress, 5, "error", err.message);
     return lead;
   }
 }
 
 async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
-  updateStep(progress, 5, "running");
+  updateStep(progress, 6, "running");
   try {
     if (lead.ownerPhone || lead.phoneEnrichedAt) {
-      updateStep(progress, 5, "skipped", lead.ownerPhone ? "Phone already exists" : "Already attempted");
+      updateStep(progress, 6, "skipped", lead.ownerPhone ? "Phone already exists" : "Already attempted");
       return lead;
     }
     if (!lead.ownerName) {
-      updateStep(progress, 5, "skipped", "No owner name for lookup");
+      updateStep(progress, 6, "skipped", "No owner name for lookup");
       return lead;
     }
 
-    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-    if (!apiKey) {
-      updateStep(progress, 5, "skipped", "No Google Places API key");
-      return lead;
+    const { enrichSingleLeadPhone } = await import("./phone-enrichment");
+    const result = await enrichSingleLeadPhone(lead);
+
+    if (result) {
+      await db.update(leads).set({
+        ownerPhone: result.phone,
+        phoneEnrichedAt: new Date(),
+        phoneSource: result.source,
+      } as any).where(eq(leads.id, lead.id));
+      updateStep(progress, 6, "complete", `Found: ${result.phone} (${result.source})`);
+    } else {
+      await db.update(leads).set({ phoneEnrichedAt: new Date() } as any).where(eq(leads.id, lead.id));
+      updateStep(progress, 6, "complete", "No phone found");
     }
-
-    const companyName = lead.ownerName.replace(/\b(LLC|INC|CORP|LTD|LP|GP|TRUST|REVOCABLE|IRREVOCABLE|LIVING|FAMILY)\b/gi, "").trim();
-    const city = (lead.city || "").trim();
-    const state = lead.state || "TX";
-
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(`${companyName} ${city} ${state}`)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
-    const searchRes = await fetch(searchUrl);
-    if (searchRes.ok) {
-      const searchData = await searchRes.json();
-      if (searchData.status === "OK" && searchData.candidates?.length > 0) {
-        const placeId = searchData.candidates[0].place_id;
-        const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,name&key=${apiKey}`;
-        const detailRes = await fetch(detailUrl);
-        if (detailRes.ok) {
-          const detailData = await detailRes.json();
-          if (detailData.result?.formatted_phone_number) {
-            await db.update(leads).set({
-              ownerPhone: detailData.result.formatted_phone_number,
-              phoneEnrichedAt: new Date(),
-              phoneSource: "Google Places",
-            } as any).where(eq(leads.id, lead.id));
-            updateStep(progress, 5, "complete", `Found: ${detailData.result.formatted_phone_number}`);
-            return (await fetchLead(lead.id)) || lead;
-          }
-        }
-      }
-    }
-
-    await db.update(leads).set({ phoneEnrichedAt: new Date() } as any).where(eq(leads.id, lead.id));
-    updateStep(progress, 5, "complete", "No phone found");
     return (await fetchLead(lead.id)) || lead;
   } catch (err: any) {
-    updateStep(progress, 5, "error", err.message);
+    updateStep(progress, 6, "error", err.message);
     return lead;
   }
 }
@@ -292,6 +318,7 @@ export async function enrichLead(leadId: string): Promise<EnrichmentProgress> {
     try {
       lead = await runOwnerIntelligenceStep(lead!, progress);
       lead = await runReverseAddressStep(lead, progress);
+      lead = await runBuildingDiscoveryStep(lead, progress);
       lead = await runAttributionStep(lead, progress);
       lead = await runRoleInferenceStep(lead, progress);
       lead = await runConfidenceScoringStep(lead, progress);

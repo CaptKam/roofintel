@@ -7,6 +7,9 @@ import { seedDatabase } from "./seed";
 import { importNoaaHailData, importNoaaMultiYear } from "./noaa-importer";
 import { importPropertyCsv, generateSampleCsv } from "./property-importer";
 import { importDcadProperties, inferCityFromCoords } from "./dcad-agent";
+import { importTadProperties } from "./tad-agent";
+import { importCollinCadProperties } from "./collin-cad-agent";
+import { importDentonCadProperties } from "./denton-cad-agent";
 import { correlateHailToLeads } from "./hail-correlator";
 import { enrichLeadContacts, getEnrichmentStatus } from "./contact-enrichment";
 import { enrichLeadPhones, getPhoneEnrichmentStatus } from "./phone-enrichment";
@@ -537,6 +540,93 @@ export async function registerRoutes(
     } catch (error) {
       console.error("DCAD import error:", error);
       res.status(500).json({ message: "Failed to start DCAD import" });
+    }
+  });
+
+  app.post("/api/import/tad", async (req, res) => {
+    try {
+      const { marketId, minImprValue, maxRecords, minSqft } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      res.json({ message: "TAD property import started", minImprValue: minImprValue || 200000, maxRecords: maxRecords || 4000, minSqft: minSqft || 0 });
+
+      importTadProperties(marketId, {
+        minImprValue: minImprValue || 200000,
+        maxRecords: maxRecords || 4000,
+        minSqft: minSqft || 0,
+      }).then((result) => {
+        console.log(`TAD import complete: ${result.imported} properties imported, ${result.skipped} skipped`);
+      }).catch((err) => {
+        console.error("TAD import failed:", err);
+      });
+    } catch (error) {
+      console.error("TAD import error:", error);
+      res.status(500).json({ message: "Failed to start TAD import" });
+    }
+  });
+
+  app.post("/api/import/collin-cad", async (req, res) => {
+    try {
+      const { marketId, minImpValue, maxRecords, minSqft } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      res.json({ message: "Collin CAD property import started", minImpValue: minImpValue || 200000, maxRecords: maxRecords || 4000, minSqft: minSqft || 0 });
+
+      importCollinCadProperties(marketId, {
+        minImpValue: minImpValue || 200000,
+        maxRecords: maxRecords || 4000,
+        minSqft: minSqft || 0,
+      }).then((result) => {
+        console.log(`Collin CAD import complete: ${result.imported} properties imported, ${result.skipped} skipped`);
+      }).catch((err) => {
+        console.error("Collin CAD import failed:", err);
+      });
+    } catch (error) {
+      console.error("Collin CAD import error:", error);
+      res.status(500).json({ message: "Failed to start Collin CAD import" });
+    }
+  });
+
+  app.post("/api/import/denton-cad", async (req, res) => {
+    try {
+      const { marketId, minImpValue, maxRecords, minSqft } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      res.json({ message: "Denton CAD property import started", minImpValue: minImpValue || 200000, maxRecords: maxRecords || 4000, minSqft: minSqft || 0 });
+
+      importDentonCadProperties(marketId, {
+        minImpValue: minImpValue || 200000,
+        maxRecords: maxRecords || 4000,
+        minSqft: minSqft || 0,
+      }).then((result) => {
+        console.log(`Denton CAD import complete: ${result.imported} properties imported, ${result.skipped} skipped`);
+      }).catch((err) => {
+        console.error("Denton CAD import failed:", err);
+      });
+    } catch (error) {
+      console.error("Denton CAD import error:", error);
+      res.status(500).json({ message: "Failed to start Denton CAD import" });
     }
   });
 
@@ -2524,6 +2614,83 @@ export async function registerRoutes(
 
       const result = await enrichPersonPDL(lead.id, name, company, location);
       res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/admin/data-coverage", async (_req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE owner_name IS NOT NULL AND owner_name != '') as has_owner_name,
+          COUNT(*) FILTER (WHERE owner_phone IS NOT NULL AND owner_phone != '') as has_phone,
+          COUNT(*) FILTER (WHERE owner_email IS NOT NULL AND owner_email != '') as has_email,
+          COUNT(*) FILTER (WHERE contact_name IS NOT NULL AND contact_name != '') as has_contact,
+          COUNT(*) FILTER (WHERE contact_email IS NOT NULL AND contact_email != '') as has_contact_email,
+          COUNT(*) FILTER (WHERE contact_phone IS NOT NULL AND contact_phone != '') as has_contact_phone,
+          COUNT(*) FILTER (WHERE business_website IS NOT NULL AND business_website != '') as has_website,
+          COUNT(*) FILTER (WHERE managing_member IS NOT NULL AND managing_member != '') as has_managing_member,
+          COUNT(*) FILTER (WHERE management_company IS NOT NULL AND management_company != '') as has_mgmt_company,
+          COUNT(*) FILTER (WHERE taxpayer_id IS NOT NULL AND taxpayer_id != '') as has_taxpayer_id,
+          COUNT(*) FILTER (WHERE sos_file_number IS NOT NULL AND sos_file_number != '') as has_sos_number,
+          COUNT(*) FILTER (WHERE intelligence_score IS NOT NULL AND intelligence_score > 0) as has_intelligence,
+          COUNT(*) FILTER (WHERE last_enriched_at IS NOT NULL) as enriched,
+          COUNT(*) FILTER (WHERE phone_enriched_at IS NOT NULL) as phone_attempted,
+          COUNT(*) FILTER (WHERE contact_enriched_at IS NOT NULL) as contact_attempted
+        FROM leads
+      `);
+
+      const phoneSources = await db.execute(sql`
+        SELECT phone_source, COUNT(*) as cnt
+        FROM leads
+        WHERE phone_source IS NOT NULL
+        GROUP BY phone_source
+        ORDER BY cnt DESC
+      `);
+
+      const contactSources = await db.execute(sql`
+        SELECT contact_source, COUNT(*) as cnt
+        FROM leads
+        WHERE contact_source IS NOT NULL
+        GROUP BY contact_source
+        ORDER BY cnt DESC
+      `);
+
+      const evidenceSources = await db.execute(sql`
+        SELECT source_name, COUNT(*) as cnt
+        FROM contact_evidence
+        GROUP BY source_name
+        ORDER BY cnt DESC
+      `);
+
+      const row = result.rows[0] || {};
+      res.json({
+        total: Number(row.total) || 0,
+        coverage: {
+          ownerName: Number(row.has_owner_name) || 0,
+          phone: Number(row.has_phone) || 0,
+          email: Number(row.has_email) || 0,
+          contactPerson: Number(row.has_contact) || 0,
+          contactEmail: Number(row.has_contact_email) || 0,
+          contactPhone: Number(row.has_contact_phone) || 0,
+          website: Number(row.has_website) || 0,
+          managingMember: Number(row.has_managing_member) || 0,
+          managementCompany: Number(row.has_mgmt_company) || 0,
+          taxpayerId: Number(row.has_taxpayer_id) || 0,
+          sosFileNumber: Number(row.has_sos_number) || 0,
+          intelligenceScore: Number(row.has_intelligence) || 0,
+        },
+        enrichment: {
+          enriched: Number(row.enriched) || 0,
+          phoneAttempted: Number(row.phone_attempted) || 0,
+          contactAttempted: Number(row.contact_attempted) || 0,
+        },
+        phoneSources: phoneSources.rows.map((r: any) => ({ source: r.phone_source, count: Number(r.cnt) })),
+        contactSources: contactSources.rows.map((r: any) => ({ source: r.contact_source, count: Number(r.cnt) })),
+        evidenceSources: evidenceSources.rows.map((r: any) => ({ source: r.source_name, count: Number(r.cnt) })),
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

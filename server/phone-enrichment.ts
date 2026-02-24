@@ -240,8 +240,174 @@ const serperProvider: PhoneProvider = {
   },
 };
 
+const officerNameReverseProvider: PhoneProvider = {
+  name: "Officer Name Reverse Search",
+  isAvailable: () => true,
+  search: async (lead: Lead): Promise<PhoneResult | null> => {
+    try {
+      const officerNames: string[] = [];
+      if (lead.managingMember) officerNames.push(lead.managingMember);
+      if (lead.contactName && lead.contactName !== lead.managingMember) officerNames.push(lead.contactName);
+
+      const dossier = lead.ownerIntelligence as any;
+      if (dossier?.realPeople) {
+        for (const p of dossier.realPeople) {
+          if (p.name && p.confidence >= 75 && !officerNames.includes(p.name)) {
+            const words = p.name.split(/\s+/);
+            if (words.length >= 2 && words.every((w: string) => /^[A-Za-z'-]+$/.test(w))) {
+              officerNames.push(p.name);
+            }
+          }
+        }
+      }
+      if (dossier?.llcChain) {
+        for (const llc of dossier.llcChain) {
+          if (llc.officers) {
+            for (const o of llc.officers) {
+              if (o.name && !officerNames.includes(o.name)) {
+                const words = o.name.split(/\s+/);
+                if (words.length >= 2 && words.every((w: string) => /^[A-Za-z'-]+$/.test(w))) {
+                  officerNames.push(o.name);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (officerNames.length === 0) return null;
+
+      for (const personName of officerNames.slice(0, 3)) {
+        const trecPhone = await searchTrecByName(personName);
+        if (trecPhone) return { phone: trecPhone, source: `TREC License (${personName})` };
+
+        const tdlrPhone = await searchTdlrByName(personName);
+        if (tdlrPhone) return { phone: tdlrPhone, source: `TDLR License (${personName})` };
+
+        const salesTaxPhone = await searchSalesTaxByPersonName(personName);
+        if (salesTaxPhone) return { phone: salesTaxPhone, source: `TX Sales Tax (${personName})` };
+      }
+
+      return null;
+    } catch (err: any) {
+      console.error(`[Phone Enrichment] Officer reverse search error:`, err.message);
+      return null;
+    }
+  },
+};
+
+async function searchTrecByName(name: string): Promise<string | null> {
+  try {
+    const encoded = encodeURIComponent(name);
+    const url = `https://data.texas.gov/resource/7gyn-ej3r.json?$where=license_holder_name like '%25${encoded}%25'&$limit=3&$select=license_holder_name,phone_number`;
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!res.ok) return null;
+    const records = await res.json();
+    if (!Array.isArray(records) || records.length === 0) return null;
+
+    const normalizedName = normalizeForSearch(name);
+    for (const r of records) {
+      const rName = normalizeForSearch(r.license_holder_name || "");
+      const nameWords = normalizedName.split(" ").filter((w: string) => w.length > 2);
+      const rWords = rName.split(" ").filter((w: string) => w.length > 2);
+      const matching = nameWords.filter((w: string) => rWords.includes(w));
+      if (matching.length >= Math.ceil(nameWords.length * 0.6) && r.phone_number) {
+        if (isValidBusinessPhone(r.phone_number)) return r.phone_number;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function searchTdlrByName(name: string): Promise<string | null> {
+  try {
+    const encoded = encodeURIComponent(name);
+    const url = `https://data.texas.gov/resource/7fy3-iers.json?$where=license_holder_name like '%25${encoded}%25'&$limit=3&$select=license_holder_name,phone`;
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!res.ok) return null;
+    const records = await res.json();
+    if (!Array.isArray(records) || records.length === 0) return null;
+
+    const normalizedName = normalizeForSearch(name);
+    for (const r of records) {
+      const rName = normalizeForSearch(r.license_holder_name || "");
+      const nameWords = normalizedName.split(" ").filter((w: string) => w.length > 2);
+      const rWords = rName.split(" ").filter((w: string) => w.length > 2);
+      const matching = nameWords.filter((w: string) => rWords.includes(w));
+      if (matching.length >= Math.ceil(nameWords.length * 0.6) && r.phone) {
+        if (isValidBusinessPhone(r.phone)) return r.phone;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function searchSalesTaxByPersonName(name: string): Promise<string | null> {
+  try {
+    const encoded = encodeURIComponent(`taxpayer_name like '%${name.replace(/'/g, "''")}%'`);
+    const url = `https://data.texas.gov/resource/9cir-efmm.json?$where=${encoded}&$limit=5&$select=taxpayer_name,outlet_phone`;
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!res.ok) return null;
+    const records = await res.json();
+    if (!Array.isArray(records) || records.length === 0) return null;
+
+    const normalizedName = normalizeForSearch(name);
+    for (const r of records) {
+      const rName = normalizeForSearch(r.taxpayer_name || "");
+      if (rName.includes(normalizedName) || normalizedName.includes(rName)) {
+        if (r.outlet_phone && isValidBusinessPhone(r.outlet_phone)) return r.outlet_phone;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+const txSalesTaxProvider: PhoneProvider = {
+  name: "TX Sales Tax Permit",
+  isAvailable: () => true,
+  search: async (lead: Lead): Promise<PhoneResult | null> => {
+    try {
+      const companyName = cleanCompanyName(lead.ownerName);
+      if (!companyName || companyName.length < 3) return null;
+
+      const searchName = companyName.substring(0, 50);
+      const encodedSearch = encodeURIComponent(`taxpayer_name like '%${searchName.replace(/'/g, "''")}%'`);
+      const url = `https://data.texas.gov/resource/9cir-efmm.json?$where=${encodedSearch}&$limit=5&$select=taxpayer_name,outlet_phone,outlet_address,outlet_city`;
+      const res = await fetch(url, {
+        headers: { "Accept": "application/json" },
+      });
+
+      if (!res.ok) return null;
+      const records = await res.json();
+      if (!Array.isArray(records) || records.length === 0) return null;
+
+      const normalizedOwner = normalizeForSearch(lead.ownerName);
+      const cleanedOwner = normalizeForSearch(companyName);
+
+      for (const record of records) {
+        const rClean = normalizeForSearch(cleanCompanyName(record.taxpayer_name || ""));
+        if (rClean === normalizedOwner || rClean === cleanedOwner || rClean.includes(cleanedOwner) || cleanedOwner.includes(rClean)) {
+          const phone = record.outlet_phone;
+          if (phone && isValidBusinessPhone(phone)) {
+            return { phone, source: "TX Sales Tax Permit" };
+          }
+        }
+      }
+
+      return null;
+    } catch (err: any) {
+      if (!err.message?.includes("429")) {
+        console.error(`[Phone Enrichment] TX Sales Tax error for "${lead.ownerName}":`, err.message);
+      }
+      return null;
+    }
+  },
+};
+
 function getProviders(): PhoneProvider[] {
   return [
+    txSalesTaxProvider,
+    officerNameReverseProvider,
     googlePlacesProvider,
     openCorporatesProvider,
     serperProvider,
@@ -253,6 +419,8 @@ export function getPhoneEnrichmentStatus(): {
   totalAvailable: number;
 } {
   const allProviders = [
+    { name: "TX Sales Tax Permit", available: txSalesTaxProvider.isAvailable() },
+    { name: "Officer Name Reverse Search", available: officerNameReverseProvider.isAvailable() },
     { name: "Google Places", available: googlePlacesProvider.isAvailable() },
     { name: "OpenCorporates", available: openCorporatesProvider.isAvailable() },
     { name: "Web Search (Serper)", available: serperProvider.isAvailable() },
@@ -262,6 +430,24 @@ export function getPhoneEnrichmentStatus(): {
     providers: allProviders,
     totalAvailable: allProviders.filter(p => p.available).length,
   };
+}
+
+export async function enrichSingleLeadPhone(lead: Lead): Promise<PhoneResult | null> {
+  if (!lead.ownerName) return null;
+
+  const providers = getProviders();
+  if (providers.length === 0) return null;
+
+  for (const provider of providers) {
+    try {
+      const result = await provider.search(lead);
+      if (result) return result;
+      await new Promise(r => setTimeout(r, 200));
+    } catch (err: any) {
+      console.error(`[Phone Enrichment] ${provider.name} error for "${lead.ownerName}":`, err.message);
+    }
+  }
+  return null;
 }
 
 export async function enrichLeadPhones(
