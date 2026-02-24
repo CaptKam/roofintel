@@ -1298,44 +1298,49 @@ async function buildingContactsAgent(lead: Lead): Promise<{ contacts: BuildingCo
 // ============================================================
 
 function calculateIntelligenceScore(dossier: OwnerDossier): number {
-  let score = 0;
+  let identity = 0;
+  let contactability = 0;
+  let depth = 0;
 
   const realPeople = dossier.realPeople;
   const topPerson = realPeople[0];
 
-  if (realPeople.length > 0) score += 30;
-  if (realPeople.length > 1) score += 5;
-  if (realPeople.length > 2) score += 5;
+  if (realPeople.length > 0) identity += 20;
+  if (realPeople.length > 1) identity += 5;
 
   if (topPerson) {
-    if (topPerson.confidence >= 80) score += 15;
-    else if (topPerson.confidence >= 60) score += 10;
+    if (topPerson.confidence >= 80) identity += 10;
+    else if (topPerson.confidence >= 60) identity += 5;
 
     const govSources = ["TX Comptroller PIR", "TX Comptroller PIR (Officers)", "TX SOS", "DCAD", "County Clerk"];
-    if (govSources.some(s => topPerson.source?.includes(s))) score += 10;
+    if (govSources.some(s => topPerson.source?.includes(s))) identity += 5;
 
-    if (topPerson.title) score += 5;
-    if (topPerson.address) score += 5;
-    if (topPerson.phone) score += 5;
-    if (topPerson.email) score += 5;
+    if (topPerson.title) identity += 5;
+    if (topPerson.address) identity += 5;
+
+    if (topPerson.phone) contactability += 15;
+    if (topPerson.email) contactability += 10;
   }
 
-  if (dossier.llcChain.length > 0) score += 5;
-  if (dossier.llcChain.length > 1) score += 5;
-  if (dossier.businessProfiles.length > 0) score += 3;
-  if (dossier.emails.some(e => e.verified)) score += 5;
+  const anyPhone = dossier.phones?.length > 0 || realPeople.some(p => p.phone);
+  const anyEmail = dossier.emails?.length > 0 || realPeople.some(p => p.email);
+  if (anyPhone && !topPerson?.phone) contactability += 10;
+  if (anyEmail && !topPerson?.email) contactability += 5;
+  if (dossier.emails.some(e => e.verified)) contactability += 5;
 
-  if (dossier.buildingContacts && dossier.buildingContacts.length > 0) score += 3;
-  if (dossier.buildingContacts && dossier.buildingContacts.some(c => c.phone || c.email)) score += 4;
-
-  if (dossier.skipTraceHits && dossier.skipTraceHits.length > 0) score += 3;
-  if (dossier.skipTraceHits && dossier.skipTraceHits.some(h => h.confidence >= 70)) score += 4;
+  if (dossier.llcChain.length > 0) depth += 3;
+  if (dossier.llcChain.length > 1) depth += 2;
+  if (dossier.businessProfiles.length > 0) depth += 2;
+  if (dossier.buildingContacts && dossier.buildingContacts.length > 0) depth += 2;
+  if (dossier.buildingContacts && dossier.buildingContacts.some(c => c.phone || c.email)) depth += 3;
+  if (dossier.skipTraceHits && dossier.skipTraceHits.length > 0) depth += 2;
+  if (dossier.skipTraceHits && dossier.skipTraceHits.some(h => h.confidence >= 70)) depth += 3;
 
   const agentHits = (dossier.agentResults || []).filter(a => a.status === "found").length;
-  if (agentHits >= 5) score += 5;
-  else if (agentHits >= 3) score += 3;
+  if (agentHits >= 5) depth += 3;
+  else if (agentHits >= 3) depth += 2;
 
-  return Math.min(100, score);
+  return Math.min(100, identity + contactability + depth);
 }
 
 export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResult> {
