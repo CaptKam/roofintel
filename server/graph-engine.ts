@@ -563,6 +563,304 @@ export async function getGraphStats(): Promise<{
   };
 }
 
+export interface GraphIntelligence {
+  hasData: boolean;
+  lastBuilt: string | null;
+  sharedOfficers: Array<{
+    officerName: string;
+    connectedEntities: Array<{ name: string; type: string; propertyCount: number; properties: Array<{ leadId: string; address: string; city: string; leadScore: number }> }>;
+  }>;
+  sharedAgents: Array<{
+    agentName: string;
+    entityCount: number;
+    entities: Array<{ name: string; type: string }>;
+  }>;
+  mailingClusters: Array<{
+    address: string;
+    owners: Array<{ name: string; propertyCount: number; properties: Array<{ leadId: string; address: string; city: string }> }>;
+  }>;
+  networkContacts: Array<{
+    name: string;
+    phone?: string;
+    email?: string;
+    title?: string;
+    relationshipPath: string;
+    confidence: number;
+  }>;
+  connectedPropertyCount: number;
+}
+
+export async function getGraphIntelligence(leadId: string): Promise<GraphIntelligence | null> {
+  const nodeCount = await db.select({ count: sql<number>`count(*)::int` }).from(graphNodes);
+  if (!nodeCount[0]?.count || nodeCount[0].count === 0) return null;
+
+  const [lastBuild] = await db.select().from(graphBuildRuns)
+    .where(eq(graphBuildRuns.status, "complete"))
+    .orderBy(sql`completed_at DESC`).limit(1);
+
+  const propertyNodes = await db.select().from(graphNodes)
+    .where(and(eq(graphNodes.nodeType, "property"), eq(graphNodes.entityId, leadId)));
+
+  if (propertyNodes.length === 0) {
+    return {
+      hasData: false,
+      lastBuilt: lastBuild?.completedAt?.toISOString() || null,
+      sharedOfficers: [],
+      sharedAgents: [],
+      mailingClusters: [],
+      networkContacts: [],
+      connectedPropertyCount: 0,
+    };
+  }
+
+  const propertyNodeId = propertyNodes[0].id;
+
+  const ownerEdges = await db.select().from(graphEdges)
+    .where(and(eq(graphEdges.targetNodeId, propertyNodeId), eq(graphEdges.edgeType, "owns")));
+
+  const managesEdges = await db.select().from(graphEdges)
+    .where(and(eq(graphEdges.targetNodeId, propertyNodeId), eq(graphEdges.edgeType, "manages_property")));
+
+  const ownerNodeIds = [...ownerEdges.map(e => e.sourceNodeId), ...managesEdges.map(e => e.sourceNodeId)];
+  if (ownerNodeIds.length === 0) {
+    return {
+      hasData: true,
+      lastBuilt: lastBuild?.completedAt?.toISOString() || null,
+      sharedOfficers: [],
+      sharedAgents: [],
+      mailingClusters: [],
+      networkContacts: [],
+      connectedPropertyCount: 0,
+    };
+  }
+
+  const sharedOfficers: GraphIntelligence["sharedOfficers"] = [];
+  for (const ownerNodeId of ownerNodeIds) {
+    const officerEdges = await db.execute(sql`
+      SELECT DISTINCT ge2.target_node_id as other_entity_id, officer_node.label as officer_name
+      FROM graph_edges ge1
+      JOIN graph_edges ge2 ON ge1.source_node_id = ge2.source_node_id
+        AND ge2.edge_type = 'officer_of'
+        AND ge2.target_node_id != ${ownerNodeId}
+      JOIN graph_nodes officer_node ON officer_node.id = ge1.source_node_id
+      WHERE ge1.target_node_id = ${ownerNodeId}
+        AND ge1.edge_type = 'officer_of'
+      LIMIT 50
+    `);
+
+    const officerMap = new Map<string, { officerName: string; entityIds: Set<string> }>();
+    for (const row of officerEdges.rows as any[]) {
+      const existing = officerMap.get(row.officer_name) || { officerName: row.officer_name, entityIds: new Set<string>() };
+      existing.entityIds.add(row.other_entity_id);
+      officerMap.set(row.officer_name, existing);
+    }
+
+    for (const [, officer] of officerMap) {
+      const entityIds = [...officer.entityIds];
+      if (entityIds.length === 0) continue;
+
+      const entities: GraphIntelligence["sharedOfficers"][0]["connectedEntities"] = [];
+      for (const eid of entityIds.slice(0, 10)) {
+        const [entityNode] = await db.select().from(graphNodes).where(eq(graphNodes.id, eid)).limit(1);
+        if (!entityNode) continue;
+
+        const propertyEdges = await db.execute(sql`
+          SELECT gn.entity_id as lead_id, gn.label as address, gn.metadata
+          FROM graph_edges ge
+          JOIN graph_nodes gn ON gn.id = ge.target_node_id AND gn.node_type = 'property'
+          WHERE ge.source_node_id = ${eid} AND ge.edge_type = 'owns'
+          LIMIT 5
+        `);
+
+        const properties = (propertyEdges.rows as any[]).map(r => ({
+          leadId: r.lead_id || "",
+          address: r.address || "",
+          city: r.metadata?.city || "",
+          leadScore: r.metadata?.leadScore || 0,
+        })).filter(p => p.leadId && p.leadId !== leadId);
+
+        const totalProps = await db.execute(sql`
+          SELECT count(*)::int as cnt FROM graph_edges WHERE source_node_id = ${eid} AND edge_type = 'owns'
+        `);
+
+        entities.push({
+          name: entityNode.label,
+          type: entityNode.nodeType,
+          propertyCount: (totalProps.rows[0] as any)?.cnt || 0,
+          properties,
+        });
+      }
+
+      if (entities.length > 0) {
+        sharedOfficers.push({ officerName: officer.officerName, connectedEntities: entities });
+      }
+    }
+  }
+
+  const sharedAgents: GraphIntelligence["sharedAgents"] = [];
+  for (const ownerNodeId of ownerNodeIds) {
+    const agentEdges = await db.execute(sql`
+      SELECT agent_node.label as agent_name, agent_node.id as agent_id
+      FROM graph_edges ge
+      JOIN graph_nodes agent_node ON agent_node.id = ge.source_node_id
+      WHERE ge.target_node_id = ${ownerNodeId}
+        AND ge.edge_type = 'registered_agent_for'
+      LIMIT 10
+    `);
+
+    for (const agentRow of agentEdges.rows as any[]) {
+      const otherEntities = await db.execute(sql`
+        SELECT DISTINCT gn.label as entity_name, gn.node_type as entity_type
+        FROM graph_edges ge
+        JOIN graph_nodes gn ON gn.id = ge.target_node_id
+        WHERE ge.source_node_id = ${agentRow.agent_id}
+          AND ge.edge_type = 'registered_agent_for'
+          AND ge.target_node_id != ${ownerNodeId}
+        LIMIT 20
+      `);
+
+      if ((otherEntities.rows as any[]).length > 0) {
+        sharedAgents.push({
+          agentName: agentRow.agent_name,
+          entityCount: (otherEntities.rows as any[]).length,
+          entities: (otherEntities.rows as any[]).map(r => ({ name: r.entity_name, type: r.entity_type })),
+        });
+      }
+    }
+  }
+
+  const mailingClusters: GraphIntelligence["mailingClusters"] = [];
+  for (const ownerNodeId of ownerNodeIds) {
+    const addressEdges = await db.execute(sql`
+      SELECT addr.label as address, addr.id as address_id
+      FROM graph_edges ge
+      JOIN graph_nodes addr ON addr.id = ge.target_node_id AND addr.node_type = 'address'
+      WHERE ge.source_node_id = ${ownerNodeId}
+        AND ge.edge_type = 'located_at'
+      LIMIT 5
+    `);
+
+    for (const addrRow of addressEdges.rows as any[]) {
+      const otherOwners = await db.execute(sql`
+        SELECT DISTINCT gn.label as owner_name, gn.id as owner_id
+        FROM graph_edges ge
+        JOIN graph_nodes gn ON gn.id = ge.source_node_id
+        WHERE ge.target_node_id = ${addrRow.address_id}
+          AND ge.edge_type = 'located_at'
+          AND ge.source_node_id != ${ownerNodeId}
+        LIMIT 10
+      `);
+
+      if ((otherOwners.rows as any[]).length > 0) {
+        const owners: GraphIntelligence["mailingClusters"][0]["owners"] = [];
+        for (const ownerRow of otherOwners.rows as any[]) {
+          const ownerProps = await db.execute(sql`
+            SELECT gn.entity_id as lead_id, gn.label as address, gn.metadata
+            FROM graph_edges ge
+            JOIN graph_nodes gn ON gn.id = ge.target_node_id AND gn.node_type = 'property'
+            WHERE ge.source_node_id = ${ownerRow.owner_id} AND ge.edge_type = 'owns'
+            LIMIT 3
+          `);
+
+          owners.push({
+            name: ownerRow.owner_name,
+            propertyCount: (ownerProps.rows as any[]).length,
+            properties: (ownerProps.rows as any[]).map((r: any) => ({
+              leadId: r.lead_id || "",
+              address: r.address || "",
+              city: r.metadata?.city || "",
+            })).filter((p: any) => p.leadId && p.leadId !== leadId),
+          });
+        }
+
+        mailingClusters.push({ address: addrRow.address, owners });
+      }
+    }
+  }
+
+  const networkContacts: GraphIntelligence["networkContacts"] = [];
+  const leadData = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  const thisLead = leadData[0];
+  const needsPhone = !thisLead?.ownerPhone;
+  const needsEmail = !thisLead?.ownerEmail;
+
+  if (needsPhone || needsEmail) {
+    for (const ownerNodeId of ownerNodeIds) {
+      const connectedPeople = await db.execute(sql`
+        SELECT DISTINCT person.label as name, person.metadata, 'officer' as relationship
+        FROM graph_edges ge1
+        JOIN graph_edges ge2 ON ge1.source_node_id = ge2.source_node_id
+          AND ge2.edge_type = 'officer_of'
+        JOIN graph_nodes person ON person.id = ge1.source_node_id AND person.node_type = 'person'
+        WHERE ge1.target_node_id = ${ownerNodeId}
+          AND ge1.edge_type = 'officer_of'
+        LIMIT 20
+      `);
+
+      for (const person of connectedPeople.rows as any[]) {
+        const meta = person.metadata || {};
+        if ((needsPhone && meta.phone) || (needsEmail && meta.email)) {
+          networkContacts.push({
+            name: person.name,
+            phone: meta.phone || undefined,
+            email: meta.email || undefined,
+            title: meta.title || meta.role || undefined,
+            relationshipPath: `Officer of ${ownerNodeIds.length > 0 ? "connected entity" : "owner entity"}`,
+            confidence: 60,
+          });
+        }
+      }
+    }
+
+    for (const cluster of mailingClusters) {
+      for (const owner of cluster.owners) {
+        for (const prop of owner.properties) {
+          if (!prop.leadId) continue;
+          const relatedLead = await db.select().from(leads).where(eq(leads.id, prop.leadId)).limit(1);
+          if (relatedLead[0]) {
+            const rl = relatedLead[0];
+            if ((needsPhone && rl.ownerPhone) || (needsEmail && rl.ownerEmail)) {
+              networkContacts.push({
+                name: rl.ownerName || owner.name,
+                phone: needsPhone ? (rl.ownerPhone || undefined) : undefined,
+                email: needsEmail ? (rl.ownerEmail || undefined) : undefined,
+                relationshipPath: `Same mailing address: ${cluster.address}`,
+                confidence: 40,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const uniqueContacts = networkContacts.filter(c => {
+    const key = `${c.name}:${c.phone}:${c.email}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => b.confidence - a.confidence).slice(0, 10);
+
+  let connectedPropertyCount = 0;
+  for (const ownerNodeId of ownerNodeIds) {
+    const propCount = await db.execute(sql`
+      SELECT count(*)::int as cnt FROM graph_edges WHERE source_node_id = ${ownerNodeId} AND edge_type = 'owns'
+    `);
+    connectedPropertyCount += (propCount.rows[0] as any)?.cnt || 0;
+  }
+
+  return {
+    hasData: true,
+    lastBuilt: lastBuild?.completedAt?.toISOString() || null,
+    sharedOfficers,
+    sharedAgents,
+    mailingClusters,
+    networkContacts: uniqueContacts,
+    connectedPropertyCount: Math.max(0, connectedPropertyCount - 1),
+  };
+}
+
 export async function getNodesByLeadId(leadId: string): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
   const propertyNodes = await db.select().from(graphNodes)
     .where(and(

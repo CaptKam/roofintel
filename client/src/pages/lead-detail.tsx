@@ -60,11 +60,23 @@ import {
   Users,
   MapPinned,
   Zap,
+  GitBranch,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
+
+interface GraphIntelligence {
+  hasData: boolean;
+  lastBuilt: string | null;
+  sharedOfficers: Array<{ officerName: string; connectedEntities: Array<{ name: string; type: string; propertyCount: number; properties: Array<{ leadId: string; address: string; city: string; leadScore: number }> }> }>;
+  sharedAgents: Array<{ agentName: string; entityCount: number; entities: Array<{ name: string; type: string }> }>;
+  mailingClusters: Array<{ address: string; owners: Array<{ name: string; propertyCount: number; properties: Array<{ leadId: string; address: string; city: string }> }> }>;
+  networkContacts: Array<{ name: string; phone?: string; email?: string; title?: string; relationshipPath: string; confidence: number }>;
+  connectedPropertyCount: number;
+}
 
 function HunterPDLButtons({ leadId }: { leadId: string }) {
   const { toast } = useToast();
@@ -497,6 +509,13 @@ export default function LeadDetail() {
     queryKey: ["/api/leads", id, "decision-makers"],
     enabled: !!lead,
   });
+
+  const { data: graphIntel } = useQuery<GraphIntelligence>({
+    queryKey: ["/api/leads", id, "graph-intelligence"],
+    enabled: !!id,
+  });
+
+  const [agentExpandedMap, setAgentExpandedMap] = useState<Record<number, boolean>>({});
 
   const markWrongMutation = useMutation({
     mutationFn: async (evidenceId: string) => {
@@ -1020,6 +1039,182 @@ export default function LeadDetail() {
               </CardContent>
             </Card>
           )}
+
+          {graphIntel?.hasData && (
+            graphIntel.sharedOfficers.length > 0 ||
+            graphIntel.sharedAgents.length > 0 ||
+            graphIntel.mailingClusters.length > 0 ||
+            graphIntel.networkContacts.length > 0
+          ) ? (
+            <Card className="shadow-sm" data-testid="card-network-intelligence">
+              <CardHeader className="pb-2">
+                <div className="flex items-center gap-2">
+                  <GitBranch className="w-4 h-4 text-muted-foreground" />
+                  <CardTitle className="text-base font-semibold">Network Intelligence</CardTitle>
+                </div>
+                {graphIntel.lastBuilt && (
+                  <span className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-graph-last-built">
+                    Graph data from {new Date(graphIntel.lastBuilt).toLocaleDateString()}
+                  </span>
+                )}
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-4">
+                {graphIntel.sharedOfficers.length > 0 && (
+                  <div className="space-y-2" data-testid="section-shared-officers">
+                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Connected Entities</div>
+                    {graphIntel.sharedOfficers.map((officer, oi) => (
+                      <div key={oi} className={`space-y-1 ${oi > 0 ? "pt-2 border-t" : ""}`} data-testid={`shared-officer-${oi}`}>
+                        <p className="text-sm">
+                          <span className="font-medium" data-testid={`text-officer-name-${oi}`}>{officer.officerName}</span>
+                          <span className="text-muted-foreground"> is also an officer at:</span>
+                        </p>
+                        <div className="pl-4 space-y-1">
+                          {officer.connectedEntities.map((entity, ei) => (
+                            <div key={ei} className="space-y-0.5" data-testid={`connected-entity-${oi}-${ei}`}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] font-medium" data-testid={`text-entity-name-${oi}-${ei}`}>{entity.name}</span>
+                                <Badge variant="outline" className="text-[9px]">{entity.type}</Badge>
+                                <span className="text-[10px] text-muted-foreground">{entity.propertyCount} {entity.propertyCount === 1 ? "property" : "properties"}</span>
+                              </div>
+                              {entity.properties.length > 0 && (
+                                <div className="pl-2 space-y-0.5">
+                                  {entity.properties.slice(0, 3).map((prop) => (
+                                    <Link key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center justify-between text-[11px] rounded px-1 -mx-1" data-testid={`link-entity-property-${prop.leadId}`}>
+                                      <span className="truncate text-primary hover:underline">{prop.address}, {prop.city}</span>
+                                      <span className="text-muted-foreground ml-2 flex-shrink-0">Score {prop.leadScore}</span>
+                                    </Link>
+                                  ))}
+                                  {entity.properties.length > 3 && (
+                                    <span className="text-[10px] text-muted-foreground pl-1">+{entity.properties.length - 3} more</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {graphIntel.sharedAgents.length > 0 && (
+                  <div className="space-y-2" data-testid="section-shared-agents">
+                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Shared Agent Network</div>
+                    {graphIntel.sharedAgents.map((agent, ai) => (
+                      <Collapsible
+                        key={ai}
+                        open={agentExpandedMap[ai] ?? false}
+                        onOpenChange={(open) => setAgentExpandedMap((prev) => ({ ...prev, [ai]: open }))}
+                      >
+                        <CollapsibleTrigger className="flex items-center gap-1 w-full text-left" data-testid={`button-toggle-agent-${ai}`}>
+                          <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${agentExpandedMap[ai] ? "rotate-180" : ""}`} />
+                          <p className="text-sm">
+                            <span className="font-medium" data-testid={`text-agent-name-${ai}`}>{agent.agentName}</span>
+                            <span className="text-muted-foreground"> also represents {agent.entityCount} other {agent.entityCount === 1 ? "entity" : "entities"}</span>
+                          </p>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="pl-5 pt-1 space-y-0.5">
+                            {agent.entities.map((entity, ei) => (
+                              <div key={ei} className="flex items-center gap-2 text-[11px]" data-testid={`agent-entity-${ai}-${ei}`}>
+                                <span className="font-medium">{entity.name}</span>
+                                <Badge variant="outline" className="text-[9px]">{entity.type}</Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    ))}
+                  </div>
+                )}
+
+                {graphIntel.mailingClusters.length > 0 && (
+                  <div className="space-y-2" data-testid="section-mailing-clusters">
+                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Address Clusters</div>
+                    {graphIntel.mailingClusters.map((cluster, ci) => (
+                      <div key={ci} className={`space-y-1 ${ci > 0 ? "pt-2 border-t" : ""}`} data-testid={`mailing-cluster-${ci}`}>
+                        <p className="text-sm">
+                          <span className="font-medium" data-testid={`text-cluster-count-${ci}`}>{cluster.owners.length}</span>
+                          <span className="text-muted-foreground"> other {cluster.owners.length === 1 ? "owner shares" : "owners share"} mailing address </span>
+                          <span className="font-medium" data-testid={`text-cluster-address-${ci}`}>{cluster.address}</span>
+                        </p>
+                        <div className="pl-4 space-y-1">
+                          {cluster.owners.map((owner, owi) => (
+                            <div key={owi} className="space-y-0.5" data-testid={`cluster-owner-${ci}-${owi}`}>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] font-medium">{owner.name}</span>
+                                <span className="text-[10px] text-muted-foreground">{owner.propertyCount} {owner.propertyCount === 1 ? "property" : "properties"}</span>
+                              </div>
+                              {owner.properties.length > 0 && (
+                                <div className="pl-2 space-y-0.5">
+                                  {owner.properties.slice(0, 3).map((prop) => (
+                                    <Link key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center text-[11px] rounded px-1 -mx-1" data-testid={`link-cluster-property-${prop.leadId}`}>
+                                      <span className="truncate text-primary hover:underline">{prop.address}, {prop.city}</span>
+                                    </Link>
+                                  ))}
+                                  {owner.properties.length > 3 && (
+                                    <span className="text-[10px] text-muted-foreground pl-1">+{owner.properties.length - 3} more</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {graphIntel.networkContacts.length > 0 && (
+                  <div className="space-y-2" data-testid="section-network-contacts">
+                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Network Contacts</div>
+                    {graphIntel.networkContacts.map((contact, ni) => (
+                      <div key={ni} className={`space-y-1 ${ni > 0 ? "pt-2 border-t" : ""}`} data-testid={`network-contact-${ni}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium" data-testid={`text-network-contact-name-${ni}`}>{contact.name}</span>
+                          <Badge
+                            variant={contact.confidence >= 80 ? "default" : contact.confidence >= 50 ? "secondary" : "outline"}
+                            className="text-[9px]"
+                            data-testid={`badge-contact-confidence-${ni}`}
+                          >
+                            {contact.confidence}%
+                          </Badge>
+                        </div>
+                        {contact.title && (
+                          <div className="text-[11px] text-muted-foreground" data-testid={`text-contact-title-${ni}`}>{contact.title}</div>
+                        )}
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {contact.phone && (
+                            <a href={`tel:${contact.phone}`} className="text-[11px] font-mono text-primary hover:underline" data-testid={`link-network-phone-${ni}`}>
+                              {contact.phone}
+                            </a>
+                          )}
+                          {contact.email && (
+                            <a href={`mailto:${contact.email}`} className="text-[11px] font-mono text-primary hover:underline" data-testid={`link-network-email-${ni}`}>
+                              {contact.email}
+                            </a>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground" data-testid={`text-relationship-path-${ni}`}>
+                          {contact.relationshipPath}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {graphIntel.connectedPropertyCount > 0 && (
+                  <div className="text-[10px] text-muted-foreground pt-1 border-t" data-testid="text-connected-property-count">
+                    {graphIntel.connectedPropertyCount} connected {graphIntel.connectedPropertyCount === 1 ? "property" : "properties"} in network
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : (!graphIntel || !graphIntel.hasData) && id ? (
+            <p className="text-[11px] text-muted-foreground px-1" data-testid="text-graph-hint">
+              Build the relationship graph in Network Explorer to unlock network intelligence
+            </p>
+          ) : null}
 
           {contactPath && (contactPath.phones.length > 0 || contactPath.emails.length > 0) && (
             <Card className="shadow-sm">

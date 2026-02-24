@@ -2579,6 +2579,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/leads/:id/graph-intelligence", async (req, res) => {
+    try {
+      const { getGraphIntelligence } = await import("./graph-engine");
+      const result = await getGraphIntelligence(req.params.id);
+      res.json(result || { hasData: false, lastBuilt: null, sharedOfficers: [], sharedAgents: [], mailingClusters: [], networkContacts: [], connectedPropertyCount: 0 });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/enrichment/sec-edgar/:leadId", async (req, res) => {
     try {
       const lead = await storage.getLeadById(req.params.leadId);
