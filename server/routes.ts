@@ -29,7 +29,9 @@ import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, ge
 import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
-import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs } from "@shared/schema";
+import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker } from "@shared/schema";
+import { getHunterUsage, searchHunterDomain, findHunterEmail } from "./hunter-io";
+import { getPDLUsage, enrichPersonPDL, enrichCompanyPDL } from "./pdl-enrichment";
 import { db } from "./storage";
 import { sql, eq } from "drizzle-orm";
 
@@ -1287,7 +1289,7 @@ export async function registerRoutes(
   app.get("/api/leads/:id/permits", async (req, res) => {
     try {
       const leadId = req.params.id;
-      const lead = await storage.getLead(leadId);
+      const lead = await storage.getLeadById(leadId);
       if (!lead) return res.status(404).json({ message: "Lead not found" });
 
       const directMatches = await db
@@ -2416,6 +2418,67 @@ export async function registerRoutes(
     try {
       const { getNodesByLeadId } = await import("./graph-engine");
       const result = await getNodesByLeadId(req.params.leadId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/enrichment/usage", async (_req, res) => {
+    try {
+      const [hunter, pdl] = await Promise.all([getHunterUsage(), getPDLUsage()]);
+      res.json({ hunter, pdl });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/enrichment/hunter/:leadId", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      let domain: string | null = null;
+      if (lead.businessWebsite) {
+        try {
+          const url = lead.businessWebsite.startsWith("http") ? lead.businessWebsite : `https://${lead.businessWebsite}`;
+          domain = new URL(url).hostname.replace(/^www\./, "");
+        } catch {}
+      }
+      if (!domain && lead.ownerEmail) {
+        const parts = lead.ownerEmail.split("@");
+        if (parts.length === 2) domain = parts[1];
+      }
+      if (!domain && lead.contactEmail) {
+        const parts = lead.contactEmail.split("@");
+        if (parts.length === 2) domain = parts[1];
+      }
+
+      if (!domain) {
+        return res.status(400).json({ message: "No domain found. Lead needs a business website or email address for Hunter.io lookup." });
+      }
+
+      const result = await searchHunterDomain(domain, lead.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/enrichment/pdl/:leadId", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const name = lead.contactName || lead.ownerName || lead.managingMember;
+      if (!name) {
+        return res.status(400).json({ message: "No person name found on lead for PDL lookup." });
+      }
+
+      const company = lead.businessName || lead.llcName || undefined;
+      const location = `${lead.city}, ${lead.state}`;
+
+      const result = await enrichPersonPDL(lead.id, name, company, location);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });

@@ -700,3 +700,17 @@ export const updateLeadSchema = z.object({
 });
 
 export type UpdateLead = z.infer<typeof updateLeadSchema>;
+
+export const apiUsageTracker = pgTable("api_usage_tracker", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  service: text("service").notNull(),
+  month: text("month").notNull(),
+  usedCount: integer("used_count").notNull().default(0),
+  monthlyLimit: integer("monthly_limit").notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertApiUsageSchema = createInsertSchema(apiUsageTracker).omit({ id: true, createdAt: true });
+export type InsertApiUsage = z.infer<typeof insertApiUsageSchema>;
+export type ApiUsage = typeof apiUsageTracker.$inferSelect;

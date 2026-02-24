@@ -64,6 +64,101 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
 import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
 
+function HunterPDLButtons({ leadId }: { leadId: string }) {
+  const { toast } = useToast();
+  const { data: usage } = useQuery<{
+    hunter: { used: number; limit: number; remaining: number };
+    pdl: { used: number; limit: number; remaining: number };
+  }>({
+    queryKey: ["/api/enrichment/usage"],
+  });
+
+  const hunterMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/enrichment/hunter/${leadId}`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+      if (data.success && data.emails?.length > 0) {
+        toast({ title: "Hunter.io", description: `Found ${data.emails.length} email(s)` });
+      } else if (data.error) {
+        toast({ title: "Hunter.io", description: data.error, variant: "destructive" });
+      } else {
+        toast({ title: "Hunter.io", description: "No emails found for this domain" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Hunter.io failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const pdlMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/enrichment/pdl/${leadId}`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+      if (data.success && data.person) {
+        const found = [];
+        if (data.person.emails?.length) found.push(`${data.person.emails.length} email(s)`);
+        if (data.person.phones?.length) found.push(`${data.person.phones.length} phone(s)`);
+        toast({ title: "People Data Labs", description: found.length > 0 ? `Found ${found.join(", ")}` : "Match found but no new contacts" });
+      } else if (data.error) {
+        toast({ title: "People Data Labs", description: data.error, variant: "destructive" });
+      } else {
+        toast({ title: "People Data Labs", description: "No match found" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "PDL failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const hunterRemaining = usage?.hunter?.remaining ?? 0;
+  const pdlRemaining = usage?.pdl?.remaining ?? 0;
+
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => hunterMutation.mutate()}
+        disabled={hunterMutation.isPending || hunterRemaining <= 0}
+        className="text-xs"
+        data-testid="button-hunter-enrich"
+      >
+        {hunterMutation.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin mr-1" />
+        ) : (
+          <Mail className="w-3 h-3 mr-1" />
+        )}
+        Hunter.io ({hunterRemaining})
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => pdlMutation.mutate()}
+        disabled={pdlMutation.isPending || pdlRemaining <= 0}
+        className="text-xs"
+        data-testid="button-pdl-enrich"
+      >
+        {pdlMutation.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin mr-1" />
+        ) : (
+          <Users className="w-3 h-3 mr-1" />
+        )}
+        PDL ({pdlRemaining})
+      </Button>
+    </>
+  );
+}
+
 function DetailRow({
   icon: Icon,
   label,
@@ -434,6 +529,7 @@ export default function LeadDetail() {
           )}
           {isStale ? "Re-enrich (Stale)" : "Re-enrich"}
         </Button>
+        <HunterPDLButtons leadId={id!} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

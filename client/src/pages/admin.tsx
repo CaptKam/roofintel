@@ -95,6 +95,118 @@ interface ComplianceStatus {
   dncRegistered: number;
 }
 
+function EnrichmentCreditsCard() {
+  const { data: usage, isLoading } = useQuery<{
+    hunter: { used: number; limit: number; remaining: number; month: string };
+    pdl: { used: number; limit: number; remaining: number; month: string };
+  }>({
+    queryKey: ["/api/enrichment/usage"],
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="shadow-sm">
+        <CardContent className="p-6">
+          <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!usage) return null;
+
+  const monthLabel = usage.hunter?.month
+    ? new Date(usage.hunter.month + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : "This Month";
+
+  const nextReset = new Date();
+  nextReset.setMonth(nextReset.getMonth() + 1, 1);
+  nextReset.setHours(0, 0, 0, 0);
+  const daysUntilReset = Math.ceil((nextReset.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+  return (
+    <Card className="shadow-sm border-primary/20" data-testid="card-enrichment-credits">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Database className="w-4 h-4" />
+            Enrichment API Credits
+          </CardTitle>
+          <Badge variant="outline" className="text-xs" data-testid="badge-reset-countdown">
+            <Clock className="w-3 h-3 mr-1" />
+            Resets in {daysUntilReset} day{daysUntilReset !== 1 ? "s" : ""}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">{monthLabel} — Manual enrichment only. Each click uses one credit.</p>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <CreditMeter
+            label="Hunter.io"
+            description="Email discovery by domain"
+            used={usage.hunter.used}
+            limit={usage.hunter.limit}
+            icon={<Search className="w-4 h-4" />}
+            testId="hunter"
+          />
+          <CreditMeter
+            label="People Data Labs"
+            description="Person & company enrichment"
+            used={usage.pdl.used}
+            limit={usage.pdl.limit}
+            icon={<Users className="w-4 h-4" />}
+            testId="pdl"
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CreditMeter({ label, description, used, limit, icon, testId }: {
+  label: string;
+  description: string;
+  used: number;
+  limit: number;
+  icon: React.ReactNode;
+  testId: string;
+}) {
+  const remaining = Math.max(0, limit - used);
+  const pct = limit > 0 ? (used / limit) * 100 : 0;
+  const isExhausted = remaining <= 0;
+  const isLow = remaining > 0 && remaining <= Math.ceil(limit * 0.2);
+
+  return (
+    <div className="space-y-2" data-testid={`credit-meter-${testId}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {icon}
+          <div>
+            <span className="text-sm font-medium">{label}</span>
+            <p className="text-[11px] text-muted-foreground">{description}</p>
+          </div>
+        </div>
+        <span className={`text-lg font-bold tabular-nums ${isExhausted ? "text-destructive" : isLow ? "text-amber-600 dark:text-amber-400" : "text-primary"}`} data-testid={`text-remaining-${testId}`}>
+          {remaining}
+          <span className="text-xs font-normal text-muted-foreground ml-0.5">left</span>
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${isExhausted ? "bg-destructive" : isLow ? "bg-amber-500" : "bg-primary"}`}
+          style={{ width: `${Math.min(pct, 100)}%` }}
+          data-testid={`progress-${testId}`}
+        />
+      </div>
+      <div className="flex justify-between text-[11px] text-muted-foreground">
+        <span>{used} of {limit} used</span>
+        {isExhausted && <span className="text-destructive font-medium">Exhausted</span>}
+        {isLow && !isExhausted && <span className="text-amber-600 dark:text-amber-400 font-medium">Running low</span>}
+      </div>
+    </div>
+  );
+}
+
 export default function Admin() {
   const { toast } = useToast();
   const [dcadMinValue, setDcadMinValue] = useState("100000");
@@ -832,6 +944,8 @@ export default function Admin() {
           Manage data sources, enrichment pipelines, and system configuration
         </p>
       </div>
+
+      <EnrichmentCreditsCard />
 
       <Tabs defaultValue="property-sources" className="space-y-6">
         <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">
