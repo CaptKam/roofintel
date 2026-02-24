@@ -237,6 +237,22 @@ function findContactPages(html: string, baseUrl: string): string[] {
   return pages.slice(0, 5);
 }
 
+function webResearchNameMatches(ownerName: string, placeName: string): boolean {
+  const normalize = (n: string) => n.toUpperCase()
+    .replace(/[.,'"&]/g, "").replace(/&amp;/g, "")
+    .replace(/\b(LLC|LP|INC|CORP|LTD|CO|COMPANY|PARTNERS|HOLDINGS|GROUP|THE)\b/g, "")
+    .replace(/\s+/g, " ").trim();
+  const normOwner = normalize(ownerName);
+  const normPlace = normalize(placeName);
+  if (!normOwner || !normPlace) return false;
+  if (normPlace.includes(normOwner) || normOwner.includes(normPlace)) return true;
+  const ownerWords = normOwner.split(" ").filter(w => w.length > 2);
+  const placeWords = normPlace.split(" ").filter(w => w.length > 2);
+  if (ownerWords.length === 0) return false;
+  const matching = ownerWords.filter(w => placeWords.includes(w));
+  return matching.length >= Math.ceil(ownerWords.length * 0.5);
+}
+
 async function findBusinessWebsite(lead: Lead): Promise<{ name?: string; website?: string } | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return null;
@@ -244,29 +260,45 @@ async function findBusinessWebsite(lead: Lead): Promise<{ name?: string; website
   const address = (lead.address || "").trim();
   const city = (lead.city || "").trim();
   const state = lead.state || "TX";
-  const query = `${address} ${city} ${state}`;
+  const ownerName = lead.ownerName || "";
 
-  try {
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
-    const searchRes = await fetch(searchUrl);
-    if (!searchRes.ok) return null;
-    const searchData = await searchRes.json();
+  const queries = [
+    ownerName ? `${ownerName.replace(/\s+(LLC|INC|CORP|LP|LTD)\.?\s*$/i, "")} ${city} ${state}` : "",
+    address ? `${address} ${city} ${state}` : "",
+  ].filter(Boolean);
 
-    if (searchData.status !== "OK" || !searchData.candidates?.length) return null;
+  for (const query of queries) {
+    try {
+      const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
+      const searchRes = await fetch(searchUrl);
+      if (!searchRes.ok) continue;
+      const searchData = await searchRes.json();
 
-    const placeId = searchData.candidates[0].place_id;
-    const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,website,formatted_phone_number&key=${apiKey}`;
-    const detailRes = await fetch(detailUrl);
-    if (!detailRes.ok) return null;
-    const detailData = await detailRes.json();
+      if (searchData.status !== "OK" || !searchData.candidates?.length) continue;
 
-    return {
-      name: detailData.result?.name,
-      website: detailData.result?.website,
-    };
-  } catch {
-    return null;
+      const candidate = searchData.candidates[0];
+      const candidateName = candidate.name || "";
+
+      if (ownerName && candidateName && !webResearchNameMatches(ownerName, candidateName)) {
+        console.log(`[Web Research] Google Places name mismatch: searched "${ownerName}", got "${candidateName}" — skipping`);
+        continue;
+      }
+
+      const placeId = candidate.place_id;
+      const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,website,formatted_phone_number&key=${apiKey}`;
+      const detailRes = await fetch(detailUrl);
+      if (!detailRes.ok) continue;
+      const detailData = await detailRes.json();
+
+      return {
+        name: detailData.result?.name,
+        website: detailData.result?.website,
+      };
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 async function searchForStaffContact(staffName: string, companyName: string, city: string): Promise<{ email?: string; phone?: string; source: string } | null> {

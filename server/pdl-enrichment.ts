@@ -96,6 +96,18 @@ export async function enrichPersonPDL(
 
     const data = await searchResp.json() as any;
 
+    const returnedName = (data.full_name || "").toUpperCase().replace(/[^A-Z\s]/g, "").trim();
+    const searchedName = name.toUpperCase().replace(/[^A-Z\s]/g, "").trim();
+    if (returnedName && searchedName && returnedName !== searchedName) {
+      const searchWords = searchedName.split(/\s+/).filter((w: string) => w.length > 1);
+      const returnWords = returnedName.split(/\s+/).filter((w: string) => w.length > 1);
+      const matching = searchWords.filter((w: string) => returnWords.includes(w));
+      if (matching.length < Math.ceil(searchWords.length * 0.5)) {
+        console.log(`[PDL] Name mismatch: searched "${name}", got "${data.full_name}" — discarding result`);
+        return { success: true, error: `PDL returned a different person ("${data.full_name}") — result discarded` };
+      }
+    }
+
     const person = {
       fullName: data.full_name || name,
       emails: (data.emails || []).map((e: any) => (typeof e === "string" ? e : e.address)).filter(Boolean),

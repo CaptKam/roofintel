@@ -65,21 +65,20 @@ async function searchTexasOpenData(name: string): Promise<TxOpenDataRecord[]> {
 
 function findBestMatch(ownerName: string, records: TxOpenDataRecord[]): TxOpenDataRecord | null {
   if (records.length === 0) return null;
-  if (records.length === 1) return records[0];
 
   const normalized = normalizeForSearch(ownerName);
+  const cleaned = normalizeForSearch(cleanCompanyName(ownerName));
 
   const exact = records.find(r => normalizeForSearch(r.taxpayer_name) === normalized);
   if (exact) return exact;
 
-  const cleaned = normalizeForSearch(cleanCompanyName(ownerName));
   const partial = records.find(r => {
     const rClean = normalizeForSearch(cleanCompanyName(r.taxpayer_name));
     return rClean === cleaned || rClean.includes(cleaned) || cleaned.includes(rClean);
   });
   if (partial) return partial;
 
-  return records[0];
+  return null;
 }
 
 function formatOrgType(code: string): string {

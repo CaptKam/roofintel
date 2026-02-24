@@ -397,8 +397,13 @@ async function txSosDeepAgent(lead: Lead): Promise<{ officers: PersonRecord[]; c
       const searchResults = await searchComptrollerByName(lead.ownerName);
       if (searchResults.length > 0) {
         const normalized = normalizeForSearch(lead.ownerName);
-        const best = searchResults.find(r => normalizeForSearch(r.name || "") === normalized) || searchResults[0];
-        if (best.taxpayerId) {
+        const cleanedOwner = normalizeForSearch(cleanCompanyName(lead.ownerName));
+        const best = searchResults.find(r => {
+          const rNorm = normalizeForSearch(r.name || "");
+          const rClean = normalizeForSearch(cleanCompanyName(r.name || ""));
+          return rNorm === normalized || rClean === cleanedOwner || rClean.includes(cleanedOwner) || cleanedOwner.includes(rClean);
+        });
+        if (best?.taxpayerId) {
           detail = await fetchComptrollerDetail(best.taxpayerId);
         }
       }
@@ -412,10 +417,16 @@ async function txSosDeepAgent(lead: Lead): Promise<{ officers: PersonRecord[]; c
       if (res && res.ok) {
         const records = await res.json();
         if (Array.isArray(records) && records.length > 0) {
-          const record = records[0];
-          const tpId = record.taxpayer_number;
-          if (tpId) {
-            detail = await fetchComptrollerDetail(tpId);
+          const normalizedOwner = normalizeForSearch(cleanCompanyName(lead.ownerName));
+          const matched = records.find((r: any) => {
+            const rClean = normalizeForSearch(cleanCompanyName(r.taxpayer_name || ""));
+            return rClean === normalizedOwner || rClean.includes(normalizedOwner) || normalizedOwner.includes(rClean);
+          });
+          if (matched) {
+            const tpId = matched.taxpayer_number;
+            if (tpId) {
+              detail = await fetchComptrollerDetail(tpId);
+            }
           }
         }
       }
@@ -467,8 +478,13 @@ async function llcChainAgent(lead: Lead, existingChain: LlcChainLink[]): Promise
 
       const searchResults = await searchComptrollerByName(entityName);
       if (searchResults.length > 0) {
-        const best = searchResults.find(r => normalizeForSearch(r.name || "") === normName) || searchResults[0];
-        if (best.taxpayerId) {
+        const cleanedEntity = normalizeForSearch(cleanCompanyName(entityName));
+        const best = searchResults.find(r => {
+          const rNorm = normalizeForSearch(r.name || "");
+          const rClean = normalizeForSearch(cleanCompanyName(r.name || ""));
+          return rNorm === normName || rClean === cleanedEntity || rClean.includes(cleanedEntity) || cleanedEntity.includes(rClean);
+        });
+        if (best?.taxpayerId) {
           detail = await fetchComptrollerDetail(best.taxpayerId);
         }
       }
@@ -481,10 +497,16 @@ async function llcChainAgent(lead: Lead, existingChain: LlcChainLink[]): Promise
         if (res && res.ok) {
           const records = await res.json();
           if (Array.isArray(records) && records.length > 0) {
-            const exactMatch = records.find((r: any) => normalizeForSearch(r.taxpayer_name || "") === normName) || records[0];
-            const tpId = exactMatch.taxpayer_number;
-            if (tpId) {
-              detail = await fetchComptrollerDetail(tpId);
+            const cleanedEntity = normalizeForSearch(cleanCompanyName(entityName));
+            const matched = records.find((r: any) => {
+              const rClean = normalizeForSearch(cleanCompanyName(r.taxpayer_name || ""));
+              return rClean === normName || rClean === cleanedEntity || rClean.includes(cleanedEntity) || cleanedEntity.includes(rClean);
+            });
+            if (matched) {
+              const tpId = matched.taxpayer_number;
+              if (tpId) {
+                detail = await fetchComptrollerDetail(tpId);
+              }
             }
           }
         }

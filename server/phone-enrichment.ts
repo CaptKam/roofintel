@@ -56,7 +56,19 @@ function isValidBusinessPhone(phone: string): boolean {
   return true;
 }
 
-async function googlePlacesSearch(query: string, apiKey: string): Promise<PhoneResult | null> {
+function placesNameMatches(searchName: string, placeName: string): boolean {
+  const normSearch = normalizeForSearch(cleanCompanyName(searchName));
+  const normPlace = normalizeForSearch(cleanCompanyName(placeName));
+  if (!normSearch || !normPlace) return false;
+  if (normPlace.includes(normSearch) || normSearch.includes(normPlace)) return true;
+  const searchWords = normSearch.split(" ").filter(w => w.length > 2);
+  const placeWords = normPlace.split(" ").filter(w => w.length > 2);
+  if (searchWords.length === 0) return false;
+  const matching = searchWords.filter(w => placeWords.includes(w));
+  return matching.length >= Math.ceil(searchWords.length * 0.5);
+}
+
+async function googlePlacesSearch(query: string, ownerName: string, apiKey: string): Promise<PhoneResult | null> {
   const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
   const searchRes = await fetch(searchUrl);
   if (!searchRes.ok) return null;
@@ -64,7 +76,15 @@ async function googlePlacesSearch(query: string, apiKey: string): Promise<PhoneR
 
   if (searchData.status !== "OK" || !searchData.candidates || searchData.candidates.length === 0) return null;
 
-  const placeId = searchData.candidates[0].place_id;
+  const candidate = searchData.candidates[0];
+  const candidateName = candidate.name || "";
+
+  if (candidateName && !placesNameMatches(ownerName, candidateName)) {
+    console.log(`[Phone Enrichment] Google Places name mismatch: searched "${ownerName}", got "${candidateName}" — skipping`);
+    return null;
+  }
+
+  const placeId = candidate.place_id;
 
   const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,name&key=${apiKey}`;
   const detailRes = await fetch(detailUrl);
@@ -92,11 +112,11 @@ const googlePlacesProvider: PhoneProvider = {
       const state = lead.state || "TX";
       const address = (lead.address || "").trim();
 
-      const result = await googlePlacesSearch(`${companyName} ${city} ${state}`, apiKey);
+      const result = await googlePlacesSearch(`${companyName} ${city} ${state}`, lead.ownerName, apiKey);
       if (result) return result;
 
       if (address && city) {
-        const addressResult = await googlePlacesSearch(`${address} ${city} ${state}`, apiKey);
+        const addressResult = await googlePlacesSearch(`${address} ${city} ${state}`, lead.ownerName, apiKey);
         if (addressResult) return addressResult;
       }
 
@@ -124,15 +144,17 @@ const openCorporatesProvider: PhoneProvider = {
       if (!companies || companies.length === 0) return null;
 
       const normalizedOwner = normalizeForSearch(lead.ownerName);
-      let bestMatch = companies[0].company;
+      let bestMatch = null;
 
       for (const c of companies) {
         const normalizedResult = normalizeForSearch(c.company.name || "");
-        if (normalizedResult === normalizedOwner || normalizedResult.includes(normalizedOwner)) {
+        if (normalizedResult === normalizedOwner || normalizedResult.includes(normalizedOwner) || normalizedOwner.includes(normalizedResult)) {
           bestMatch = c.company;
           break;
         }
       }
+
+      if (!bestMatch) return null;
 
       if (bestMatch.registered_address?.phone) {
         const phone = bestMatch.registered_address.phone;
