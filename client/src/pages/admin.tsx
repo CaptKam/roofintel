@@ -80,6 +80,11 @@ interface ViolationsStatus {
 interface PermitsStatus {
   totalPermits: number;
   matchedPermits: number;
+  permitsBySource?: { source: string; count: number }[];
+  withOwnerName?: number;
+  withContractorPhone?: number;
+  withContractorAddress?: number;
+  dateRange?: { earliest: string | null; latest: string | null };
 }
 
 interface FloodStatus {
@@ -564,6 +569,7 @@ export default function Admin() {
   const [dcadMinSqft, setDcadMinSqft] = useState("0");
   const [dcadMaxRecords, setDcadMaxRecords] = useState("5000");
   const [lastResults, setLastResults] = useState<Record<string, string>>({});
+  const [permitYearsBack, setPermitYearsBack] = useState(5);
 
   const { data: markets, isLoading: marketsLoading } = useQuery<Market[]>({
     queryKey: ["/api/markets"],
@@ -937,13 +943,14 @@ export default function Admin() {
 
   const importFortWorthPermitsMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/permits/import-fortworth", { marketId });
+      const res = await apiRequest("POST", "/api/permits/import-fortworth", { marketId, yearsBack: permitYearsBack, commercialOnly: true });
       return res.json();
     },
     onSuccess: (data: any) => {
       const count = data.imported ?? data.count ?? 0;
-      setLastResults((prev) => ({ ...prev, importFortWorthPermits: `${count} permits imported` }));
-      toast({ title: "Fort Worth permits import complete", description: `${count} permits imported.` });
+      const skipped = data.skipped ?? 0;
+      setLastResults((prev) => ({ ...prev, importFortWorthPermits: `${count} permits imported, ${skipped} duplicates skipped` }));
+      toast({ title: "Fort Worth permits import complete", description: `${count} permits imported (${permitYearsBack}yr, ArcGIS).` });
       queryClient.invalidateQueries({ queryKey: ["/api/permits/status"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
     },
@@ -2026,8 +2033,63 @@ export default function Admin() {
               </CardHeader>
               <CardContent className="p-6 pt-0 space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Import building permits from Dallas and Fort Worth open data portals, then match them to leads.
+                  Import building permits from Dallas (Socrata) and Fort Worth (ArcGIS, 1.5M+ records back to 2001), then match to leads with evidence recording.
                 </p>
+
+                {permitsStatus && permitsStatus.totalPermits > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-testid="permit-stats-grid">
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">Matched</p>
+                      <p className="text-lg font-bold" data-testid="stat-permits-matched">{permitsStatus.matchedPermits?.toLocaleString() ?? 0}</p>
+                    </div>
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">With Owner</p>
+                      <p className="text-lg font-bold" data-testid="stat-permits-with-owner">{(permitsStatus.withOwnerName ?? 0).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">With Phone</p>
+                      <p className="text-lg font-bold" data-testid="stat-permits-with-phone">{(permitsStatus.withContractorPhone ?? 0).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border p-2.5">
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider">With Address</p>
+                      <p className="text-lg font-bold" data-testid="stat-permits-with-address">{(permitsStatus.withContractorAddress ?? 0).toLocaleString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                {permitsStatus?.permitsBySource && permitsStatus.permitsBySource.length > 0 && (
+                  <div className="flex flex-wrap gap-2" data-testid="permit-source-badges">
+                    {permitsStatus.permitsBySource.map((s) => (
+                      <span key={s.source} className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium">
+                        {s.source.replace(/_/g, " ")}: {s.count.toLocaleString()}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {permitsStatus?.dateRange?.earliest && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-permit-date-range">
+                    Date range: {permitsStatus.dateRange.earliest} to {permitsStatus.dateRange.latest}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Years back:</label>
+                  <select
+                    value={permitYearsBack}
+                    onChange={(e) => setPermitYearsBack(Number(e.target.value))}
+                    className="h-8 rounded-md border border-input bg-background px-2 py-1 text-xs"
+                    data-testid="select-permit-years-back"
+                  >
+                    <option value={1}>1 year</option>
+                    <option value={3}>3 years</option>
+                    <option value={5}>5 years</option>
+                    <option value={10}>10 years</option>
+                    <option value={15}>15 years</option>
+                    <option value={20}>20 years</option>
+                  </select>
+                </div>
+
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     size="sm"
@@ -2054,7 +2116,7 @@ export default function Admin() {
                     ) : (
                       <Building2 className="w-3 h-3" />
                     )}
-                    Import Fort Worth Permits
+                    Fort Worth ({permitYearsBack}yr ArcGIS)
                   </Button>
                   <Button
                     size="sm"

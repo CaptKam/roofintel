@@ -3,7 +3,6 @@ import { db } from "./storage";
 import { eq, and, sql, ilike } from "drizzle-orm";
 
 const DALLAS_PERMITS_URL = "https://www.dallasopendata.com/resource/e7gq-4sah.json";
-const FORT_WORTH_PERMITS_URL = "https://data.fortworthtexas.gov/resource/quz7-xnsy.json";
 const PAGE_SIZE = 5000;
 const RATE_LIMIT_MS = 300;
 
@@ -90,6 +89,40 @@ function extractPhoneFromContractor(contractor: string | undefined): string | nu
   const dashMatch = contractor.match(/(\d{3})-(\d{3})-(\d{4})/);
   if (dashMatch) return `${dashMatch[1]}-${dashMatch[2]}-${dashMatch[3]}`;
   return null;
+}
+
+function parseDallasContractorBlob(raw: string): {
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  phone: string | null;
+} {
+  const phoneMatch = raw.match(/\((\d{3})\)\s*(\d{3})-(\d{4})/);
+  const phone = phoneMatch ? `(${phoneMatch[1]}) ${phoneMatch[2]}-${phoneMatch[3]}` : null;
+
+  let text = phone ? raw.replace(/\(\d{3}\)\s*\d{3}-\d{4}/, "").trim() : raw;
+
+  const stateZipMatch = text.match(/,?\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/);
+  const state = stateZipMatch ? stateZipMatch[1] : null;
+  const zip = stateZipMatch ? stateZipMatch[2] : null;
+  if (stateZipMatch) text = text.replace(stateZipMatch[0], "").trim();
+
+  const cityMatch = text.match(/,\s*([A-Za-z\s]+)\s*$/);
+  const city = cityMatch ? cityMatch[1].trim() : null;
+  if (cityMatch) text = text.replace(cityMatch[0], "").trim();
+
+  const addressMatch = text.match(/\s+(\d+\s+[A-Za-z0-9\s.,#]+)$/);
+  let name = text;
+  let address: string | null = null;
+  if (addressMatch) {
+    address = addressMatch[1].trim().replace(/,\s*$/, "");
+    name = text.replace(addressMatch[0], "").trim();
+  }
+
+  name = name.replace(/\s+/g, " ").replace(/,\s*$/, "").trim();
+  return { name, address, city, state, zip, phone };
 }
 
 function parseDallasDate(dateStr: string | undefined): string | null {
@@ -182,7 +215,8 @@ export async function importDallasPermits(
           continue;
         }
 
-        const contractorPhone = extractPhoneFromContractor(record.contractor);
+        const parsed = record.contractor ? parseDallasContractorBlob(record.contractor) : null;
+        const contractorPhone = parsed?.phone || extractPhoneFromContractor(record.contractor);
         const estimatedValue = record.value ? parseFloat(record.value) : null;
         const sqft = record.area ? parseInt(record.area, 10) : null;
 
@@ -194,8 +228,12 @@ export async function importDallasPermits(
           address,
           city: "Dallas",
           zipCode: record.zip_code || null,
-          contractor: record.contractor || null,
+          contractor: parsed?.name || record.contractor || null,
           contractorPhone,
+          contractorAddress: parsed?.address || null,
+          contractorCity: parsed?.city || null,
+          contractorState: parsed?.state || null,
+          contractorZip: parsed?.zip || null,
           owner: null,
           workDescription: record.work_description || null,
           estimatedValue: isNaN(estimatedValue as number) ? null : estimatedValue,
@@ -206,6 +244,7 @@ export async function importDallasPermits(
           sourcePermitId,
           metadata: {
             mapsco: record.mapsco,
+            rawContractor: record.contractor,
           },
         });
 
@@ -237,59 +276,71 @@ export async function importDallasPermits(
   return { imported, skipped, errors };
 }
 
+const FORT_WORTH_ARCGIS_URL = "https://services5.arcgis.com/3ddLCBXe1bRt7mzj/arcgis/rest/services/CFW_Open_Data_Development_Permits_View/FeatureServer/0/query";
+const ARCGIS_PAGE_SIZE = 2000;
+
 export async function importFortWorthPermits(
   marketId: string,
-  options?: { daysBack?: number }
+  options?: { yearsBack?: number; commercialOnly?: boolean; roofingOnly?: boolean }
 ): Promise<{ imported: number; skipped: number; errors: string[] }> {
-  const daysBack = options?.daysBack ?? 90;
+  const yearsBack = options?.yearsBack ?? 5;
+  const commercialOnly = options?.commercialOnly ?? true;
+  const roofingOnly = options?.roofingOnly ?? false;
 
   let imported = 0;
   let skipped = 0;
   const errors: string[] = [];
-  let offset = 0;
+  let resultOffset = 0;
   let hasMore = true;
 
-  console.log(`[Fort Worth Permits] Starting import for market ${marketId}, daysBack=${daysBack}`);
+  const cutoffDate = new Date();
+  cutoffDate.setFullYear(cutoffDate.getFullYear() - yearsBack);
+  const cutoffTimestamp = cutoffDate.getTime();
+
+  console.log(`[Fort Worth Permits] Starting ArcGIS import for market ${marketId}, yearsBack=${yearsBack}, commercialOnly=${commercialOnly}, roofingOnly=${roofingOnly}`);
+
+  let whereClause = `File_Date >= ${cutoffTimestamp}`;
+  if (roofingOnly) {
+    whereClause += ` AND (upper(B1_WORK_DESC) LIKE '%ROOF%' OR upper(Permit_Type) LIKE '%ROOF%')`;
+  }
+  if (commercialOnly) {
+    whereClause += ` AND (upper(Use_Type) LIKE '%COMMERCIAL%' OR upper(Use_Type) LIKE '%INDUSTRIAL%' OR upper(Use_Type) LIKE '%MULTI%' OR upper(Specific_Use) LIKE '%OFFICE%' OR upper(Specific_Use) LIKE '%WAREHOUSE%' OR upper(Specific_Use) LIKE '%RETAIL%' OR upper(Specific_Use) LIKE '%HOTEL%' OR upper(Specific_Use) LIKE '%CHURCH%' OR upper(Specific_Use) LIKE '%HOSPITAL%' OR upper(Specific_Use) LIKE '%RESTAURANT%')`;
+  }
 
   while (hasMore) {
-    const params = new URLSearchParams({
-      "$limit": String(PAGE_SIZE),
-      "$offset": String(offset),
-      "$order": "filing_date DESC",
-    });
-
     try {
-      const response = await fetchWithTimeout(`${FORT_WORTH_PERMITS_URL}?${params}`);
+      const params = new URLSearchParams({
+        where: whereClause,
+        outFields: "Permit_No,Permit_Type,Permit_SubType,B1_WORK_DESC,Full_Street_Address,Zip_Code,Owner_Full_Name,File_Date,JobValue,SqFt,Use_Type,Specific_Use",
+        f: "json",
+        resultRecordCount: String(ARCGIS_PAGE_SIZE),
+        resultOffset: String(resultOffset),
+        orderByFields: "File_Date DESC",
+      });
+
+      const response = await fetchWithTimeout(`${FORT_WORTH_ARCGIS_URL}?${params}`, 60000);
       if (!response.ok) {
-        console.log(`[Fort Worth Permits] API returned ${response.status}, endpoint may be unavailable. Returning 0 imported.`);
-        return { imported: 0, skipped: 0, errors: [`Fort Worth API returned ${response.status}`] };
+        errors.push(`Fort Worth ArcGIS API error ${response.status}`);
+        break;
       }
 
-      const records: any[] = await response.json();
-      if (records.length === 0) {
+      const data = await response.json();
+      if (!data.features || !Array.isArray(data.features) || data.features.length === 0) {
         hasMore = false;
         break;
       }
 
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysBack);
-      const cutoffISO = cutoffDate.toISOString().split("T")[0];
-
       const batch: InsertBuildingPermit[] = [];
 
-      for (const record of records) {
-        const filingDate = record.filing_date?.split("T")[0] || null;
-        if (filingDate && filingDate < cutoffISO) {
-          continue;
-        }
-
-        const permitNumber = record.permit_number;
+      for (const feature of data.features) {
+        const attrs = feature.attributes || {};
+        const permitNumber = attrs.Permit_No;
         if (!permitNumber) continue;
 
-        const address = record.location?.trim();
+        const address = (attrs.Full_Street_Address || "").trim();
         if (!address) continue;
 
-        const sourcePermitId = `fw_permit_${permitNumber}`;
+        const sourcePermitId = `fw_arcgis_${permitNumber}`;
 
         const existing = await db
           .select({ id: buildingPermits.id })
@@ -302,30 +353,33 @@ export async function importFortWorthPermits(
           continue;
         }
 
-        const jobValue = record.job_value ? parseFloat(record.job_value) : null;
-        const sqft = record.sqft ? parseInt(record.sqft, 10) : null;
+        const fileDate = attrs.File_Date ? new Date(attrs.File_Date).toISOString().split("T")[0] : null;
+        const jobValue = attrs.JobValue ? parseFloat(attrs.JobValue) : null;
+        const sqft = attrs.SqFt ? parseInt(attrs.SqFt, 10) : null;
 
         batch.push({
           marketId,
           permitNumber,
-          permitType: record.permit_type || "Unknown",
-          issuedDate: filingDate,
+          permitType: attrs.Permit_Type || attrs.Permit_SubType || "Unknown",
+          issuedDate: fileDate,
           address,
           city: "Fort Worth",
-          zipCode: null,
+          zipCode: attrs.Zip_Code || null,
           contractor: null,
           contractorPhone: null,
-          owner: record.owners_name || null,
-          workDescription: record.work_description || null,
+          owner: attrs.Owner_Full_Name || null,
+          applicantName: attrs.Owner_Full_Name || null,
+          workDescription: attrs.B1_WORK_DESC || null,
           estimatedValue: isNaN(jobValue as number) ? null : jobValue,
           sqft: isNaN(sqft as number) ? null : sqft,
-          landUse: null,
-          status: record.status || null,
-          source: "fort_worth_open_data",
+          landUse: attrs.Use_Type || attrs.Specific_Use || null,
+          status: null,
+          source: "fort_worth_arcgis",
           sourcePermitId,
           metadata: {
-            legalDescription: record.legal_description,
-            units: record.units,
+            permitSubType: attrs.Permit_SubType,
+            specificUse: attrs.Specific_Use,
+            useType: attrs.Use_Type,
           },
         });
 
@@ -341,15 +395,15 @@ export async function importFortWorthPermits(
         imported += batch.length;
       }
 
-      if (records.length < PAGE_SIZE) {
-        hasMore = false;
-      } else {
-        offset += PAGE_SIZE;
+      if (data.exceededTransferLimit || data.features.length >= ARCGIS_PAGE_SIZE) {
+        resultOffset += ARCGIS_PAGE_SIZE;
         await sleep(RATE_LIMIT_MS);
+      } else {
+        hasMore = false;
       }
     } catch (err: any) {
-      console.log(`[Fort Worth Permits] Endpoint failed: ${err.message}. Returning 0 imported.`);
-      return { imported: 0, skipped: 0, errors: [`Fort Worth fetch error: ${err.message}`] };
+      errors.push(`Fort Worth ArcGIS fetch error at offset ${resultOffset}: ${err.message}`);
+      hasMore = false;
     }
   }
 
@@ -359,7 +413,7 @@ export async function importFortWorthPermits(
 
 export async function matchPermitsToLeads(
   marketId: string
-): Promise<{ matched: number; unmatched: number }> {
+): Promise<{ matched: number; unmatched: number; evidenceRecorded: number }> {
   console.log(`[Permit Matching] Starting for market ${marketId}`);
 
   const allPermits = await db
@@ -381,7 +435,8 @@ export async function matchPermitsToLeads(
   const leadPermitStats = new Map<string, {
     total: number;
     lastDate: string | null;
-    contractors: { name: string; phone: string | null }[];
+    contractors: { name: string; phone: string | null; email: string | null; address: string | null; city: string | null; state: string | null; zip: string | null }[];
+    owners: string[];
   }>();
 
   let matched = 0;
@@ -405,7 +460,7 @@ export async function matchPermitsToLeads(
         .where(eq(buildingPermits.id, permit.id));
     }
 
-    const stats = leadPermitStats.get(lead.id) || { total: 0, lastDate: null, contractors: [] };
+    const stats = leadPermitStats.get(lead.id) || { total: 0, lastDate: null, contractors: [], owners: [] };
     stats.total++;
     if (permit.issuedDate) {
       if (!stats.lastDate || permit.issuedDate > stats.lastDate) {
@@ -418,11 +473,29 @@ export async function matchPermitsToLeads(
         stats.contractors.push({
           name: permit.contractor,
           phone: permit.contractorPhone,
+          email: permit.contractorEmail,
+          address: permit.contractorAddress,
+          city: permit.contractorCity,
+          state: permit.contractorState,
+          zip: permit.contractorZip,
         });
       }
     }
+    if (permit.owner && !stats.owners.includes(permit.owner)) {
+      stats.owners.push(permit.owner);
+    }
+    if (permit.applicantName && !stats.owners.includes(permit.applicantName) && permit.applicantName !== permit.owner) {
+      stats.owners.push(permit.applicantName);
+    }
     leadPermitStats.set(lead.id, stats);
   }
+
+  let evidenceRecorded = 0;
+  let recordBatchEvidence: typeof import("./evidence-recorder").recordBatchEvidence | null = null;
+  try {
+    const evidenceModule = await import("./evidence-recorder");
+    recordBatchEvidence = evidenceModule.recordBatchEvidence;
+  } catch {}
 
   for (const [leadId, stats] of Array.from(leadPermitStats.entries())) {
     const updates: Partial<Lead> = {
@@ -438,11 +511,63 @@ export async function matchPermitsToLeads(
         .map((c) => ({
           name: c.name,
           phone: c.phone,
+          email: c.email,
+          address: c.address ? `${c.address}${c.city ? `, ${c.city}` : ""}${c.state ? `, ${c.state}` : ""}${c.zip ? ` ${c.zip}` : ""}` : null,
           source: "building_permit",
           role: "contractor",
         }));
       if (newContacts.length > 0) {
         updates.buildingContacts = [...existingContacts, ...newContacts] as any;
+      }
+    }
+
+    if ((stats.contractors.length > 0 || stats.owners.length > 0) && recordBatchEvidence) {
+      const evidenceBatch: any[] = [];
+      for (const c of stats.contractors) {
+        if (c.phone) {
+          evidenceBatch.push({
+            leadId,
+            contactType: "phone",
+            contactValue: c.phone,
+            sourceName: "Dallas Building Permits",
+            sourceUrl: "https://www.dallasopendata.com/resource/e7gq-4sah.json",
+            confidence: 70,
+            extractorMethod: "RULE",
+            rawSnippet: `Contractor: ${c.name}`,
+          });
+        }
+        if (c.email) {
+          evidenceBatch.push({
+            leadId,
+            contactType: "email",
+            contactValue: c.email,
+            sourceName: "Dallas Building Permits",
+            sourceUrl: "https://www.dallasopendata.com/resource/e7gq-4sah.json",
+            confidence: 70,
+            extractorMethod: "RULE",
+            rawSnippet: `Contractor: ${c.name}`,
+          });
+        }
+      }
+      for (const ownerName of stats.owners) {
+        evidenceBatch.push({
+          leadId,
+          contactType: "name",
+          contactValue: ownerName,
+          sourceName: "Fort Worth Building Permits",
+          sourceUrl: FORT_WORTH_ARCGIS_URL,
+          confidence: 75,
+          extractorMethod: "RULE",
+          rawSnippet: `Permit Owner/Applicant: ${ownerName}`,
+        });
+      }
+      if (evidenceBatch.length > 0) {
+        try {
+          await recordBatchEvidence(evidenceBatch);
+          evidenceRecorded += evidenceBatch.length;
+        } catch (err: any) {
+          console.log(`[Permit Matching] Evidence recording failed for lead ${leadId}: ${err.message}`);
+        }
       }
     }
 
@@ -452,8 +577,8 @@ export async function matchPermitsToLeads(
       .where(eq(leads.id, leadId));
   }
 
-  console.log(`[Permit Matching] Complete: matched=${matched}, unmatched=${unmatched}, leadsUpdated=${leadPermitStats.size}`);
-  return { matched, unmatched };
+  console.log(`[Permit Matching] Complete: matched=${matched}, unmatched=${unmatched}, leadsUpdated=${leadPermitStats.size}, evidenceRecorded=${evidenceRecorded}`);
+  return { matched, unmatched, evidenceRecorded };
 }
 
 const ROOFING_KEYWORDS = [
@@ -538,7 +663,8 @@ export async function importDallasRoofingPermits(
           continue;
         }
 
-        const contractorPhone = extractPhoneFromContractor(record.contractor);
+        const parsed = record.contractor ? parseDallasContractorBlob(record.contractor) : null;
+        const contractorPhone = parsed?.phone || extractPhoneFromContractor(record.contractor);
         const estimatedValue = record.value ? parseFloat(record.value) : null;
         const sqftVal = record.area ? parseInt(record.area, 10) : null;
 
@@ -550,8 +676,12 @@ export async function importDallasRoofingPermits(
           address,
           city: "Dallas",
           zipCode: record.zip_code || null,
-          contractor: record.contractor || null,
+          contractor: parsed?.name || record.contractor || null,
           contractorPhone,
+          contractorAddress: parsed?.address || null,
+          contractorCity: parsed?.city || null,
+          contractorState: parsed?.state || null,
+          contractorZip: parsed?.zip || null,
           owner: null,
           workDescription: record.work_description || null,
           estimatedValue: isNaN(estimatedValue as number) ? null : estimatedValue,
@@ -651,6 +781,10 @@ export async function getPermitStats(): Promise<{
   matchedPermits: number;
   unmatchedPermits: number;
   recentPermits: number;
+  withOwnerName: number;
+  withContractorPhone: number;
+  withContractorAddress: number;
+  dateRange: { earliest: string | null; latest: string | null };
 }> {
   const totalResult = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -687,11 +821,44 @@ export async function getPermitStats(): Promise<{
     .where(sql`${buildingPermits.issuedDate} >= ${recentCutoff}`);
   const recentPermits = recentResult[0]?.count ?? 0;
 
+  const ownerResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(buildingPermits)
+    .where(sql`${buildingPermits.owner} IS NOT NULL AND ${buildingPermits.owner} != ''`);
+  const withOwnerName = ownerResult[0]?.count ?? 0;
+
+  const phoneResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(buildingPermits)
+    .where(sql`${buildingPermits.contractorPhone} IS NOT NULL AND ${buildingPermits.contractorPhone} != ''`);
+  const withContractorPhone = phoneResult[0]?.count ?? 0;
+
+  const addrResult = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(buildingPermits)
+    .where(sql`${buildingPermits.contractorAddress} IS NOT NULL AND ${buildingPermits.contractorAddress} != ''`);
+  const withContractorAddress = addrResult[0]?.count ?? 0;
+
+  const dateRangeResult = await db
+    .select({
+      earliest: sql<string>`min(${buildingPermits.issuedDate})`,
+      latest: sql<string>`max(${buildingPermits.issuedDate})`,
+    })
+    .from(buildingPermits);
+  const dateRange = {
+    earliest: dateRangeResult[0]?.earliest || null,
+    latest: dateRangeResult[0]?.latest || null,
+  };
+
   return {
     totalPermits,
     permitsBySource,
     matchedPermits,
     unmatchedPermits,
     recentPermits,
+    withOwnerName,
+    withContractorPhone,
+    withContractorAddress,
+    dateRange,
   };
 }

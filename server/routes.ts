@@ -1516,9 +1516,13 @@ export async function registerRoutes(
 
   app.post("/api/permits/import-fortworth", async (req, res) => {
     try {
-      const { marketId, daysBack } = req.body;
+      const { marketId, yearsBack, commercialOnly, roofingOnly } = req.body;
       if (!marketId) return res.status(400).json({ message: "marketId required" });
-      const result = await importFortWorthPermits(marketId, { daysBack });
+      const result = await importFortWorthPermits(marketId, {
+        yearsBack: yearsBack ?? 5,
+        commercialOnly: commercialOnly ?? true,
+        roofingOnly: roofingOnly ?? false,
+      });
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to import Fort Worth permits", error: error.message });

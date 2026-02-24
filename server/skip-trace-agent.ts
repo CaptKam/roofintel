@@ -112,8 +112,40 @@ function makeClaim(leadId: string, agentName: string, claimType: string, fieldNa
   };
 }
 
+function parseDallasContractorBlob(raw: string): { name: string; address: string | null; city: string | null; state: string | null; zip: string | null; phone: string | null } {
+  const phoneMatch = raw.match(/\((\d{3})\)\s*(\d{3})-(\d{4})/);
+  const phone = phoneMatch ? `(${phoneMatch[1]}) ${phoneMatch[2]}-${phoneMatch[3]}` : null;
+
+  let textWithoutPhone = phone ? raw.replace(/\(\d{3}\)\s*\d{3}-\d{4}/, "").trim() : raw;
+
+  const stateZipMatch = textWithoutPhone.match(/,?\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/);
+  const state = stateZipMatch ? stateZipMatch[1] : null;
+  const zip = stateZipMatch ? stateZipMatch[2] : null;
+  if (stateZipMatch) {
+    textWithoutPhone = textWithoutPhone.replace(stateZipMatch[0], "").trim();
+  }
+
+  const cityMatch = textWithoutPhone.match(/,\s*([A-Za-z\s]+)\s*$/);
+  const city = cityMatch ? cityMatch[1].trim() : null;
+  if (cityMatch) {
+    textWithoutPhone = textWithoutPhone.replace(cityMatch[0], "").trim();
+  }
+
+  const addressMatch = textWithoutPhone.match(/\s+(\d+\s+[A-Za-z0-9\s.,#]+)$/);
+  let name = textWithoutPhone;
+  let address: string | null = null;
+  if (addressMatch) {
+    address = addressMatch[1].trim().replace(/,\s*$/, "");
+    name = textWithoutPhone.replace(addressMatch[0], "").trim();
+  }
+
+  name = name.replace(/\s+/g, " ").replace(/,\s*$/, "").trim();
+
+  return { name, address, city, state, zip, phone };
+}
+
 // ============================================================
-// LOOKUP 1: DFW City Building Permit Portals (Socrata Open Data)
+// LOOKUP 1: DFW City Building Permit Portals
 // ============================================================
 
 async function dallasPermitLookup(lead: Lead, claims: InsertIntelligenceClaim[]): Promise<{ people: PersonRecord[]; contacts: BuildingContact[]; detail: string }> {
@@ -132,25 +164,57 @@ async function dallasPermitLookup(lead: Lead, claims: InsertIntelligenceClaim[])
 
     const searchParts = streetName.split(/\s+/).filter(p => p.length > 2).slice(0, 3);
     const whereClause = encodeURIComponent(
-      `upper(workaddress) like '%${streetNum}%${searchParts.join("%")}%'`
+      `upper(street_address) like '%${streetNum}%${searchParts.join("%")}%'`
     );
 
-    const url = `https://www.dallasopendata.com/resource/building-permits.json?$where=${whereClause}&$limit=20&$order=issuedate DESC`;
+    const url = `https://www.dallasopendata.com/resource/e7gq-4sah.json?$where=${whereClause}&$limit=20&$order=issued_date DESC`;
     const res = await fetchWithTimeout(url, {
       headers: { "Accept": "application/json" },
     });
 
-    if (!res || !res.ok) {
-      const altUrl = `https://www.dallasopendata.com/resource/mxwg-pyes.json?$where=${whereClause}&$limit=20&$order=issue_date DESC`;
-      const altRes = await fetchWithTimeout(altUrl, { headers: { "Accept": "application/json" } });
-      if (!altRes || !altRes.ok) return { people, contacts, detail: "Dallas permit API unavailable" };
-      const records = await altRes.json();
-      processPermitRecords(records, lead, people, contacts, claims, "Dallas Open Data (Permits)");
-      return { people, contacts, detail: `Found ${people.length + contacts.length} from Dallas permits` };
-    }
+    if (!res || !res.ok) return { people, contacts, detail: "Dallas permit API unavailable" };
 
     const records = await res.json();
-    processPermitRecords(records, lead, people, contacts, claims, "Dallas Open Data (Permits)");
+    if (records.error) return { people, contacts, detail: "Dallas permit API error" };
+
+    for (const record of (records as any[]).slice(0, 15)) {
+      const contractorRaw = record.contractor || "";
+      if (contractorRaw && contractorRaw.length > 2) {
+        const parsed = parseDallasContractorBlob(contractorRaw);
+        const key = parsed.name.toUpperCase().trim();
+        if (key.length > 2) {
+          contacts.push({
+            name: parsed.name,
+            role: "Contractor / Permit Holder",
+            phone: parsed.phone || undefined,
+            source: "Dallas Open Data (Permits)",
+            confidence: 70,
+          });
+
+          claims.push(makeClaim(
+            lead.id, "Skip Trace", "building_contact", "contractor",
+            parsed.name, `https://www.dallasopendata.com/resource/e7gq-4sah.json`, 70, "api_structured"
+          ));
+
+          if (parsed.phone) {
+            claims.push(makeClaim(
+              lead.id, "Skip Trace", "phone", "contractor_phone",
+              parsed.phone, `https://www.dallasopendata.com/resource/e7gq-4sah.json`, 65, "api_structured"
+            ));
+          }
+
+          if (isPersonName(parsed.name)) {
+            people.push({
+              name: parsed.name,
+              title: `Contractor (${(record.work_description || record.permit_type || "Building Permit").substring(0, 40)})`,
+              phone: parsed.phone || undefined,
+              source: "Dallas Open Data (Permits)",
+              confidence: 60,
+            });
+          }
+        }
+      }
+    }
 
     return { people, contacts, detail: `Found ${people.length + contacts.length} from Dallas permits` };
   } catch (err: any) {
@@ -172,16 +236,54 @@ async function fortWorthPermitLookup(lead: Lead, claims: InsertIntelligenceClaim
     if (!streetNum) return { people, contacts, detail: "Could not parse address" };
 
     const streetParts = address.replace(/^\d+\s+/, "").split(/\s+/).filter(p => p.length > 2).slice(0, 2);
-    const whereClause = encodeURIComponent(
-      `upper(address) like '%${streetNum}%${streetParts.join("%")}%'`
-    );
+    const addressQuery = `${streetNum}%${streetParts.join("%")}`;
 
-    const url = `https://data.fortworthtexas.gov/resource/permits.json?$where=${whereClause}&$limit=20`;
-    const res = await fetchWithTimeout(url, { headers: { "Accept": "application/json" } });
+    const arcgisUrl = `https://services5.arcgis.com/3ddLCBXe1bRt7mzj/arcgis/rest/services/CFW_Open_Data_Development_Permits_View/FeatureServer/0/query?where=upper(Full_Street_Address)+LIKE+'%25${encodeURIComponent(addressQuery)}%25'&outFields=Owner_Full_Name,Full_Street_Address,B1_WORK_DESC,Permit_Type,File_Date,JobValue&f=json&resultRecordCount=20&orderByFields=File_Date+DESC`;
+    const res = await fetchWithTimeout(arcgisUrl, {
+      headers: { "Accept": "application/json" },
+    });
 
     if (!res || !res.ok) return { people, contacts, detail: "Fort Worth permit API unavailable" };
-    const records = await res.json();
-    processPermitRecords(records, lead, people, contacts, claims, "Fort Worth Open Data (Permits)");
+    const data = await res.json();
+
+    if (!data.features || !Array.isArray(data.features)) {
+      return { people, contacts, detail: "Fort Worth permit API returned no features" };
+    }
+
+    const seenNames = new Set<string>();
+    for (const feature of data.features.slice(0, 15)) {
+      const attrs = feature.attributes || {};
+      const ownerName = (attrs.Owner_Full_Name || "").trim();
+      if (ownerName && ownerName.length > 2) {
+        const key = ownerName.toUpperCase();
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          const permitType = attrs.Permit_Type || attrs.B1_WORK_DESC || "Building Permit";
+
+          if (isPersonName(ownerName)) {
+            people.push({
+              name: ownerName,
+              title: `Property Owner (${permitType.substring(0, 40)})`,
+              source: "Fort Worth Building Permits",
+              confidence: 75,
+            });
+          }
+
+          contacts.push({
+            name: ownerName,
+            role: "Permit Applicant / Owner",
+            source: "Fort Worth Building Permits",
+            confidence: 70,
+          });
+
+          claims.push(makeClaim(
+            lead.id, "Skip Trace", "building_contact", "permit_owner",
+            ownerName, "https://services5.arcgis.com/3ddLCBXe1bRt7mzj/arcgis/rest/services/CFW_Open_Data_Development_Permits_View/FeatureServer/0",
+            75, "api_structured"
+          ));
+        }
+      }
+    }
 
     return { people, contacts, detail: `Found ${people.length + contacts.length} from Fort Worth permits` };
   } catch (err: any) {

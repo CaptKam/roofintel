@@ -70,7 +70,8 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **Serper Web Search API**: Utilized as a fallback for phone number enrichment and general web research.
 - **TX Open Data Portal**: Source for contact enrichment, including taxpayer IDs and SOS file numbers for Texas entities.
 - **Texas Comptroller Public Information Request (PIR) API**: Used by the owner intelligence system for officer extraction.
-- **Socrata API**: Accessed for DFW building permits in the skip trace agent.
+- **Socrata API**: Accessed for Dallas building permits (`e7gq-4sah` endpoint) with `parseDallasContractorBlob()` for structured extraction of name/address/city/state/zip/phone from embedded contractor text blobs.
+- **Fort Worth ArcGIS FeatureServer**: `services5.arcgis.com/...CFW_Open_Data_Development_Permits_View` — 1.5M+ permits back to 2001. Supports multi-year queries with `yearsBack` parameter, commercial/roofing filtering, extracts `Owner_Full_Name` for corroboration.
 - **Hunter.io**: Email discovery API for finding email addresses by domain (free tier: 25 searches/month). Manual-only with usage tracking.
 - **People Data Labs (PDL)**: Person and company enrichment API for finding emails, phones, titles, and LinkedIn profiles (free tier: 100 matches/month). Manual-only with usage tracking.
 - **SEC EDGAR**: Free SEC filing API (`data.sec.gov/submissions/`) for looking up REIT and institutional owner details — company name, phone, address, SIC classification, and filing history. No API key required.
