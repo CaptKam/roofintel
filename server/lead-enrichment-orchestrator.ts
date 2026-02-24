@@ -277,8 +277,11 @@ async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress):
       return lead;
     }
 
+    const freshLead = await fetchLead(lead.id);
+    const phoneCandidate = freshLead || lead;
+
     const { enrichSingleLeadPhone } = await import("./phone-enrichment");
-    const result = await enrichSingleLeadPhone(lead);
+    const result = await enrichSingleLeadPhone(phoneCandidate);
 
     if (result) {
       await db.update(leads).set({
@@ -309,7 +312,16 @@ export async function enrichLead(leadId: string): Promise<EnrichmentProgress> {
     return { leadId, status: "error", steps: [], completedAt: new Date().toISOString() };
   }
 
-  await db.update(leads).set({ enrichmentStatus: "running" } as any).where(eq(leads.id, leadId));
+  await db.update(leads).set({
+    enrichmentStatus: "running",
+    phoneEnrichedAt: null,
+    lastEnrichedAt: null,
+  } as any).where(eq(leads.id, leadId));
+
+  lead = await fetchLead(leadId);
+  if (!lead) {
+    return { leadId, status: "error", steps: [], completedAt: new Date().toISOString() };
+  }
 
   const progress = initProgress(leadId);
   activeEnrichments.set(leadId, progress);

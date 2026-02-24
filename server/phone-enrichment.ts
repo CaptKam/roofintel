@@ -275,8 +275,12 @@ const officerNameReverseProvider: PhoneProvider = {
         }
       }
 
-      if (officerNames.length === 0) return null;
+      if (officerNames.length === 0) {
+        console.log(`[Phone Enrichment] Officer reverse: no person names found for "${lead.ownerName}"`);
+        return null;
+      }
 
+      console.log(`[Phone Enrichment] Officer reverse: searching ${officerNames.length} names for "${lead.ownerName}": ${officerNames.join(", ")}`);
       for (const personName of officerNames.slice(0, 3)) {
         const trecPhone = await searchTrecByName(personName);
         if (trecPhone) return { phone: trecPhone, source: `TREC License (${personName})` };
@@ -286,6 +290,8 @@ const officerNameReverseProvider: PhoneProvider = {
 
         const salesTaxPhone = await searchSalesTaxByPersonName(personName);
         if (salesTaxPhone) return { phone: salesTaxPhone, source: `TX Sales Tax (${personName})` };
+
+        console.log(`[Phone Enrichment] Officer reverse: no phone found for "${personName}" in TREC/TDLR/SalesTax`);
       }
 
       return null;

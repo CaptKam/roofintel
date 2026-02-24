@@ -1301,27 +1301,39 @@ function calculateIntelligenceScore(dossier: OwnerDossier): number {
   let score = 0;
 
   const realPeople = dossier.realPeople;
-  if (realPeople.length > 0) score += 25;
-  if (realPeople.length > 1) score += 5;
-
   const topPerson = realPeople[0];
+
+  if (realPeople.length > 0) score += 30;
+  if (realPeople.length > 1) score += 5;
+  if (realPeople.length > 2) score += 5;
+
   if (topPerson) {
-    if (topPerson.phone) score += 20;
-    if (topPerson.email) score += 15;
+    if (topPerson.confidence >= 80) score += 15;
+    else if (topPerson.confidence >= 60) score += 10;
+
+    const govSources = ["TX Comptroller PIR", "TX Comptroller PIR (Officers)", "TX SOS", "DCAD", "County Clerk"];
+    if (govSources.some(s => topPerson.source?.includes(s))) score += 10;
+
+    if (topPerson.title) score += 5;
     if (topPerson.address) score += 5;
-    if (topPerson.confidence >= 70) score += 10;
+    if (topPerson.phone) score += 5;
+    if (topPerson.email) score += 5;
   }
 
   if (dossier.llcChain.length > 0) score += 5;
   if (dossier.llcChain.length > 1) score += 5;
-  if (dossier.businessProfiles.length > 0) score += 5;
+  if (dossier.businessProfiles.length > 0) score += 3;
   if (dossier.emails.some(e => e.verified)) score += 5;
 
-  if (dossier.buildingContacts && dossier.buildingContacts.length > 0) score += 5;
-  if (dossier.buildingContacts && dossier.buildingContacts.some(c => c.phone || c.email)) score += 5;
+  if (dossier.buildingContacts && dossier.buildingContacts.length > 0) score += 3;
+  if (dossier.buildingContacts && dossier.buildingContacts.some(c => c.phone || c.email)) score += 4;
 
-  if (dossier.skipTraceHits && dossier.skipTraceHits.length > 0) score += 5;
-  if (dossier.skipTraceHits && dossier.skipTraceHits.some(h => h.confidence >= 70)) score += 5;
+  if (dossier.skipTraceHits && dossier.skipTraceHits.length > 0) score += 3;
+  if (dossier.skipTraceHits && dossier.skipTraceHits.some(h => h.confidence >= 70)) score += 4;
+
+  const agentHits = (dossier.agentResults || []).filter(a => a.status === "found").length;
+  if (agentHits >= 5) score += 5;
+  else if (agentHits >= 3) score += 3;
 
   return Math.min(100, score);
 }
