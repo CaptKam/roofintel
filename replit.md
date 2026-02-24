@@ -46,7 +46,8 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **Leads Management**: Filterable and searchable leads list, detailed lead view with property, owner, hail, and contact info.
 - **Map & Storms**: Interactive map view, live hail tracker, and predictive hail threat visualization.
 - **Data Imports**: Support for NOAA hail data, DCAD properties, and generic property CSVs.
-- **Contact & Phone Enrichment**: Automated processes to find owner contact information using various data sources.
+- **Contact & Phone Enrichment**: Automated processes to find owner contact information using various data sources. Includes manual-only Hunter.io (email discovery, 25/mo free) and People Data Labs (person/company enrichment, 100/mo free) integrations with per-month usage tracking and credit countdown UI.
+- **Enrichment Credits Dashboard**: Admin page shows real-time API credit usage for Hunter.io and PDL with progress bars, remaining counts, and monthly reset countdown. Lead detail page has manual enrich buttons showing remaining credits.
 - **Web Research Agent**: Scans business websites to identify decision-makers and their contact details.
 - **Relationship Network Agent**: Discovers and scores property portfolios by linking ownership connections.
 - **Predictive Hail Monitoring**: Integrates Xweather for advanced hail threat forecasting and alerts.
@@ -65,5 +66,7 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **TX Open Data Portal**: Source for contact enrichment, including taxpayer IDs and SOS file numbers for Texas entities.
 - **Texas Comptroller Public Information Request (PIR) API**: Used by the owner intelligence system for officer extraction.
 - **Socrata API**: Accessed for DFW building permits in the skip trace agent.
+- **Hunter.io**: Email discovery API for finding email addresses by domain (free tier: 25 searches/month). Manual-only with usage tracking.
+- **People Data Labs (PDL)**: Person and company enrichment API for finding emails, phones, titles, and LinkedIn profiles (free tier: 100 matches/month). Manual-only with usage tracking.
 - **EmailMX verification services**: Integrated for validating email patterns.
 - **Various public record APIs/databases**: Including TREC (Texas Real Estate Commission) license, TDLR (Texas Department of Licensing and Regulation) license, HUD multifamily database, BBB (Better Business Bureau) Direct, and WHOIS/RDAP for comprehensive owner and contact intelligence.
