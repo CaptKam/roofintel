@@ -120,6 +120,7 @@ export default function NetworkExplorer() {
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [graphData, setGraphData] = useState<{ nodes: any[]; links: any[] }>({ nodes: [], links: [] });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [activated, setActivated] = useState(false);
 
   useEffect(() => {
     function updateSize() {
@@ -135,10 +136,12 @@ export default function NetworkExplorer() {
 
   const { data: stats, isLoading: statsLoading } = useQuery<GraphStats>({
     queryKey: ["/api/graph/stats"],
+    enabled: activated,
   });
 
   const { data: buildStatus } = useQuery<BuildStatus>({
     queryKey: ["/api/graph/build/status"],
+    enabled: activated,
     refetchInterval: (query) => {
       const data = query.state.data as BuildStatus | undefined;
       return data?.status === "running" ? 3000 : false;
@@ -147,12 +150,13 @@ export default function NetworkExplorer() {
 
   const { data: searchResults } = useQuery<GraphNodeData[]>({
     queryKey: [`/api/graph/search?q=${encodeURIComponent(searchQuery)}`],
-    enabled: searchQuery.length >= 2,
+    enabled: activated && searchQuery.length >= 2,
   });
 
   const buildMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/graph/build"),
     onSuccess: () => {
+      setActivated(true);
       toast({ title: "Graph build started", description: "Processing all leads to build relationship network..." });
       queryClient.invalidateQueries({ queryKey: ["/api/graph/build/status"] });
     },
@@ -356,17 +360,47 @@ export default function NetworkExplorer() {
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
-              {!hasGraph ? (
+              {!activated ? (
                 <div className="text-center space-y-4">
                   <Share2 className="w-16 h-16 text-slate-600 mx-auto" />
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-300" data-testid="text-empty-title">No Relationship Graph Yet</h3>
+                    <h3 className="text-lg font-semibold text-slate-300" data-testid="text-empty-title">Network Explorer</h3>
+                    <p className="text-sm text-slate-500 mt-1 max-w-md">
+                      Visualize ownership networks, LLC chains, and decision-maker connections across your lead database.
+                    </p>
+                  </div>
+                  <div className="flex gap-3 justify-center">
+                    <Button
+                      data-testid="button-start-explorer"
+                      onClick={() => setActivated(true)}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <Search className="w-4 h-4" />
+                      Load Existing Graph
+                    </Button>
+                    <Button
+                      data-testid="button-build-graph-empty"
+                      onClick={() => buildMutation.mutate()}
+                      disabled={buildMutation.isPending}
+                      className="gap-2"
+                    >
+                      {buildMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                      Rebuild Graph
+                    </Button>
+                  </div>
+                </div>
+              ) : !hasGraph ? (
+                <div className="text-center space-y-4">
+                  <Share2 className="w-16 h-16 text-slate-600 mx-auto" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-300" data-testid="text-no-graph-title">No Relationship Graph Yet</h3>
                     <p className="text-sm text-slate-500 mt-1 max-w-md">
                       Build a graph from your lead database to visualize ownership networks, LLC chains, and decision-maker connections.
                     </p>
                   </div>
                   <Button
-                    data-testid="button-build-graph-empty"
+                    data-testid="button-build-graph-no-data"
                     onClick={() => buildMutation.mutate()}
                     disabled={isBuilding || buildMutation.isPending}
                     className="gap-2"
