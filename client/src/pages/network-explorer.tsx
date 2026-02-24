@@ -135,14 +135,13 @@ export default function NetworkExplorer() {
 
   const { data: stats, isLoading: statsLoading } = useQuery<GraphStats>({
     queryKey: ["/api/graph/stats"],
-    refetchInterval: 10000,
   });
 
   const { data: buildStatus } = useQuery<BuildStatus>({
     queryKey: ["/api/graph/build/status"],
     refetchInterval: (query) => {
       const data = query.state.data as BuildStatus | undefined;
-      return data?.status === "running" ? 2000 : 30000;
+      return data?.status === "running" ? 3000 : false;
     },
   });
 
