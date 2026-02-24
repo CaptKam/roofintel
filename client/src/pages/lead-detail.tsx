@@ -61,7 +61,7 @@ import {
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
 
 function HunterPDLButtons({ leadId }: { leadId: string }) {
@@ -371,6 +371,7 @@ export default function LeadDetail() {
   });
 
   const [notes, setNotes] = useState("");
+  const enrichTriggered = useRef(false);
 
   const enrichMutation = useMutation({
     mutationFn: async () => {
@@ -417,6 +418,15 @@ export default function LeadDetail() {
     }
   }, [enrichmentStatus?.status, id]);
 
+  useEffect(() => {
+    if (lead && !enrichTriggered.current) {
+      const hasBeenEnriched = (lead as any).lastEnrichedAt || (lead as any).enrichmentStatus === "complete";
+      if (!hasBeenEnriched) {
+        enrichTriggered.current = true;
+        enrichMutation.mutate();
+      }
+    }
+  }, [lead]);
 
   const lastEnrichedAt = (lead as any)?.lastEnrichedAt;
   const daysSinceEnrichment = lastEnrichedAt
