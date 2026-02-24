@@ -237,6 +237,7 @@ function EnrichmentCreditsCard() {
   const { data: usage, isLoading } = useQuery<{
     hunter: { used: number; limit: number; remaining: number; month: string };
     pdl: { used: number; limit: number; remaining: number; month: string };
+    googlePlaces?: { used: number; limit: number; remaining: number; month: string; estimatedCost: number; freeCreditRemaining: number };
   }>({
     queryKey: ["/api/enrichment/usage"],
   });
@@ -296,6 +297,49 @@ function EnrichmentCreditsCard() {
             testId="pdl"
           />
         </div>
+        {usage.googlePlaces && (
+          <div className="mt-6 pt-4 border-t">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-blue-500" />
+                <span className="font-medium text-sm">Google Places API</span>
+              </div>
+              <Badge variant={usage.googlePlaces.freeCreditRemaining > 50 ? "secondary" : "destructive"} className="text-xs" data-testid="badge-google-places-cost">
+                ${usage.googlePlaces.estimatedCost.toFixed(2)} used / $200 free credit
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="text-center p-2 rounded-lg bg-muted/50" data-testid="stat-google-places-calls">
+                <div className="text-lg font-bold">{usage.googlePlaces.used.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">API Calls</div>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-muted/50" data-testid="stat-google-places-cost">
+                <div className="text-lg font-bold">${usage.googlePlaces.estimatedCost.toFixed(2)}</div>
+                <div className="text-xs text-muted-foreground">Est. Cost</div>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-muted/50" data-testid="stat-google-places-remaining">
+                <div className="text-lg font-bold text-green-600">${usage.googlePlaces.freeCreditRemaining.toFixed(2)}</div>
+                <div className="text-xs text-muted-foreground">Free Credit Left</div>
+              </div>
+              <div className="text-center p-2 rounded-lg bg-muted/50" data-testid="stat-google-places-limit">
+                <div className="text-lg font-bold">{usage.googlePlaces.remaining.toLocaleString()}</div>
+                <div className="text-xs text-muted-foreground">Calls Remaining</div>
+              </div>
+            </div>
+            <div className="mt-2">
+              <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                <span>Free credit usage</span>
+                <span>{Math.round((usage.googlePlaces.estimatedCost / 200) * 100)}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${usage.googlePlaces.freeCreditRemaining > 50 ? "bg-blue-500" : usage.googlePlaces.freeCreditRemaining > 0 ? "bg-amber-500" : "bg-red-500"}`}
+                  style={{ width: `${Math.min(100, (usage.googlePlaces.estimatedCost / 200) * 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

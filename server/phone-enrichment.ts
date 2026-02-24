@@ -69,9 +69,10 @@ function placesNameMatches(searchName: string, placeName: string): boolean {
 }
 
 async function googlePlacesSearch(query: string, ownerName: string, apiKey: string): Promise<PhoneResult | null> {
+  const { trackedGooglePlacesFetch } = await import("./google-places-tracker");
   const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
-  const searchRes = await fetch(searchUrl);
-  if (!searchRes.ok) return null;
+  const searchRes = await trackedGooglePlacesFetch(searchUrl, "phone-enrichment");
+  if (!searchRes || !searchRes.ok) return null;
   const searchData = await searchRes.json();
 
   if (searchData.status !== "OK" || !searchData.candidates || searchData.candidates.length === 0) return null;
@@ -87,8 +88,8 @@ async function googlePlacesSearch(query: string, ownerName: string, apiKey: stri
   const placeId = candidate.place_id;
 
   const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,name&key=${apiKey}`;
-  const detailRes = await fetch(detailUrl);
-  if (!detailRes.ok) return null;
+  const detailRes = await trackedGooglePlacesFetch(detailUrl, "phone-enrichment");
+  if (!detailRes || !detailRes.ok) return null;
   const detailData = await detailRes.json();
 
   if (detailData.result?.formatted_phone_number) {

@@ -2560,8 +2560,9 @@ export async function registerRoutes(
 
   app.get("/api/enrichment/usage", async (_req, res) => {
     try {
-      const [hunter, pdl] = await Promise.all([getHunterUsage(), getPDLUsage()]);
-      res.json({ hunter, pdl });
+      const { getGooglePlacesUsage } = await import("./google-places-tracker");
+      const [hunter, pdl, googlePlaces] = await Promise.all([getHunterUsage(), getPDLUsage(), getGooglePlacesUsage()]);
+      res.json({ hunter, pdl, googlePlaces });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

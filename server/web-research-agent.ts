@@ -267,11 +267,12 @@ async function findBusinessWebsite(lead: Lead): Promise<{ name?: string; website
     address ? `${address} ${city} ${state}` : "",
   ].filter(Boolean);
 
+  const { trackedGooglePlacesFetch } = await import("./google-places-tracker");
   for (const query of queries) {
     try {
       const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
-      const searchRes = await fetch(searchUrl);
-      if (!searchRes.ok) continue;
+      const searchRes = await trackedGooglePlacesFetch(searchUrl, "web-research");
+      if (!searchRes || !searchRes.ok) continue;
       const searchData = await searchRes.json();
 
       if (searchData.status !== "OK" || !searchData.candidates?.length) continue;
@@ -286,8 +287,8 @@ async function findBusinessWebsite(lead: Lead): Promise<{ name?: string; website
 
       const placeId = candidate.place_id;
       const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,website,formatted_phone_number&key=${apiKey}`;
-      const detailRes = await fetch(detailUrl);
-      if (!detailRes.ok) continue;
+      const detailRes = await trackedGooglePlacesFetch(detailUrl, "web-research");
+      if (!detailRes || !detailRes.ok) continue;
       const detailData = await detailRes.json();
 
       return {

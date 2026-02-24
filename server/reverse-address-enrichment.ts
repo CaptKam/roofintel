@@ -114,9 +114,10 @@ async function lookupAddress(address: string): Promise<BusinessResult[]> {
   const businesses: BusinessResult[] = [];
 
   try {
+    const { trackedGooglePlacesFetch } = await import("./google-places-tracker");
     const textSearchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(address)}&key=${apiKey}`;
-    const res = await fetch(textSearchUrl);
-    if (!res.ok) return [];
+    const res = await trackedGooglePlacesFetch(textSearchUrl, "reverse-address");
+    if (!res || !res.ok) return [];
 
     const data = await res.json();
     const results = (data.results || []).slice(0, 8);
@@ -142,8 +143,8 @@ async function lookupAddress(address: string): Promise<BusinessResult[]> {
       if (placeId) {
         try {
           const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,website&key=${apiKey}`;
-          const detailRes = await fetch(detailUrl);
-          if (detailRes.ok) {
+          const detailRes = await trackedGooglePlacesFetch(detailUrl, "reverse-address");
+          if (detailRes && detailRes.ok) {
             const detailData = await detailRes.json();
             if (detailData.result) {
               businesses[0].phone = detailData.result.formatted_phone_number;

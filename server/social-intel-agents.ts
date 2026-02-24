@@ -580,6 +580,7 @@ export async function googlePlacesEnhancedAgent(lead: Lead): Promise<{ people: P
   if (!apiKey) return { people, contacts, profiles, agentDetail: "No Google Places API key" };
 
   try {
+    const { trackedGooglePlacesFetch } = await import("./google-places-tracker");
     const address = (lead.address || "").trim();
     const city = (lead.city || "").trim();
     const state = lead.state || "TX";
@@ -588,13 +589,13 @@ export async function googlePlacesEnhancedAgent(lead: Lead): Promise<{ people: P
     let nearbyRes: Response | null = null;
 
     if (lead.latitude && lead.longitude) {
-      nearbyRes = await fetchWithTimeout(nearbyUrl);
+      nearbyRes = await trackedGooglePlacesFetch(nearbyUrl, "google-places-enhanced", fetchWithTimeout);
     }
 
     if (!nearbyRes || !nearbyRes.ok) {
       const textQuery = `${address} ${city} ${state}`;
       const textSearchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(textQuery)}&key=${apiKey}`;
-      nearbyRes = await fetchWithTimeout(textSearchUrl);
+      nearbyRes = await trackedGooglePlacesFetch(textSearchUrl, "google-places-enhanced", fetchWithTimeout);
     }
 
     if (nearbyRes && nearbyRes.ok) {
@@ -604,7 +605,7 @@ export async function googlePlacesEnhancedAgent(lead: Lead): Promise<{ people: P
       for (const place of results) {
         const placeId = place.place_id;
         const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,formatted_address,types,reviews&key=${apiKey}`;
-        const detailRes = await fetchWithTimeout(detailUrl);
+        const detailRes = await trackedGooglePlacesFetch(detailUrl, "google-places-enhanced", fetchWithTimeout);
         if (!detailRes || !detailRes.ok) continue;
         const detailData = await detailRes.json();
         const result = detailData.result;

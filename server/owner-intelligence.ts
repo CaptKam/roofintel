@@ -820,16 +820,17 @@ async function googleBusinessAgent(lead: Lead): Promise<{ people: PersonRecord[]
       `${cleanCompanyName(lead.ownerName)} ${city} ${state}`,
     ];
 
+    const { trackedGooglePlacesFetch } = await import("./google-places-tracker");
     for (const query of queries) {
       const searchUrl = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${encodeURIComponent(query)}&inputtype=textquery&fields=place_id,name&key=${apiKey}`;
-      const searchRes = await fetchWithTimeout(searchUrl);
+      const searchRes = await trackedGooglePlacesFetch(searchUrl, "google-business-agent", fetchWithTimeout);
       if (!searchRes || !searchRes.ok) continue;
       const searchData = await searchRes.json();
       if (searchData.status !== "OK" || !searchData.candidates?.length) continue;
 
       const placeId = searchData.candidates[0].place_id;
       const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,formatted_address,types,opening_hours,business_status,editorial_summary,reviews&key=${apiKey}`;
-      const detailRes = await fetchWithTimeout(detailUrl);
+      const detailRes = await trackedGooglePlacesFetch(detailUrl, "google-business-agent", fetchWithTimeout);
       if (!detailRes || !detailRes.ok) continue;
       const detailData = await detailRes.json();
       const result = detailData.result;
@@ -1065,8 +1066,9 @@ async function buildingContactsAgent(lead: Lead): Promise<{ contacts: BuildingCo
   // Strategy 1: Google Places - find businesses AT this address (tenants, management companies)
   if (googleKey) {
     try {
+      const { trackedGooglePlacesFetch } = await import("./google-places-tracker");
       const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(fullAddress)}&key=${googleKey}`;
-      const searchRes = await fetchWithTimeout(searchUrl);
+      const searchRes = await trackedGooglePlacesFetch(searchUrl, "building-contacts-agent", fetchWithTimeout);
       if (searchRes && searchRes.ok) {
         const searchData = await searchRes.json();
         if (searchData.results) {
@@ -1076,7 +1078,7 @@ async function buildingContactsAgent(lead: Lead): Promise<{ contacts: BuildingCo
             if (!isRelevant) continue;
 
             const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,website,types,business_status&key=${googleKey}`;
-            const detailRes = await fetchWithTimeout(detailUrl);
+            const detailRes = await trackedGooglePlacesFetch(detailUrl, "building-contacts-agent", fetchWithTimeout);
             if (!detailRes || !detailRes.ok) continue;
             const detail = (await detailRes.json()).result;
             if (!detail || detail.business_status === "CLOSED_PERMANENTLY") continue;
