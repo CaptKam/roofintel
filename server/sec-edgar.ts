@@ -63,6 +63,31 @@ function formatAddress(addr: any): string {
     .join(", ");
 }
 
+function normalizeCompanyName(name: string): string {
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, "")
+    .replace(/\b(LLC|LP|INC|CORP|LTD|CO|COMPANY|PARTNERS|HOLDINGS|GROUP|THE)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function companyNamesMatch(search: string, candidate: string): boolean {
+  const normSearch = normalizeCompanyName(search);
+  const normCandidate = normalizeCompanyName(candidate);
+
+  if (!normSearch || !normCandidate) return false;
+
+  if (normCandidate.includes(normSearch) || normSearch.includes(normCandidate)) return true;
+
+  const searchWords = normSearch.split(" ").filter(w => w.length > 2);
+  const candidateWords = normCandidate.split(" ").filter(w => w.length > 2);
+  if (searchWords.length === 0) return false;
+
+  const matchingWords = searchWords.filter(w => candidateWords.includes(w));
+  return matchingWords.length >= Math.ceil(searchWords.length * 0.6);
+}
+
 export async function searchEdgarCompany(companyName: string): Promise<{ cik: string; name: string }[]> {
   const data = await fetchEdgar(
     `${SEARCH_URL}?company=${encodeURIComponent(companyName)}&forms=10-K,10-Q,DEF+14A&dateRange=custom&startdt=2020-01-01&enddt=2030-01-01`
@@ -75,10 +100,12 @@ export async function searchEdgarCompany(companyName: string): Promise<{ cik: st
   for (const hit of data.hits.hits) {
     const src = hit._source;
     const cik = src.ciks?.[0];
-    const name = src.display_names?.[0] || "";
-    if (cik && !seen.has(cik)) {
+    const displayName = src.display_names?.[0] || "";
+    const cleanName = displayName.replace(/\s*\(.*?\)\s*/g, "").trim();
+
+    if (cik && !seen.has(cik) && companyNamesMatch(companyName, cleanName)) {
       seen.add(cik);
-      results.push({ cik: padCik(cik), name });
+      results.push({ cik: padCik(cik), name: displayName });
     }
   }
   return results;
