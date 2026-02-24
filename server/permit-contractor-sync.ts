@@ -117,6 +117,7 @@ export async function syncPermitContractorsToLeads(): Promise<{ updated: number;
     WHERE bp.lead_id IS NOT NULL
       AND bp.contractor IS NOT NULL
       AND bp.contractor != ''
+      AND (bp.work_description ILIKE '%roof%' OR bp.permit_type ILIKE '%roof%')
     ORDER BY bp.lead_id, bp.issued_date DESC
   `);
 
