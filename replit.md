@@ -68,5 +68,8 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **Socrata API**: Accessed for DFW building permits in the skip trace agent.
 - **Hunter.io**: Email discovery API for finding email addresses by domain (free tier: 25 searches/month). Manual-only with usage tracking.
 - **People Data Labs (PDL)**: Person and company enrichment API for finding emails, phones, titles, and LinkedIn profiles (free tier: 100 matches/month). Manual-only with usage tracking.
+- **SEC EDGAR**: Free SEC filing API (`data.sec.gov/submissions/`) for looking up REIT and institutional owner details — company name, phone, address, SIC classification, and filing history. No API key required.
+- **TX Secretary of State (via Comptroller API)**: Officer/director extraction for Texas LLCs and corporations using SOS file numbers and taxpayer IDs. Pulls registered agents, formation dates, and entity types.
+- **County Clerk Recording Data**: Deed record search for DFW counties (Dallas, Tarrant, Collin, Denton) via available public data portals. Identifies property transfers, grantors/grantees, and instrument types.
 - **EmailMX verification services**: Integrated for validating email patterns.
 - **Various public record APIs/databases**: Including TREC (Texas Real Estate Commission) license, TDLR (Texas Department of Licensing and Regulation) license, HUD multifamily database, BBB (Better Business Bureau) Direct, and WHOIS/RDAP for comprehensive owner and contact intelligence.

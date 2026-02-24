@@ -123,6 +123,69 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
   const hunterRemaining = usage?.hunter?.remaining ?? 0;
   const pdlRemaining = usage?.pdl?.remaining ?? 0;
 
+  const sosMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/enrichment/tx-sos/${leadId}`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+      if (data.success && data.entity?.officers?.length > 0) {
+        toast({ title: "TX SOS", description: `Found ${data.entity.officers.length} officer(s): ${data.entity.officers.map((o: any) => o.name).join(", ")}` });
+      } else if (data.error) {
+        toast({ title: "TX SOS", description: data.error });
+      } else {
+        toast({ title: "TX SOS", description: "Entity found but no officer data" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "TX SOS failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const edgarMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/enrichment/sec-edgar/${leadId}`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+      if (data.success && data.company) {
+        toast({ title: "SEC EDGAR", description: `Found: ${data.company.name} (${data.company.sicDescription || "N/A"})` });
+      } else if (data.error) {
+        toast({ title: "SEC EDGAR", description: data.error });
+      } else {
+        toast({ title: "SEC EDGAR", description: "No SEC filings found" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "SEC EDGAR failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const countyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/enrichment/county-clerk/${leadId}`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+      if (data.success && data.records?.length > 0) {
+        toast({ title: "County Clerk", description: `Found ${data.records.length} deed record(s)` });
+      } else if (data.error) {
+        toast({ title: "County Clerk", description: data.error });
+      } else {
+        toast({ title: "County Clerk", description: "No deed records found" });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "County Clerk failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   return (
     <>
       <Button
@@ -154,6 +217,51 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
           <Users className="w-3 h-3 mr-1" />
         )}
         PDL ({pdlRemaining})
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => sosMutation.mutate()}
+        disabled={sosMutation.isPending}
+        className="text-xs"
+        data-testid="button-txsos-enrich"
+      >
+        {sosMutation.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin mr-1" />
+        ) : (
+          <FileText className="w-3 h-3 mr-1" />
+        )}
+        TX SOS
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => edgarMutation.mutate()}
+        disabled={edgarMutation.isPending}
+        className="text-xs"
+        data-testid="button-edgar-enrich"
+      >
+        {edgarMutation.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin mr-1" />
+        ) : (
+          <Scale className="w-3 h-3 mr-1" />
+        )}
+        SEC EDGAR
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => countyMutation.mutate()}
+        disabled={countyMutation.isPending}
+        className="text-xs"
+        data-testid="button-county-enrich"
+      >
+        {countyMutation.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin mr-1" />
+        ) : (
+          <FileText className="w-3 h-3 mr-1" />
+        )}
+        County Clerk
       </Button>
     </>
   );

@@ -32,6 +32,9 @@ import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./see
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker } from "@shared/schema";
 import { getHunterUsage, searchHunterDomain, findHunterEmail } from "./hunter-io";
 import { getPDLUsage, enrichPersonPDL, enrichCompanyPDL } from "./pdl-enrichment";
+import { enrichLeadFromEdgar, searchEdgarCompany } from "./sec-edgar";
+import { enrichLeadFromTXSOS } from "./tx-sos";
+import { enrichLeadFromCountyClerk } from "./county-clerk";
 import { db } from "./storage";
 import { sql, eq } from "drizzle-orm";
 
@@ -2418,6 +2421,47 @@ export async function registerRoutes(
     try {
       const { getNodesByLeadId } = await import("./graph-engine");
       const result = await getNodesByLeadId(req.params.leadId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/enrichment/sec-edgar/:leadId", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const companyName = lead.llcName || lead.businessName || lead.ownerName;
+      if (!companyName) {
+        return res.status(400).json({ message: "No company/LLC name available for SEC EDGAR lookup" });
+      }
+
+      const result = await enrichLeadFromEdgar(lead.id, companyName);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/enrichment/tx-sos/:leadId", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const result = await enrichLeadFromTXSOS(lead.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/enrichment/county-clerk/:leadId", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const result = await enrichLeadFromCountyClerk(lead.id);
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
