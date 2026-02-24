@@ -2259,10 +2259,72 @@ export async function registerRoutes(
   app.post("/api/leads/:id/enrich", async (req, res) => {
     try {
       const { enrichLead } = await import("./lead-enrichment-orchestrator");
-      const progress = await enrichLead(req.params.id);
+      const progress = await enrichLead(req.params.id, { skipPaidApis: true });
       res.json(progress);
     } catch (error: any) {
       res.status(500).json({ message: "Enrichment failed", error: error.message });
+    }
+  });
+
+  app.post("/api/leads/:id/enrich/google-places", async (req, res) => {
+    try {
+      if (!process.env.GOOGLE_PLACES_API_KEY) {
+        return res.status(400).json({ message: "Google Places API key not configured" });
+      }
+      const { enrichLeadPaidApis } = await import("./lead-enrichment-orchestrator");
+      const results = await enrichLeadPaidApis(req.params.id);
+      res.json({ message: "Google Places enrichment complete", results: results.googlePlaces, phone: results.phone });
+    } catch (error: any) {
+      res.status(500).json({ message: "Google Places enrichment failed", error: error.message });
+    }
+  });
+
+  app.post("/api/leads/:id/enrich/serper", async (req, res) => {
+    try {
+      if (!process.env.SERPER_API_KEY) {
+        return res.status(400).json({ message: "Serper API key not configured" });
+      }
+      const lead = await db.select().from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+      if (!lead[0]) return res.status(404).json({ message: "Lead not found" });
+
+      const { runOwnerIntelligence } = await import("./owner-intelligence");
+      const result = await runOwnerIntelligence(lead[0] as any, { skipPaidApis: false });
+
+      const paidAgentResults = result.dossier?.agentResults?.filter((r: any) =>
+        ["People Search", "Court Records"].includes(r.agent)
+      ) || [];
+
+      res.json({
+        message: "Serper enrichment complete",
+        agentResults: paidAgentResults,
+        score: result.score,
+        managingMember: result.managingMember,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Serper enrichment failed", error: error.message });
+    }
+  });
+
+  app.post("/api/enrichment/batch-free", async (_req, res) => {
+    try {
+      const { runBatchFreeEnrichment, getBatchFreeStatus } = await import("./lead-enrichment-orchestrator");
+      const status = getBatchFreeStatus();
+      if (status.running) {
+        return res.status(409).json({ message: "Batch enrichment already running", status });
+      }
+      await runBatchFreeEnrichment();
+      res.json({ message: "Batch free enrichment started", status: getBatchFreeStatus() });
+    } catch (error: any) {
+      res.status(500).json({ message: "Batch enrichment failed", error: error.message });
+    }
+  });
+
+  app.get("/api/enrichment/batch-free/status", async (_req, res) => {
+    try {
+      const { getBatchFreeStatus } = await import("./lead-enrichment-orchestrator");
+      res.json(getBatchFreeStatus());
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get status", error: error.message });
     }
   });
 
@@ -2562,7 +2624,30 @@ export async function registerRoutes(
     try {
       const { getGooglePlacesUsage } = await import("./google-places-tracker");
       const [hunter, pdl, googlePlaces] = await Promise.all([getHunterUsage(), getPDLUsage(), getGooglePlacesUsage()]);
-      res.json({ hunter, pdl, googlePlaces });
+      const serperConfigured = !!process.env.SERPER_API_KEY;
+
+      const summaryResult = await db.execute(sql`
+        SELECT
+          COUNT(*)::int AS total_leads,
+          COUNT(*) FILTER (WHERE enrichment_status = 'complete' OR last_enriched_at IS NOT NULL)::int AS free_enriched,
+          COUNT(*) FILTER (WHERE phone_enriched_at IS NOT NULL AND (owner_phone IS NOT NULL OR contact_phone IS NOT NULL))::int AS with_phone_enriched
+        FROM leads
+      `);
+      const summary = (summaryResult as any).rows[0] || { total_leads: 0, free_enriched: 0, with_phone_enriched: 0 };
+
+      res.json({
+        hunter,
+        pdl,
+        googlePlaces,
+        serperConfigured,
+        summary: {
+          totalLeads: summary.total_leads,
+          freeEnriched: summary.free_enriched,
+          paidGooglePlaces: googlePlaces?.used || 0,
+          paidHunter: hunter?.used || 0,
+          paidPDL: pdl?.used || 0,
+        },
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

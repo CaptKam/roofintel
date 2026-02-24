@@ -58,6 +58,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   Users,
+  MapPinned,
+  Zap,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -69,6 +71,8 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
   const { data: usage } = useQuery<{
     hunter: { used: number; limit: number; remaining: number };
     pdl: { used: number; limit: number; remaining: number };
+    googlePlaces: { used: number; limit: number; remaining: number; estimatedCost: number; month: string };
+    serperConfigured: boolean;
   }>({
     queryKey: ["/api/enrichment/usage"],
   });
@@ -122,6 +126,46 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
 
   const hunterRemaining = usage?.hunter?.remaining ?? 0;
   const pdlRemaining = usage?.pdl?.remaining ?? 0;
+  const gpRemaining = usage?.googlePlaces?.remaining ?? 0;
+  const gpCost = usage?.googlePlaces?.estimatedCost ?? 0;
+  const serperAvailable = usage?.serperConfigured ?? false;
+
+  const googlePlacesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${leadId}/enrich/google-places`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "intelligence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "contact-path"] });
+      toast({ title: "Google Places", description: data.message || "Enrichment complete" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Google Places failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const serperMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${leadId}/enrich/serper`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "intelligence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "contact-path"] });
+      const agents = data.agentResults?.length || 0;
+      toast({ title: "Serper", description: agents > 0 ? `${agents} agent(s) returned results` : "Enrichment complete" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Serper failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const sosMutation = useMutation({
     mutationFn: async () => {
@@ -263,6 +307,39 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
         )}
         County Clerk
       </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => googlePlacesMutation.mutate()}
+        disabled={googlePlacesMutation.isPending || gpRemaining <= 0}
+        className="text-xs"
+        data-testid="button-google-places-enrich"
+      >
+        {googlePlacesMutation.isPending ? (
+          <Loader2 className="w-3 h-3 animate-spin mr-1" />
+        ) : (
+          <MapPinned className="w-3 h-3 mr-1" />
+        )}
+        Google Places ({gpRemaining})
+        {gpCost > 0 && <span className="ml-1 text-muted-foreground">${gpCost}</span>}
+      </Button>
+      {serperAvailable && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => serperMutation.mutate()}
+          disabled={serperMutation.isPending}
+          className="text-xs"
+          data-testid="button-serper-enrich"
+        >
+          {serperMutation.isPending ? (
+            <Loader2 className="w-3 h-3 animate-spin mr-1" />
+          ) : (
+            <Search className="w-3 h-3 mr-1" />
+          )}
+          Serper Search
+        </Button>
+      )}
     </>
   );
 }
@@ -487,7 +564,7 @@ export default function LeadDetail() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Enrichment started", description: "All intelligence agents are running..." });
+      toast({ title: "Auto-Enrich started", description: "Running free intelligence agents..." });
     },
     onError: () => {
       toast({ title: "Enrichment failed", variant: "destructive" });
@@ -635,7 +712,7 @@ export default function LeadDetail() {
           ) : (
             <RefreshCw className="w-3 h-3 mr-1" />
           )}
-          {isStale ? "Re-enrich (Stale)" : "Re-enrich"}
+          {isStale ? "Auto-Enrich (Stale)" : "Auto-Enrich (Free Sources)"}
         </Button>
         <HunterPDLButtons leadId={id!} />
       </div>

@@ -1345,7 +1345,8 @@ function calculateIntelligenceScore(dossier: OwnerDossier): number {
   return Math.min(100, identity + contactability + depth);
 }
 
-export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResult> {
+export async function runOwnerIntelligence(lead: Lead, options?: { skipPaidApis?: boolean }): Promise<IntelligenceResult> {
+  const skipPaid = options?.skipPaidApis ?? false;
   const agentResults: OwnerDossier["agentResults"] = [];
   let allPeople: PersonRecord[] = [];
   let buildingContacts: BuildingContact[] = [];
@@ -1355,7 +1356,8 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   let discoveredEmails: Array<{ email: string; source: string; verified: boolean }> = [];
   let sources: string[] = [];
 
-  console.log(`[Intelligence] Running 16-agent pipeline for: ${lead.ownerName} (${lead.address})`);
+  const mode = skipPaid ? "FREE sources only" : "all agents";
+  console.log(`[Intelligence] Running pipeline (${mode}) for: ${lead.ownerName} (${lead.address})`);
 
   // Stage 1: TX SOS Deep Agent
   const sosResult = await txSosDeepAgent(lead);
@@ -1383,30 +1385,38 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   agentResults.push({ agent: "Property Tax Records", status: taxResult.people.length > 0 ? "found" : "empty", found: taxResult.people.length, detail: taxResult.agentDetail });
   if (taxResult.people.length > 0) sources.push("Property Tax");
 
-  // Stage 5: Google Business Agent
-  const googleResult = await googleBusinessAgent(lead);
-  allPeople.push(...googleResult.people);
-  if (googleResult.profile) businessProfiles.push(googleResult.profile);
-  agentResults.push({ agent: "Google Business", status: googleResult.profile ? "found" : "empty", found: googleResult.people.length, detail: googleResult.agentDetail });
-  if (googleResult.profile) sources.push("Google Business");
+  // Stage 5: Google Business Agent (PAID — Google Places API)
+  if (skipPaid) {
+    agentResults.push({ agent: "Google Business", status: "skipped", found: 0, detail: "Skipped (paid API — use manual enrich)" });
+  } else {
+    const googleResult = await googleBusinessAgent(lead);
+    allPeople.push(...googleResult.people);
+    if (googleResult.profile) businessProfiles.push(googleResult.profile);
+    agentResults.push({ agent: "Google Business", status: googleResult.profile ? "found" : "empty", found: googleResult.people.length, detail: googleResult.agentDetail });
+    if (googleResult.profile) sources.push("Google Business");
+  }
 
   // Deduplicate before enrichment
   allPeople = deduplicatePeople(allPeople);
 
-  // Stage 6: People Search Agent (enrich known people)
-  const searchResult = await peopleSearchAgent(lead, allPeople);
-  for (const enrichedPerson of searchResult.enriched) {
-    const idx = allPeople.findIndex(p => normalizeForSearch(p.name) === normalizeForSearch(enrichedPerson.name));
-    if (idx >= 0) {
-      allPeople[idx].phone = allPeople[idx].phone || enrichedPerson.phone;
-      allPeople[idx].email = allPeople[idx].email || enrichedPerson.email;
-      allPeople[idx].confidence = Math.max(allPeople[idx].confidence, enrichedPerson.confidence);
-    } else {
-      allPeople.push(enrichedPerson);
+  // Stage 6: People Search Agent (PAID — Serper API)
+  if (skipPaid) {
+    agentResults.push({ agent: "People Search", status: "skipped", found: 0, detail: "Skipped (paid API — use manual enrich)" });
+  } else {
+    const searchResult = await peopleSearchAgent(lead, allPeople);
+    for (const enrichedPerson of searchResult.enriched) {
+      const idx = allPeople.findIndex(p => normalizeForSearch(p.name) === normalizeForSearch(enrichedPerson.name));
+      if (idx >= 0) {
+        allPeople[idx].phone = allPeople[idx].phone || enrichedPerson.phone;
+        allPeople[idx].email = allPeople[idx].email || enrichedPerson.email;
+        allPeople[idx].confidence = Math.max(allPeople[idx].confidence, enrichedPerson.confidence);
+      } else {
+        allPeople.push(enrichedPerson);
+      }
     }
+    agentResults.push({ agent: "People Search", status: searchResult.enriched.length > 0 ? "found" : "empty", found: searchResult.enriched.length, detail: searchResult.agentDetail });
+    if (searchResult.enriched.length > 0) sources.push("People Search");
   }
-  agentResults.push({ agent: "People Search", status: searchResult.enriched.length > 0 ? "found" : "empty", found: searchResult.enriched.length, detail: searchResult.agentDetail });
-  if (searchResult.enriched.length > 0) sources.push("People Search");
 
   // Stage 7: Email Discovery Agent
   const emailResult = await emailDiscoveryAgent(lead, allPeople);
@@ -1414,15 +1424,19 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   agentResults.push({ agent: "Email Discovery", status: emailResult.emails.length > 0 ? "found" : "empty", found: emailResult.emails.length, detail: emailResult.agentDetail });
   if (emailResult.emails.some(e => e.verified)) sources.push("Email Discovery");
 
-  // Stage 8: Court Records Agent
-  const courtResult = await courtRecordsAgent(lead);
-  allPeople.push(...courtResult.people);
-  courtRecords = courtResult.records;
-  agentResults.push({ agent: "Court Records", status: courtResult.people.length > 0 || courtResult.records.length > 0 ? "found" : "empty", found: courtResult.people.length, detail: courtResult.agentDetail });
-  if (courtResult.people.length > 0) sources.push("Court Records");
+  // Stage 8: Court Records Agent (PAID — Serper API)
+  if (skipPaid) {
+    agentResults.push({ agent: "Court Records", status: "skipped", found: 0, detail: "Skipped (paid API — use manual enrich)" });
+  } else {
+    const courtResult = await courtRecordsAgent(lead);
+    allPeople.push(...courtResult.people);
+    courtRecords = courtResult.records;
+    agentResults.push({ agent: "Court Records", status: courtResult.people.length > 0 || courtResult.records.length > 0 ? "found" : "empty", found: courtResult.people.length, detail: courtResult.agentDetail });
+    if (courtResult.people.length > 0) sources.push("Court Records");
+  }
 
   // Stage 9: Social Intelligence Pipeline (TREC, TDLR, HUD, BBB, Google Places Enhanced)
-  const socialResult = await runSocialIntelPipeline(lead, allPeople);
+  const socialResult = await runSocialIntelPipeline(lead, allPeople, { skipPaidApis: skipPaid });
   allPeople.push(...socialResult.people);
   businessProfiles.push(...socialResult.profiles);
   buildingContacts.push(...socialResult.contacts);
@@ -1431,11 +1445,15 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   }
   if (socialResult.people.length > 0 || socialResult.profiles.length > 0) sources.push("Social Intel");
 
-  // Stage 10: Building Contacts Agent
-  const buildingResult = await buildingContactsAgent(lead);
-  buildingContacts = buildingResult.contacts;
-  agentResults.push({ agent: "Building Contacts", status: buildingResult.contacts.length > 0 ? "found" : "empty", found: buildingResult.contacts.length, detail: buildingResult.agentDetail });
-  if (buildingResult.contacts.length > 0) sources.push("Building Contacts");
+  // Stage 10: Building Contacts Agent (PAID — Google Places + Serper)
+  if (skipPaid) {
+    agentResults.push({ agent: "Building Contacts", status: "skipped", found: 0, detail: "Skipped (paid API — use manual enrich)" });
+  } else {
+    const buildingResult = await buildingContactsAgent(lead);
+    buildingContacts = buildingResult.contacts;
+    agentResults.push({ agent: "Building Contacts", status: buildingResult.contacts.length > 0 ? "found" : "empty", found: buildingResult.contacts.length, detail: buildingResult.agentDetail });
+    if (buildingResult.contacts.length > 0) sources.push("Building Contacts");
+  }
 
   // Stage 11: Skip Trace Agent (7 free official-records-first sources)
   const skipTraceResult = await runSkipTraceAgent(lead, allPeople);
@@ -1476,8 +1494,9 @@ export async function runOwnerIntelligence(lead: Lead): Promise<IntelligenceResu
   for (const p of allPeople.filter(pp => pp.phone)) {
     allPhones.push({ phone: p.phone!, source: p.source, type: "direct" });
   }
-  if (googleResult.profile?.phone) {
-    allPhones.push({ phone: googleResult.profile.phone, source: "Google Business", type: "business" });
+  const googleBizProfile = businessProfiles.find(bp => bp?.phone);
+  if (googleBizProfile?.phone) {
+    allPhones.push({ phone: googleBizProfile.phone, source: "Google Business", type: "business" });
   }
 
   // Build skip trace hits for provenance display
@@ -1790,4 +1809,9 @@ export function getIntelligenceStatus(): {
   ];
 
   return { agents, totalAvailable: agents.filter(a => a.available).length };
+}
+
+export async function googleBusinessAgentOnly(lead: Lead): Promise<{ detail: string; profile: any; people: any[] }> {
+  const result = await googleBusinessAgent(lead);
+  return { detail: result.agentDetail, profile: result.profile, people: result.people };
 }

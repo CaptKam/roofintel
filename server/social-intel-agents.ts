@@ -674,18 +674,19 @@ export async function googlePlacesEnhancedAgent(lead: Lead): Promise<{ people: P
 // COMBINED: Run all Social Intelligence sub-agents
 // ============================================================
 
-export async function runSocialIntelPipeline(lead: Lead, knownPeople: PersonRecord[]): Promise<{
+export async function runSocialIntelPipeline(lead: Lead, knownPeople: PersonRecord[], options?: { skipPaidApis?: boolean }): Promise<{
   people: PersonRecord[];
   contacts: BuildingContact[];
   profiles: any[];
   agentResults: Array<{ agent: string; status: string; found: number; detail?: string }>;
 }> {
+  const skipPaid = options?.skipPaidApis ?? false;
   const allPeople: PersonRecord[] = [];
   const allContacts: BuildingContact[] = [];
   const allProfiles: any[] = [];
   const agentResults: Array<{ agent: string; status: string; found: number; detail?: string }> = [];
 
-  console.log(`[Social Intel] Running pipeline for ${lead.ownerName}`);
+  console.log(`[Social Intel] Running pipeline for ${lead.ownerName} (${skipPaid ? "free only" : "all agents"})`);
 
   const trecResult = await trecLicenseAgent(lead);
   allPeople.push(...trecResult.people);
@@ -707,11 +708,15 @@ export async function runSocialIntelPipeline(lead: Lead, knownPeople: PersonReco
   allProfiles.push(...bbbResult.profiles);
   agentResults.push({ agent: "BBB Direct", status: bbbResult.people.length > 0 || bbbResult.profiles.length > 0 ? "found" : "empty", found: bbbResult.people.length, detail: bbbResult.agentDetail });
 
-  const googleResult = await googlePlacesEnhancedAgent(lead);
-  allPeople.push(...googleResult.people);
-  allContacts.push(...googleResult.contacts);
-  allProfiles.push(...googleResult.profiles);
-  agentResults.push({ agent: "Google Places Enhanced", status: googleResult.contacts.length > 0 || googleResult.people.length > 0 ? "found" : "empty", found: googleResult.people.length + googleResult.contacts.length, detail: googleResult.agentDetail });
+  if (skipPaid) {
+    agentResults.push({ agent: "Google Places Enhanced", status: "skipped", found: 0, detail: "Skipped (paid API — use manual enrich)" });
+  } else {
+    const googleResult = await googlePlacesEnhancedAgent(lead);
+    allPeople.push(...googleResult.people);
+    allContacts.push(...googleResult.contacts);
+    allProfiles.push(...googleResult.profiles);
+    agentResults.push({ agent: "Google Places Enhanced", status: googleResult.contacts.length > 0 || googleResult.people.length > 0 ? "found" : "empty", found: googleResult.people.length + googleResult.contacts.length, detail: googleResult.agentDetail });
+  }
 
   console.log(`[Social Intel] Pipeline complete: ${allPeople.length} people, ${allContacts.length} building contacts, ${allProfiles.length} profiles`);
 

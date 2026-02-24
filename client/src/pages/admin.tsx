@@ -238,6 +238,8 @@ function EnrichmentCreditsCard() {
     hunter: { used: number; limit: number; remaining: number; month: string };
     pdl: { used: number; limit: number; remaining: number; month: string };
     googlePlaces?: { used: number; limit: number; remaining: number; month: string; estimatedCost: number; freeCreditRemaining: number };
+    serperConfigured?: boolean;
+    summary?: { totalLeads: number; freeEnriched: number; paidGooglePlaces: number; paidHunter: number; paidPDL: number };
   }>({
     queryKey: ["/api/enrichment/usage"],
   });
@@ -266,7 +268,7 @@ function EnrichmentCreditsCard() {
   return (
     <Card className="shadow-sm border-primary/20" data-testid="card-enrichment-credits">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Database className="w-4 h-4" />
             Enrichment API Credits
@@ -276,33 +278,69 @@ function EnrichmentCreditsCard() {
             Resets in {daysUntilReset} day{daysUntilReset !== 1 ? "s" : ""}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground">{monthLabel} — Manual enrichment only. Each click uses one credit.</p>
+        <p className="text-xs text-muted-foreground">{monthLabel} — Paid APIs require manual trigger per lead. Free enrichment runs automatically.</p>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent className="pt-0 space-y-6">
+        {usage.summary && (
+          <div className="p-3 rounded-lg bg-muted/50 space-y-2" data-testid="enrichment-summary">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Enrichment Summary</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div data-testid="stat-summary-free">
+                <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400">{usage.summary.freeEnriched.toLocaleString()}</div>
+                <div className="text-[11px] text-muted-foreground">Free enriched of {usage.summary.totalLeads.toLocaleString()}</div>
+              </div>
+              <div data-testid="stat-summary-google">
+                <div className="text-lg font-bold">{usage.summary.paidGooglePlaces.toLocaleString()}</div>
+                <div className="text-[11px] text-muted-foreground">Google Places calls</div>
+              </div>
+              <div data-testid="stat-summary-hunter">
+                <div className="text-lg font-bold">{usage.summary.paidHunter.toLocaleString()}</div>
+                <div className="text-[11px] text-muted-foreground">Hunter.io lookups</div>
+              </div>
+              <div data-testid="stat-summary-pdl">
+                <div className="text-lg font-bold">{usage.summary.paidPDL.toLocaleString()}</div>
+                <div className="text-[11px] text-muted-foreground">PDL lookups</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <CreditMeter
-            label="Hunter.io"
-            description="Email discovery by domain"
-            used={usage.hunter.used}
-            limit={usage.hunter.limit}
-            icon={<Search className="w-4 h-4" />}
-            testId="hunter"
-          />
-          <CreditMeter
-            label="People Data Labs"
-            description="Person & company enrichment"
-            used={usage.pdl.used}
-            limit={usage.pdl.limit}
-            icon={<Users className="w-4 h-4" />}
-            testId="pdl"
-          />
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700" data-testid="badge-hunter-manual">Manual Only</Badge>
+            </div>
+            <CreditMeter
+              label="Hunter.io"
+              description="Email discovery by domain"
+              used={usage.hunter.used}
+              limit={usage.hunter.limit}
+              icon={<Search className="w-4 h-4" />}
+              testId="hunter"
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 mb-1">
+              <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700" data-testid="badge-pdl-manual">Manual Only</Badge>
+            </div>
+            <CreditMeter
+              label="People Data Labs"
+              description="Person & company enrichment"
+              used={usage.pdl.used}
+              limit={usage.pdl.limit}
+              icon={<Users className="w-4 h-4" />}
+              testId="pdl"
+            />
+          </div>
         </div>
+
         {usage.googlePlaces && (
-          <div className="mt-6 pt-4 border-t">
-            <div className="flex items-center justify-between mb-3">
+          <div className="pt-4 border-t">
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-blue-500" />
                 <span className="font-medium text-sm">Google Places API</span>
+                <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700" data-testid="badge-google-places-manual">Manual Only</Badge>
               </div>
               <Badge variant={usage.googlePlaces.freeCreditRemaining > 50 ? "secondary" : "destructive"} className="text-xs" data-testid="badge-google-places-cost">
                 ${usage.googlePlaces.estimatedCost.toFixed(2)} used / $200 free credit
@@ -338,6 +376,150 @@ function EnrichmentCreditsCard() {
                 />
               </div>
             </div>
+          </div>
+        )}
+
+        <div className="pt-4 border-t">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-violet-500" />
+              <span className="font-medium text-sm">Serper (Web Search)</span>
+              <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700" data-testid="badge-serper-manual">Manual Only</Badge>
+            </div>
+            <Badge variant={usage.serperConfigured ? "secondary" : "outline"} className="text-xs" data-testid="badge-serper-status">
+              {usage.serperConfigured ? (
+                <><CheckCircle2 className="w-3 h-3 mr-1" />Configured</>
+              ) : (
+                <><XCircle className="w-3 h-3 mr-1" />Not Configured</>
+              )}
+            </Badge>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1">People search, court records, building contacts web search</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface BatchFreeStatus {
+  running: boolean;
+  total: number;
+  processed: number;
+  enriched: number;
+  errors: number;
+  currentLead?: string;
+  startedAt?: string;
+}
+
+function BatchFreeEnrichmentCard() {
+  const { toast } = useToast();
+
+  const { data: batchStatus, refetch: refetchStatus } = useQuery<BatchFreeStatus>({
+    queryKey: ["/api/enrichment/batch-free/status"],
+    refetchInterval: (query) => {
+      const data = query.state.data as BatchFreeStatus | undefined;
+      return data?.running ? 2000 : false;
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/enrichment/batch-free");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Batch enrichment started", description: "Processing all unenriched leads with free sources only. No paid API credits will be used." });
+      refetchStatus();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to start batch enrichment", description: err?.message || "Already running or server error", variant: "destructive" });
+    },
+  });
+
+  const isRunning = batchStatus?.running ?? false;
+  const progressPct = batchStatus && batchStatus.total > 0 ? Math.round((batchStatus.processed / batchStatus.total) * 100) : 0;
+
+  return (
+    <Card className="shadow-sm border-emerald-500/20" data-testid="card-batch-free-enrichment">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Play className="w-4 h-4" />
+            Batch Enrich All Leads (Free Sources Only)
+          </CardTitle>
+          <Badge variant="secondary" className="text-xs">
+            <ShieldCheck className="w-3 h-3 mr-1" />
+            Zero Cost
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Runs the full free pipeline (TX SOS, LLC Chain, Comptroller, Tax Records, Email Discovery, TREC, TDLR, HUD, BBB, Skip Trace, Management Attribution, Role Inference, Confidence Scoring, Free Phone Providers) across all unenriched leads. No paid API credits are used.
+        </p>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-4">
+        {!isRunning && (
+          <Button
+            onClick={() => startMutation.mutate()}
+            disabled={startMutation.isPending}
+            data-testid="button-start-batch-free"
+          >
+            {startMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            Start Batch Free Enrichment
+          </Button>
+        )}
+
+        {isRunning && batchStatus && (
+          <div className="space-y-3" data-testid="batch-free-progress">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                <span className="font-medium">Processing...</span>
+              </span>
+              <span className="text-muted-foreground tabular-nums" data-testid="text-batch-free-counts">
+                {batchStatus.processed.toLocaleString()} / {batchStatus.total.toLocaleString()}
+              </span>
+            </div>
+
+            <div className="h-3 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all"
+                style={{ width: `${progressPct}%` }}
+                data-testid="progress-batch-free"
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{progressPct}% complete</span>
+              <span className="flex items-center gap-3">
+                <span className="text-emerald-600 dark:text-emerald-400" data-testid="text-batch-free-enriched">{batchStatus.enriched.toLocaleString()} enriched</span>
+                {batchStatus.errors > 0 && (
+                  <span className="text-destructive" data-testid="text-batch-free-errors">{batchStatus.errors.toLocaleString()} errors</span>
+                )}
+              </span>
+            </div>
+
+            {batchStatus.currentLead && (
+              <div className="p-2 rounded-lg bg-muted/50 text-xs text-muted-foreground truncate" data-testid="text-batch-free-current">
+                Currently processing: {batchStatus.currentLead}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isRunning && batchStatus && batchStatus.total > 0 && batchStatus.processed > 0 && (
+          <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="batch-free-complete">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              Last batch complete
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {batchStatus.enriched.toLocaleString()} enriched, {batchStatus.errors.toLocaleString()} errors out of {batchStatus.total.toLocaleString()} leads
+              {batchStatus.startedAt && ` — Started ${new Date(batchStatus.startedAt).toLocaleString()}`}
+            </p>
           </div>
         )}
       </CardContent>
@@ -1128,6 +1310,7 @@ export default function Admin() {
       </div>
 
       <EnrichmentCreditsCard />
+      <BatchFreeEnrichmentCard />
 
       <Tabs defaultValue="property-sources" className="space-y-6">
         <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">

@@ -411,7 +411,14 @@ const txSalesTaxProvider: PhoneProvider = {
   },
 };
 
-function getProviders(): PhoneProvider[] {
+function getProviders(freeOnly: boolean = false): PhoneProvider[] {
+  if (freeOnly) {
+    return [
+      txSalesTaxProvider,
+      officerNameReverseProvider,
+      openCorporatesProvider,
+    ].filter(p => p.isAvailable());
+  }
   return [
     txSalesTaxProvider,
     officerNameReverseProvider,
@@ -439,13 +446,41 @@ export function getPhoneEnrichmentStatus(): {
   };
 }
 
-export async function enrichSingleLeadPhone(lead: Lead): Promise<PhoneResult | null> {
+export async function enrichSingleLeadPhone(lead: Lead, options?: { freeOnly?: boolean }): Promise<PhoneResult | null> {
   if (!lead.ownerName) return null;
 
-  const providers = getProviders();
-  if (providers.length === 0) return null;
+  const freeOnly = options?.freeOnly ?? false;
+  const providers = getProviders(freeOnly);
+  if (providers.length === 0) {
+    console.log(`[Phone Enrichment] No ${freeOnly ? "free " : ""}providers available.`);
+    return null;
+  }
+
+  if (freeOnly) {
+    console.log(`[Phone Enrichment] Free-only mode: ${providers.map(p => p.name).join(", ")}`);
+  }
 
   for (const provider of providers) {
+    try {
+      const result = await provider.search(lead);
+      if (result) return result;
+      await new Promise(r => setTimeout(r, 200));
+    } catch (err: any) {
+      console.error(`[Phone Enrichment] ${provider.name} error for "${lead.ownerName}":`, err.message);
+    }
+  }
+  return null;
+}
+
+export async function enrichSingleLeadPhonePaidOnly(lead: Lead): Promise<PhoneResult | null> {
+  if (!lead.ownerName) return null;
+
+  const paidProviders = [googlePlacesProvider, serperProvider].filter(p => p.isAvailable());
+  if (paidProviders.length === 0) return null;
+
+  console.log(`[Phone Enrichment] Paid-only mode: ${paidProviders.map(p => p.name).join(", ")}`);
+
+  for (const provider of paidProviders) {
     try {
       const result = await provider.search(lead);
       if (result) return result;

@@ -50,7 +50,7 @@ async function fetchLead(leadId: string): Promise<Lead | null> {
   return rows[0] || null;
 }
 
-async function runOwnerIntelligenceStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+async function runOwnerIntelligenceStep(lead: Lead, progress: EnrichmentProgress, options?: { skipPaidApis?: boolean }): Promise<Lead> {
   updateStep(progress, 0, "running");
   try {
     if (!lead.ownerName) {
@@ -58,7 +58,7 @@ async function runOwnerIntelligenceStep(lead: Lead, progress: EnrichmentProgress
       return lead;
     }
     const { runOwnerIntelligence } = await import("./owner-intelligence");
-    const result = await runOwnerIntelligence(lead);
+    const result = await runOwnerIntelligence(lead, { skipPaidApis: options?.skipPaidApis ?? true });
 
     const updates: any = {
       ownerIntelligence: result.dossier,
@@ -82,9 +82,13 @@ async function runOwnerIntelligenceStep(lead: Lead, progress: EnrichmentProgress
   }
 }
 
-async function runReverseAddressStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+async function runReverseAddressStep(lead: Lead, progress: EnrichmentProgress, options?: { skipPaidApis?: boolean }): Promise<Lead> {
   updateStep(progress, 1, "running");
   try {
+    if (options?.skipPaidApis) {
+      updateStep(progress, 1, "skipped", "Skipped (paid API — use manual Google Places enrich)");
+      return lead;
+    }
     if (!lead.ownerAddress || lead.reverseAddressEnrichedAt) {
       updateStep(progress, 1, "skipped", lead.reverseAddressEnrichedAt ? "Already enriched" : "No owner address");
       return lead;
@@ -132,9 +136,13 @@ async function runReverseAddressStep(lead: Lead, progress: EnrichmentProgress): 
   }
 }
 
-async function runBuildingDiscoveryStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+async function runBuildingDiscoveryStep(lead: Lead, progress: EnrichmentProgress, options?: { skipPaidApis?: boolean }): Promise<Lead> {
   updateStep(progress, 2, "running");
   try {
+    if (options?.skipPaidApis) {
+      updateStep(progress, 2, "skipped", "Skipped (paid API — use manual Google Places enrich)");
+      return lead;
+    }
     if (!lead.latitude || !lead.longitude) {
       updateStep(progress, 2, "skipped", "No coordinates for nearby search");
       return lead;
@@ -265,7 +273,7 @@ async function runConfidenceScoringStep(lead: Lead, progress: EnrichmentProgress
   }
 }
 
-async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress): Promise<Lead> {
+async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress, options?: { skipPaidApis?: boolean }): Promise<Lead> {
   updateStep(progress, 6, "running");
   try {
     if (lead.ownerPhone || lead.phoneEnrichedAt) {
@@ -280,8 +288,9 @@ async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress):
     const freshLead = await fetchLead(lead.id);
     const phoneCandidate = freshLead || lead;
 
+    const freeOnly = options?.skipPaidApis ?? true;
     const { enrichSingleLeadPhone } = await import("./phone-enrichment");
-    const result = await enrichSingleLeadPhone(phoneCandidate);
+    const result = await enrichSingleLeadPhone(phoneCandidate, { freeOnly });
 
     if (result) {
       await db.update(leads).set({
@@ -301,7 +310,8 @@ async function runPhoneEnrichmentStep(lead: Lead, progress: EnrichmentProgress):
   }
 }
 
-export async function enrichLead(leadId: string): Promise<EnrichmentProgress> {
+export async function enrichLead(leadId: string, options?: { skipPaidApis?: boolean }): Promise<EnrichmentProgress> {
+  const skipPaid = options?.skipPaidApis ?? true;
   const existing = activeEnrichments.get(leadId);
   if (existing && existing.status === "running") {
     return existing;
@@ -326,15 +336,18 @@ export async function enrichLead(leadId: string): Promise<EnrichmentProgress> {
   const progress = initProgress(leadId);
   activeEnrichments.set(leadId, progress);
 
+  const mode = skipPaid ? "free sources only" : "all agents (including paid)";
+  console.log(`[Orchestrator] Starting enrichment for ${leadId} — ${mode}`);
+
   (async () => {
     try {
-      lead = await runOwnerIntelligenceStep(lead!, progress);
-      lead = await runReverseAddressStep(lead, progress);
-      lead = await runBuildingDiscoveryStep(lead, progress);
+      lead = await runOwnerIntelligenceStep(lead!, progress, { skipPaidApis: skipPaid });
+      lead = await runReverseAddressStep(lead, progress, { skipPaidApis: skipPaid });
+      lead = await runBuildingDiscoveryStep(lead, progress, { skipPaidApis: skipPaid });
       lead = await runAttributionStep(lead, progress);
       lead = await runRoleInferenceStep(lead, progress);
       lead = await runConfidenceScoringStep(lead, progress);
-      lead = await runPhoneEnrichmentStep(lead, progress);
+      lead = await runPhoneEnrichmentStep(lead, progress, { skipPaidApis: skipPaid });
 
       progress.status = "complete";
       progress.completedAt = new Date().toISOString();
@@ -344,7 +357,7 @@ export async function enrichLead(leadId: string): Promise<EnrichmentProgress> {
         enrichmentStatus: "complete",
       } as any).where(eq(leads.id, leadId));
 
-      console.log(`[Orchestrator] Lead ${leadId} enrichment complete`);
+      console.log(`[Orchestrator] Lead ${leadId} enrichment complete (${mode})`);
     } catch (err: any) {
       progress.status = "error";
       progress.completedAt = new Date().toISOString();
@@ -356,6 +369,188 @@ export async function enrichLead(leadId: string): Promise<EnrichmentProgress> {
   })();
 
   return progress;
+}
+
+export async function enrichLeadPaidApis(leadId: string): Promise<{ googlePlaces: any; serper: any; phone: any }> {
+  let lead = await fetchLead(leadId);
+  if (!lead) throw new Error("Lead not found");
+
+  console.log(`[Orchestrator] Running PAID API enrichment for ${leadId} (${lead.ownerName})`);
+
+  const results: { googlePlaces: any; serper: any; phone: any } = {
+    googlePlaces: { steps: [] as string[] },
+    serper: { steps: [] as string[] },
+    phone: null,
+  };
+
+  if (process.env.GOOGLE_PLACES_API_KEY) {
+    if (lead.ownerAddress && !lead.reverseAddressEnrichedAt) {
+      try {
+        const { enrichLeadReverseAddress } = await import("./reverse-address-enrichment");
+        const reverseResult = await enrichLeadReverseAddress(lead);
+        if (reverseResult) {
+          const updates: any = {
+            reverseAddressType: reverseResult.addressType,
+            reverseAddressBusinesses: reverseResult.businesses,
+            reverseAddressEnrichedAt: new Date(),
+          };
+          const mgmtBiz = reverseResult.businesses.find((b: any) => b.classification === "management_company");
+          if (mgmtBiz) {
+            if (!lead.managementCompany) updates.managementCompany = mgmtBiz.name;
+            if (mgmtBiz.phone && !lead.managementPhone) updates.managementPhone = mgmtBiz.phone;
+          }
+          await db.update(leads).set(updates).where(eq(leads.id, leadId));
+          results.googlePlaces.steps.push(`Reverse address: ${reverseResult.addressType}`);
+        }
+      } catch (err: any) {
+        results.googlePlaces.steps.push(`Reverse address error: ${err.message}`);
+      }
+    }
+
+    if (lead.latitude && lead.longitude) {
+      try {
+        const { googlePlacesEnhancedAgent } = await import("./social-intel-agents");
+        const gpeResult = await googlePlacesEnhancedAgent(lead);
+        const updates: any = {};
+        if (gpeResult.contacts.length > 0) {
+          const mgmt = gpeResult.contacts.find((c: any) => c.role === "property_manager" || c.role === "building_manager");
+          if (mgmt) {
+            if (!lead.managementCompany) updates.managementCompany = mgmt.company;
+            if (mgmt.phone && !lead.managementPhone) updates.managementPhone = mgmt.phone;
+          }
+        }
+        if (gpeResult.people.length > 0 && !lead.contactName) {
+          const best = gpeResult.people.sort((a: any, b: any) => b.confidence - a.confidence)[0];
+          updates.contactName = best.name;
+          if (best.title) updates.contactTitle = best.title;
+        }
+        if (Object.keys(updates).length > 0) {
+          await db.update(leads).set(updates).where(eq(leads.id, leadId));
+        }
+        results.googlePlaces.steps.push(`Building discovery: ${gpeResult.contacts.length} contacts, ${gpeResult.people.length} people`);
+      } catch (err: any) {
+        results.googlePlaces.steps.push(`Building discovery error: ${err.message}`);
+      }
+    }
+
+    try {
+      lead = await fetchLead(leadId) || lead;
+      const { runOwnerIntelligence } = await import("./owner-intelligence");
+      const googleBusinessResult = await (await import("./owner-intelligence")).googleBusinessAgentOnly(lead);
+      if (googleBusinessResult) {
+        results.googlePlaces.steps.push(`Google Business: ${googleBusinessResult.detail}`);
+      }
+    } catch {}
+  }
+
+  lead = await fetchLead(leadId) || lead;
+  if (!lead.ownerPhone) {
+    try {
+      const { enrichSingleLeadPhonePaidOnly } = await import("./phone-enrichment");
+      const phoneResult = await enrichSingleLeadPhonePaidOnly(lead);
+      if (phoneResult) {
+        await db.update(leads).set({
+          ownerPhone: phoneResult.phone,
+          phoneSource: phoneResult.source,
+          phoneEnrichedAt: new Date(),
+        } as any).where(eq(leads.id, leadId));
+        results.phone = phoneResult;
+      }
+    } catch (err: any) {
+      results.phone = { error: err.message };
+    }
+  }
+
+  await db.update(leads).set({ lastEnrichedAt: new Date() } as any).where(eq(leads.id, leadId));
+  console.log(`[Orchestrator] Paid API enrichment complete for ${leadId}`);
+  return results;
+}
+
+let batchFreeStatus: { running: boolean; total: number; processed: number; enriched: number; errors: number; currentLead?: string; startedAt?: string } = {
+  running: false, total: 0, processed: 0, enriched: 0, errors: 0,
+};
+
+export function getBatchFreeStatus() {
+  return { ...batchFreeStatus };
+}
+
+export async function runBatchFreeEnrichment(): Promise<void> {
+  if (batchFreeStatus.running) throw new Error("Batch enrichment already running");
+
+  const { leads: allLeads } = await (await import("./storage")).storage.getLeads();
+  const eligible = allLeads.filter(l => !l.lastEnrichedAt && l.ownerName);
+
+  batchFreeStatus = {
+    running: true,
+    total: eligible.length,
+    processed: 0,
+    enriched: 0,
+    errors: 0,
+    startedAt: new Date().toISOString(),
+  };
+
+  console.log(`[Batch Free Enrichment] Starting: ${eligible.length} unenriched leads`);
+
+  (async () => {
+    for (const lead of eligible) {
+      try {
+        batchFreeStatus.currentLead = `${lead.address} (${lead.ownerName})`;
+
+        const { runOwnerIntelligence } = await import("./owner-intelligence");
+        const result = await runOwnerIntelligence(lead, { skipPaidApis: true });
+
+        const updates: any = {
+          ownerIntelligence: result.dossier,
+          intelligenceScore: result.score,
+          intelligenceSources: result.sources,
+          intelligenceAt: new Date(),
+          lastEnrichedAt: new Date(),
+          enrichmentStatus: "complete",
+        };
+        if (result.managingMember && !lead.contactName) updates.contactName = result.managingMember;
+        if (result.managingMemberTitle) updates.contactRole = result.managingMemberTitle;
+        if (result.managingMemberPhone && !lead.ownerPhone) updates.ownerPhone = result.managingMemberPhone;
+        if (result.managingMemberEmail && !lead.ownerEmail) updates.ownerEmail = result.managingMemberEmail;
+        if (result.llcChain && result.llcChain.length > 0) updates.llcChain = result.llcChain;
+
+        await db.update(leads).set(updates).where(eq(leads.id, lead.id));
+
+        if (!lead.ownerPhone && !result.managingMemberPhone) {
+          const { enrichSingleLeadPhone } = await import("./phone-enrichment");
+          const freshLead = await fetchLead(lead.id);
+          if (freshLead) {
+            const phoneResult = await enrichSingleLeadPhone(freshLead, { freeOnly: true });
+            if (phoneResult) {
+              await db.update(leads).set({
+                ownerPhone: phoneResult.phone,
+                phoneSource: phoneResult.source,
+                phoneEnrichedAt: new Date(),
+              } as any).where(eq(leads.id, lead.id));
+            } else {
+              await db.update(leads).set({ phoneEnrichedAt: new Date() } as any).where(eq(leads.id, lead.id));
+            }
+          }
+        }
+
+        batchFreeStatus.enriched++;
+      } catch (err: any) {
+        console.error(`[Batch Free] Error enriching ${lead.id}:`, err.message);
+        batchFreeStatus.errors++;
+      }
+
+      batchFreeStatus.processed++;
+
+      if (batchFreeStatus.processed % 25 === 0) {
+        console.log(`[Batch Free Enrichment] Progress: ${batchFreeStatus.processed}/${batchFreeStatus.total} (${batchFreeStatus.enriched} enriched, ${batchFreeStatus.errors} errors)`);
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    batchFreeStatus.running = false;
+    batchFreeStatus.currentLead = undefined;
+    console.log(`[Batch Free Enrichment] Complete: ${batchFreeStatus.enriched} enriched, ${batchFreeStatus.errors} errors out of ${batchFreeStatus.total}`);
+  })();
 }
 
 export function getEnrichmentProgress(leadId: string): EnrichmentProgress | null {
