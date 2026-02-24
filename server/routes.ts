@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { getGraphIntelligence } from "./graph-engine";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import { z } from "zod";
@@ -375,6 +376,16 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/leads/:id/graph-intelligence", async (req, res) => {
+    try {
+      const intel = await getGraphIntelligence(req.params.id);
+      res.json(intel || { hasData: false });
+    } catch (error: any) {
+      console.error("Graph intelligence error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.patch("/api/leads/:id", async (req, res) => {
     try {
       const parsed = updateLeadSchema.safeParse(req.body);
@@ -389,6 +400,17 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Lead update error:", error);
       res.status(500).json({ message: "Failed to update lead" });
+    }
+  });
+
+  app.get("/api/leads/:id/graph-intelligence", async (req, res) => {
+    try {
+      const { getGraphIntelligence } = await import("./graph-engine");
+      const intel = await getGraphIntelligence(req.params.id);
+      res.json(intel || { hasData: false });
+    } catch (error) {
+      console.error("Graph intelligence error:", error);
+      res.status(500).json({ message: "Failed to load graph intelligence" });
     }
   });
 

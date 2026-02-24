@@ -67,16 +67,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
-
-interface GraphIntelligence {
-  hasData: boolean;
-  lastBuilt: string | null;
-  sharedOfficers: Array<{ officerName: string; connectedEntities: Array<{ name: string; type: string; propertyCount: number; properties: Array<{ leadId: string; address: string; city: string; leadScore: number }> }> }>;
-  sharedAgents: Array<{ agentName: string; entityCount: number; entities: Array<{ name: string; type: string }> }>;
-  mailingClusters: Array<{ address: string; owners: Array<{ name: string; propertyCount: number; properties: Array<{ leadId: string; address: string; city: string }> }> }>;
-  networkContacts: Array<{ name: string; phone?: string; email?: string; title?: string; relationshipPath: string; confidence: number }>;
-  connectedPropertyCount: number;
-}
+import { NetworkIntelligence } from "@/components/network-intelligence";
 
 function HunterPDLButtons({ leadId }: { leadId: string }) {
   const { toast } = useToast();
@@ -460,11 +451,6 @@ export default function LeadDetail() {
     },
   });
 
-  const { data: enrichmentJobHistory } = useQuery<EnrichmentJob[]>({
-    queryKey: ["/api/leads", id, "enrichment-jobs"],
-    enabled: !!lead,
-  });
-
   const { data: contactPath } = useQuery<{
     leadId: string;
     phones: Array<{ rank: number; evidenceId: string; contactType: string; value: string; displayValue: string; effectiveScore: number; reasons: string[]; warnings: string[]; lineType: string | null; carrierName: string | null; sourceName: string; sourceCount: number; validationStatus: string; isRecommended: boolean; ageInDays: number }>;
@@ -510,13 +496,6 @@ export default function LeadDetail() {
     enabled: !!lead,
   });
 
-  const { data: graphIntel } = useQuery<GraphIntelligence>({
-    queryKey: ["/api/leads", id, "graph-intelligence"],
-    enabled: !!id,
-  });
-
-  const [agentExpandedMap, setAgentExpandedMap] = useState<Record<number, boolean>>({});
-
   const markWrongMutation = useMutation({
     mutationFn: async (evidenceId: string) => {
       const res = await apiRequest("POST", `/api/evidence/${evidenceId}/mark-wrong`, { feedback: "Wrong number" });
@@ -541,23 +520,6 @@ export default function LeadDetail() {
     },
   });
 
-  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
-
-  const runIntelMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/intelligence/run-single/${id}`, {});
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "intelligence"] });
-      toast({ title: "Intelligence gathered" });
-    },
-    onError: () => {
-      toast({ title: "Intelligence gathering failed", variant: "destructive" });
-    },
-  });
-
   const updateMutation = useMutation({
     mutationFn: async (updates: { status?: string; notes?: string }) => {
       const res = await apiRequest("PATCH", `/api/leads/${id}`, updates);
@@ -575,7 +537,6 @@ export default function LeadDetail() {
   });
 
   const [notes, setNotes] = useState("");
-  const enrichTriggered = useRef(false);
 
   const enrichMutation = useMutation({
     mutationFn: async () => {
@@ -619,1553 +580,529 @@ export default function LeadDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/leads", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "intelligence"] });
       queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "confidence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "evidence"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "contact-path"] });
     }
   }, [enrichmentStatus?.status, id]);
 
   useEffect(() => {
-    if (lead && !enrichTriggered.current) {
-      const hasBeenEnriched = (lead as any).lastEnrichedAt || (lead as any).enrichmentStatus === "complete";
-      if (!hasBeenEnriched) {
-        enrichTriggered.current = true;
-        enrichMutation.mutate();
-      }
+    if (lead?.notes) {
+      setNotes(lead.notes);
     }
-  }, [lead]);
-
-  const lastEnrichedAt = (lead as any)?.lastEnrichedAt;
-  const daysSinceEnrichment = lastEnrichedAt
-    ? Math.floor((Date.now() - new Date(lastEnrichedAt).getTime()) / (1000 * 60 * 60 * 24))
-    : null;
-  const isStale = daysSinceEnrichment !== null && daysSinceEnrichment > 30;
-  const isEnriching = enrichMutation.isPending || (enrichmentStatus?.status === "running");
+  }, [lead?.notes]);
 
   if (isLoading) {
     return (
-      <div className="p-8 space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2"><Card className="shadow-sm"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card></div>
-          <div><Card className="shadow-sm"><CardContent className="p-6"><Skeleton className="h-64 w-full" /></CardContent></Card></div>
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <Skeleton className="h-[200px] w-full" />
+            <Skeleton className="h-[400px] w-full" />
+          </div>
+          <div className="space-y-6">
+            <Skeleton className="h-[300px] w-full" />
+            <Skeleton className="h-[300px] w-full" />
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!lead) {
-    return (
-      <div className="p-8">
-        <p className="text-muted-foreground">Lead not found</p>
-      </div>
-    );
-  }
+  if (!lead) return null;
 
-  const roofAge = lead.roofLastReplaced ? new Date().getFullYear() - lead.roofLastReplaced : null;
-  const roofArea = lead.estimatedRoofArea || Math.round(lead.sqft / Math.max(lead.stories || 1, 1));
-  const daysSinceHail = lead.lastHailDate ? Math.floor((Date.now() - new Date(lead.lastHailDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
-  const claimWindow = lead.claimWindowOpen ?? (daysSinceHail !== null ? daysSinceHail <= 730 : null);
+  const claimWindow = lead.claimWindowOpen;
+  const daysSinceHail = lead.lastHailDate ? Math.floor((new Date().getTime() - new Date(lead.lastHailDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/leads">
-          <Button variant="ghost" size="icon" data-testid="button-back-to-leads">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-bold tracking-tight truncate" data-testid="text-lead-address">{lead.address}</h2>
-          <p className="text-sm text-muted-foreground">{lead.city}, {lead.county} County, {lead.state} {lead.zipCode}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-          <StatusBadge status={lead.status} />
-          <ScoreBadge score={lead.leadScore} />
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3 bg-muted/40 rounded-lg px-4 py-3">
-        <div className="flex-1 flex items-center gap-3 flex-wrap">
-          {isEnriching && enrichmentStatus?.steps && enrichmentStatus.steps.length > 0 ? (
-            <div className="flex items-center gap-2 flex-wrap flex-1">
-              <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
-              <span className="text-sm font-medium">Enriching...</span>
-              <div className="flex gap-1.5 flex-wrap">
-                {enrichmentStatus.steps.map((step, i) => (
-                  <Badge
-                    key={i}
-                    variant={step.status === "complete" ? "default" : step.status === "running" ? "secondary" : step.status === "error" ? "destructive" : "outline"}
-                    className="text-[10px]"
-                    data-testid={`badge-enrich-step-${i}`}
-                  >
-                    {step.status === "running" && <Loader2 className="w-2.5 h-2.5 animate-spin mr-1" />}
-                    {step.name}{step.detail ? `: ${step.detail}` : ""}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              {lastEnrichedAt ? (
-                <span className="text-sm text-muted-foreground" data-testid="text-last-enriched">
-                  Last enriched: {new Date(lastEnrichedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                  {daysSinceEnrichment !== null && (
-                    <span className={isStale ? "text-amber-600 dark:text-amber-400 font-medium ml-1" : "ml-1"}>
-                      ({daysSinceEnrichment === 0 ? "today" : `${daysSinceEnrichment}d ago`})
-                    </span>
-                  )}
-                </span>
+    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/50 pb-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Link href="/leads">
+              <Button variant="ghost" size="sm" className="gap-2" data-testid="button-back">
+                <ArrowLeft className="w-4 h-4" />
+                Back to Leads
+              </Button>
+            </Link>
+            <div className="h-6 w-px bg-border" />
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-lead-address">{lead.address}</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <HunterPDLButtons leadId={id!} />
+            <Button
+              size="sm"
+              onClick={() => enrichMutation.mutate()}
+              disabled={enrichMutation.isPending || leadEnrichmentStatus === "running"}
+              data-testid="button-auto-enrich"
+            >
+              {enrichMutation.isPending || leadEnrichmentStatus === "running" ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
-                <span className="text-sm text-muted-foreground" data-testid="text-never-enriched">Never enriched</span>
+                <Zap className="w-4 h-4 mr-2" />
               )}
-            </>
-          )}
+              {leadEnrichmentStatus === "complete" ? "Re-Enrich (Free)" : "Auto-Enrich (Free)"}
+            </Button>
+          </div>
         </div>
-        <Button
-          size="sm"
-          variant={isStale ? "default" : "outline"}
-          onClick={() => enrichMutation.mutate()}
-          disabled={isEnriching}
-          data-testid="button-re-enrich"
-        >
-          {isEnriching ? (
-            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-          ) : (
-            <RefreshCw className="w-3 h-3 mr-1" />
-          )}
-          {isStale ? "Auto-Enrich (Stale)" : "Auto-Enrich (Free Sources)"}
-        </Button>
-        <HunterPDLButtons leadId={id!} />
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Property Details</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 pt-0">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-                <DetailRow icon={Ruler} label="Building Sqft" value={`${lead.sqft.toLocaleString()} sqft`} />
-                <DetailRow icon={Ruler} label="Est. Roof Area" value={`~${roofArea.toLocaleString()} sqft`} />
-                <DetailRow icon={Calendar} label="Year Built" value={lead.yearBuilt} />
-                <DetailRow icon={Home} label="Construction Type" value={lead.constructionType} />
-                <DetailRow icon={Layers} label="Stories / Units" value={`${lead.stories} stories, ${lead.units} units`} />
-                <DetailRow icon={Building2} label="Zoning" value={lead.zoning} />
-                <DetailRow icon={Shield} label="Roof Material" value={lead.roofMaterial} />
-                <DetailRow icon={Shield} label="Roof System Type" value={lead.roofType} />
-                <DetailRow
-                  icon={Calendar}
-                  label="Roof Last Replaced"
-                  value={lead.roofLastReplaced ? `${lead.roofLastReplaced}${roofAge ? ` (${roofAge} years ago)` : ""}` : "Unknown"}
-                />
-                <DetailRow icon={FileText} label="Last Roofing Permit" value={
-                  lead.lastRoofingPermitDate ? (
-                    <span>
-                      {lead.lastRoofingPermitDate}
-                      {lead.lastRoofingPermitType && <Badge variant="outline" className="ml-1 text-[10px]">{lead.lastRoofingPermitType}</Badge>}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">No permit on file</span>
-                  )
-                } />
-                <DetailRow icon={HardHat} label="Last Roofing Contractor" value={
-                  lead.lastRoofingContractor || <span className="text-muted-foreground">Unknown</span>
-                } />
+        {enrichmentStatus && (enrichmentStatus.status === "running" || enrichmentStatus.status === "pending") && (
+          <Card className="mb-8 border-primary/20 bg-primary/5 animate-in fade-in slide-in-from-top-4 duration-500">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/10 rounded-full">
+                    <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">Enrichment in Progress</h3>
+                    <p className="text-xs text-muted-foreground">Running free intelligence agents and state record lookups...</p>
+                  </div>
+                </div>
+                <Badge variant="secondary" className="animate-pulse capitalize">{enrichmentStatus.status}</Badge>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Hail Exposure</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 pt-0">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="text-center p-5 bg-muted/30 rounded-xl">
-                  <p className="text-3xl font-bold" data-testid="text-hail-events">{lead.hailEvents}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Total Hail Events</p>
-                </div>
-                <div className="text-center p-5 bg-muted/30 rounded-xl">
-                  <p className="text-3xl font-bold" data-testid="text-last-hail-date">{lead.lastHailDate || "N/A"}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Last Hail Date</p>
-                </div>
-                <div className="text-center p-5 bg-muted/30 rounded-xl">
-                  <p className="text-3xl font-bold" data-testid="text-last-hail-size">
-                    {lead.lastHailSize ? `${lead.lastHailSize}"` : "N/A"}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">Largest Hail Size</p>
-                </div>
-                <div className="text-center p-5 bg-muted/30 rounded-xl">
-                  {claimWindow !== null ? (
-                    <>
-                      <p className={`text-3xl font-bold ${claimWindow ? "text-emerald-600" : "text-amber-500"}`} data-testid="text-claim-window">
-                        {claimWindow ? "OPEN" : "CLOSED"}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Insurance Claim Window
-                        {daysSinceHail !== null && <span className="block">{daysSinceHail} days ago</span>}
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-3xl font-bold text-muted-foreground" data-testid="text-claim-window">N/A</p>
-                      <p className="text-xs text-muted-foreground mt-1">Insurance Claim Window</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {(lead as any).permitContractors && (lead as any).permitContractors.length > 0 && (
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">Contractor Intelligence</CardTitle>
-                <Badge variant="secondary" className="ml-auto">{(lead as any).permitContractors.length} contractor{(lead as any).permitContractors.length !== 1 ? 's' : ''}</Badge>
-              </CardHeader>
-              <CardContent className="p-6 pt-0">
-                <div className="space-y-3">
-                  {((lead as any).permitContractors as Array<{name: string; phone: string | null; email: string | null; address: string | null; permitType: string; permitDate: string | null; workDescription: string | null}>).map((c, i) => {
-                    const isRoofing = (c.permitType || '').toLowerCase().includes('roof') || (c.workDescription || '').toLowerCase().includes('roof');
-                    return (
-                      <div
-                        key={i}
-                        className={`p-4 rounded-md border text-sm ${isRoofing ? 'border-orange-400/30 bg-orange-50 dark:bg-orange-950/20' : ''}`}
-                        data-testid={`contractor-${i}`}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <HardHat className="w-4 h-4 text-muted-foreground" />
-                            <span className="font-medium text-sm" data-testid={`contractor-name-${i}`}>{c.name}</span>
-                            {isRoofing && <Badge variant="default" className="text-[10px]">Roofing</Badge>}
-                          </div>
-                          <Badge variant="outline" className="text-[10px]" data-testid={`contractor-type-${i}`}>{c.permitType}</Badge>
-                        </div>
-                        <div className="flex items-center gap-4 mt-2 flex-wrap">
-                          {c.phone && (
-                            <a href={`tel:${c.phone}`} className="text-xs text-foreground flex items-center gap-1 underline-offset-2 hover:underline" data-testid={`contractor-phone-${i}`}>
-                              <Phone className="w-3 h-3" /> {c.phone}
-                            </a>
-                          )}
-                          {c.email && (
-                            <a href={`mailto:${c.email}`} className="text-xs text-foreground flex items-center gap-1 underline-offset-2 hover:underline" data-testid={`contractor-email-${i}`}>
-                              <Mail className="w-3 h-3" /> {c.email}
-                            </a>
-                          )}
-                          {c.permitDate && (
-                            <span className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Calendar className="w-3 h-3" /> {c.permitDate}
-                            </span>
-                          )}
-                        </div>
-                        {c.address && (
-                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                            <MapPin className="w-3 h-3" /> {c.address}
-                          </p>
-                        )}
-                        {c.workDescription && (
-                          <p className="text-xs text-muted-foreground mt-1 truncate" data-testid={`contractor-desc-${i}`}>{c.workDescription}</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {permitHistory && permitHistory.length > 0 && (
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">Permit History</CardTitle>
-                <Badge variant="secondary" className="ml-auto">{permitHistory.length} permit{permitHistory.length !== 1 ? 's' : ''}</Badge>
-              </CardHeader>
-              <CardContent className="p-6 pt-0">
-                <div className="space-y-3">
-                  {permitHistory.map((permit) => {
-                    const isRoofing = (permit.workDescription || '').toLowerCase().includes('roof') || (permit.permitType || '').toLowerCase().includes('roof');
-                    return (
-                      <div
-                        key={permit.id}
-                        className={`p-4 rounded-xl border text-sm ${isRoofing ? 'border-primary/30 bg-primary/5' : ''}`}
-                        data-testid={`permit-${permit.id}`}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-xs">{permit.issuedDate || 'No date'}</span>
-                            {isRoofing && <Badge variant="default" className="text-[10px]">Roofing</Badge>}
-                            <Badge variant="outline" className="text-[10px]">{permit.permitType}</Badge>
-                          </div>
-                          {permit.estimatedValue && (
-                            <span className="text-xs text-muted-foreground">${permit.estimatedValue.toLocaleString()}</span>
-                          )}
-                        </div>
-                        {permit.workDescription && (
-                          <p className="text-xs text-muted-foreground truncate">{permit.workDescription}</p>
-                        )}
-                        {permit.contractor && (
-                          <p className="text-xs mt-1">
-                            <HardHat className="w-3 h-3 inline mr-1" />
-                            {permit.contractor}
-                            {permit.contractorPhone && <span className="ml-2 text-muted-foreground">{permit.contractorPhone}</span>}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Valuation</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 pt-0">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Improvement Value</p>
-                  <p className="text-2xl font-semibold mt-1">
-                    {lead.improvementValue ? `$${lead.improvementValue.toLocaleString()}` : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Land Value</p>
-                  <p className="text-2xl font-semibold mt-1">
-                    {lead.landValue ? `$${lead.landValue.toLocaleString()}` : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Assessed Value</p>
-                  <p className="text-2xl font-semibold mt-1">
-                    {lead.totalValue ? `$${lead.totalValue.toLocaleString()}` : "N/A"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="space-y-6">
-          {(decisionMakers || (rooftopOwner && rooftopOwner.primary)) && (
-            <Card className="shadow-sm" data-testid="card-rooftop-owner">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Who Controls This Roof</CardTitle>
-                {decisionMakers && (
-                  <span className="text-[10px] text-muted-foreground font-medium mt-0.5" data-testid="text-ownership-structure">
-                    {decisionMakers.ownershipLabel} · {decisionMakers.ownershipConfidence}% confidence
-                  </span>
-                )}
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-3">
-                {decisionMakers && decisionMakers.decisionMakers.length > 0 ? (
-                  <div className="space-y-3">
-                    {decisionMakers.decisionMakers.map((dm, i) => (
-                      <div key={`${dm.name}-${dm.tier}`} className={`space-y-1 ${i > 0 ? "pt-2 border-t" : ""}`} data-testid={`dm-contact-${dm.tier}`}>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded ${
-                            dm.tier === "primary" ? "bg-primary/10 text-primary" :
-                            dm.tier === "secondary" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
-                            "bg-muted text-muted-foreground"
-                          }`} data-testid={`badge-tier-${dm.tier}`}>
-                            {dm.tier}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">Relevance {dm.titleRelevance}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium" data-testid={`text-dm-name-${dm.tier}`}>{dm.name}</span>
-                          <span className="text-[10px] text-muted-foreground">{dm.combinedScore} pts</span>
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {dm.title || dm.role} · via {dm.source}
-                        </div>
-                        {dm.phone && (
-                          <a href={`tel:${dm.phone}`} className="text-[11px] font-mono block" data-testid={`link-dm-phone-${dm.tier}`}>{dm.phone}</a>
-                        )}
-                        {dm.email && (
-                          <a href={`mailto:${dm.email}`} className="text-[11px] font-mono block" data-testid={`link-dm-email-${dm.tier}`}>{dm.email}</a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : rooftopOwner && rooftopOwner.primary ? (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium" data-testid="text-rooftop-owner-name">{rooftopOwner.primary.name}</span>
-                      <span className="text-[10px] text-muted-foreground">{rooftopOwner.primary.confidence}%</span>
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {rooftopOwner.primary.title || rooftopOwner.primary.role} · via {rooftopOwner.primary.source}
-                    </div>
-                    {rooftopOwner.primary.phone && (
-                      <a href={`tel:${rooftopOwner.primary.phone}`} className="text-[11px] font-mono block" data-testid="link-owner-phone">{rooftopOwner.primary.phone}</a>
+                {enrichmentStatus.steps.map((step, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    {step.status === "complete" ? (
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    ) : step.status === "running" ? (
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    ) : (
+                      <div className="w-1.5 h-1.5 rounded-full bg-muted" />
                     )}
-                    {rooftopOwner.primary.email && (
-                      <a href={`mailto:${rooftopOwner.primary.email}`} className="text-[11px] font-mono block" data-testid="link-owner-email">{rooftopOwner.primary.email}</a>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">No decision makers resolved yet</p>
-                )}
-
-                {rooftopOwner && rooftopOwner.primary && rooftopOwner.primary.propertyCount > 1 && (
-                  <a
-                    href={`/portfolios?owner=${encodeURIComponent(rooftopOwner.primary.name)}`}
-                    className="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline pt-1"
-                    data-testid="link-portfolio"
-                  >
-                    <Users className="w-3 h-3" />
-                    Also controls {rooftopOwner.primary.propertyCount - 1} other {rooftopOwner.primary.propertyCount - 1 === 1 ? "property" : "properties"}
-                    {rooftopOwner.primary.totalPortfolioValue ? ` · $${(rooftopOwner.primary.totalPortfolioValue / 1000000).toFixed(1)}M portfolio` : ""}
-                  </a>
-                )}
-
-                {rooftopOwner && rooftopOwner.otherProperties && rooftopOwner.otherProperties.length > 0 && (
-                  <div className="space-y-1 pt-1 border-t">
-                    <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground pt-2">Other Properties</div>
-                    {rooftopOwner.otherProperties.slice(0, 3).map((prop) => (
-                      <a key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center justify-between py-1 text-[11px] rounded px-1 -mx-1" data-testid={`link-portfolio-property-${prop.leadId}`}>
-                        <span className="truncate">{prop.address}, {prop.city}</span>
-                        <span className="text-muted-foreground ml-2 flex-shrink-0">Score {prop.leadScore}</span>
-                      </a>
-                    ))}
-                    {rooftopOwner.otherProperties.length > 3 && rooftopOwner.primary && (
-                      <a href={`/portfolios?owner=${encodeURIComponent(rooftopOwner.primary.name)}`} className="text-[10px] text-primary hover:underline" data-testid="link-more-properties">
-                        +{rooftopOwner.otherProperties.length - 3} more
-                      </a>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {graphIntel?.hasData && (
-            graphIntel.sharedOfficers.length > 0 ||
-            graphIntel.sharedAgents.length > 0 ||
-            graphIntel.mailingClusters.length > 0 ||
-            graphIntel.networkContacts.length > 0
-          ) ? (
-            <Card className="shadow-sm" data-testid="card-network-intelligence">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2">
-                  <GitBranch className="w-4 h-4 text-muted-foreground" />
-                  <CardTitle className="text-base font-semibold">Network Intelligence</CardTitle>
-                </div>
-                {graphIntel.lastBuilt && (
-                  <span className="text-[10px] text-muted-foreground mt-0.5" data-testid="text-graph-last-built">
-                    Graph data from {new Date(graphIntel.lastBuilt).toLocaleDateString()}
-                  </span>
-                )}
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                {graphIntel.sharedOfficers.length > 0 && (
-                  <div className="space-y-2" data-testid="section-shared-officers">
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Connected Entities</div>
-                    {graphIntel.sharedOfficers.map((officer, oi) => (
-                      <div key={oi} className={`space-y-1 ${oi > 0 ? "pt-2 border-t" : ""}`} data-testid={`shared-officer-${oi}`}>
-                        <p className="text-sm">
-                          <span className="font-medium" data-testid={`text-officer-name-${oi}`}>{officer.officerName}</span>
-                          <span className="text-muted-foreground"> is also an officer at:</span>
-                        </p>
-                        <div className="pl-4 space-y-1">
-                          {officer.connectedEntities.map((entity, ei) => (
-                            <div key={ei} className="space-y-0.5" data-testid={`connected-entity-${oi}-${ei}`}>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[11px] font-medium" data-testid={`text-entity-name-${oi}-${ei}`}>{entity.name}</span>
-                                <Badge variant="outline" className="text-[9px]">{entity.type}</Badge>
-                                <span className="text-[10px] text-muted-foreground">{entity.propertyCount} {entity.propertyCount === 1 ? "property" : "properties"}</span>
-                              </div>
-                              {entity.properties.length > 0 && (
-                                <div className="pl-2 space-y-0.5">
-                                  {entity.properties.slice(0, 3).map((prop) => (
-                                    <Link key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center justify-between text-[11px] rounded px-1 -mx-1" data-testid={`link-entity-property-${prop.leadId}`}>
-                                      <span className="truncate text-primary hover:underline">{prop.address}, {prop.city}</span>
-                                      <span className="text-muted-foreground ml-2 flex-shrink-0">Score {prop.leadScore}</span>
-                                    </Link>
-                                  ))}
-                                  {entity.properties.length > 3 && (
-                                    <span className="text-[10px] text-muted-foreground pl-1">+{entity.properties.length - 3} more</span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {graphIntel.sharedAgents.length > 0 && (
-                  <div className="space-y-2" data-testid="section-shared-agents">
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Shared Agent Network</div>
-                    {graphIntel.sharedAgents.map((agent, ai) => (
-                      <Collapsible
-                        key={ai}
-                        open={agentExpandedMap[ai] ?? false}
-                        onOpenChange={(open) => setAgentExpandedMap((prev) => ({ ...prev, [ai]: open }))}
-                      >
-                        <CollapsibleTrigger className="flex items-center gap-1 w-full text-left" data-testid={`button-toggle-agent-${ai}`}>
-                          <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${agentExpandedMap[ai] ? "rotate-180" : ""}`} />
-                          <p className="text-sm">
-                            <span className="font-medium" data-testid={`text-agent-name-${ai}`}>{agent.agentName}</span>
-                            <span className="text-muted-foreground"> also represents {agent.entityCount} other {agent.entityCount === 1 ? "entity" : "entities"}</span>
-                          </p>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent>
-                          <div className="pl-5 pt-1 space-y-0.5">
-                            {agent.entities.map((entity, ei) => (
-                              <div key={ei} className="flex items-center gap-2 text-[11px]" data-testid={`agent-entity-${ai}-${ei}`}>
-                                <span className="font-medium">{entity.name}</span>
-                                <Badge variant="outline" className="text-[9px]">{entity.type}</Badge>
-                              </div>
-                            ))}
-                          </div>
-                        </CollapsibleContent>
-                      </Collapsible>
-                    ))}
-                  </div>
-                )}
-
-                {graphIntel.mailingClusters.length > 0 && (
-                  <div className="space-y-2" data-testid="section-mailing-clusters">
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Address Clusters</div>
-                    {graphIntel.mailingClusters.map((cluster, ci) => (
-                      <div key={ci} className={`space-y-1 ${ci > 0 ? "pt-2 border-t" : ""}`} data-testid={`mailing-cluster-${ci}`}>
-                        <p className="text-sm">
-                          <span className="font-medium" data-testid={`text-cluster-count-${ci}`}>{cluster.owners.length}</span>
-                          <span className="text-muted-foreground"> other {cluster.owners.length === 1 ? "owner shares" : "owners share"} mailing address </span>
-                          <span className="font-medium" data-testid={`text-cluster-address-${ci}`}>{cluster.address}</span>
-                        </p>
-                        <div className="pl-4 space-y-1">
-                          {cluster.owners.map((owner, owi) => (
-                            <div key={owi} className="space-y-0.5" data-testid={`cluster-owner-${ci}-${owi}`}>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[11px] font-medium">{owner.name}</span>
-                                <span className="text-[10px] text-muted-foreground">{owner.propertyCount} {owner.propertyCount === 1 ? "property" : "properties"}</span>
-                              </div>
-                              {owner.properties.length > 0 && (
-                                <div className="pl-2 space-y-0.5">
-                                  {owner.properties.slice(0, 3).map((prop) => (
-                                    <Link key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center text-[11px] rounded px-1 -mx-1" data-testid={`link-cluster-property-${prop.leadId}`}>
-                                      <span className="truncate text-primary hover:underline">{prop.address}, {prop.city}</span>
-                                    </Link>
-                                  ))}
-                                  {owner.properties.length > 3 && (
-                                    <span className="text-[10px] text-muted-foreground pl-1">+{owner.properties.length - 3} more</span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {graphIntel.networkContacts.length > 0 && (
-                  <div className="space-y-2" data-testid="section-network-contacts">
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Network Contacts</div>
-                    {graphIntel.networkContacts.map((contact, ni) => (
-                      <div key={ni} className={`space-y-1 ${ni > 0 ? "pt-2 border-t" : ""}`} data-testid={`network-contact-${ni}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium" data-testid={`text-network-contact-name-${ni}`}>{contact.name}</span>
-                          <Badge
-                            variant={contact.confidence >= 80 ? "default" : contact.confidence >= 50 ? "secondary" : "outline"}
-                            className="text-[9px]"
-                            data-testid={`badge-contact-confidence-${ni}`}
-                          >
-                            {contact.confidence}%
-                          </Badge>
-                        </div>
-                        {contact.title && (
-                          <div className="text-[11px] text-muted-foreground" data-testid={`text-contact-title-${ni}`}>{contact.title}</div>
-                        )}
-                        <div className="flex items-center gap-3 flex-wrap">
-                          {contact.phone && (
-                            <a href={`tel:${contact.phone}`} className="text-[11px] font-mono text-primary hover:underline" data-testid={`link-network-phone-${ni}`}>
-                              {contact.phone}
-                            </a>
-                          )}
-                          {contact.email && (
-                            <a href={`mailto:${contact.email}`} className="text-[11px] font-mono text-primary hover:underline" data-testid={`link-network-email-${ni}`}>
-                              {contact.email}
-                            </a>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-muted-foreground" data-testid={`text-relationship-path-${ni}`}>
-                          {contact.relationshipPath}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {graphIntel.connectedPropertyCount > 0 && (
-                  <div className="text-[10px] text-muted-foreground pt-1 border-t" data-testid="text-connected-property-count">
-                    {graphIntel.connectedPropertyCount} connected {graphIntel.connectedPropertyCount === 1 ? "property" : "properties"} in network
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ) : (!graphIntel || !graphIntel.hasData) && id ? (
-            <p className="text-[11px] text-muted-foreground px-1" data-testid="text-graph-hint">
-              Build the relationship graph in Network Explorer to unlock network intelligence
-            </p>
-          ) : null}
-
-          {contactPath && (contactPath.phones.length > 0 || contactPath.emails.length > 0) && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold">Call Sheet</CardTitle>
-                  <span className="text-[11px] text-muted-foreground capitalize" data-testid="badge-contact-path-confidence">
-                    {contactPath.overallConfidence} confidence
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                {contactPath.phones.length > 0 && (
-                  <div className="space-y-1.5">
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Phones</div>
-                    {contactPath.phones.map((phone, i) => (
-                      <div key={phone.evidenceId} className="py-2 border-b last:border-0" data-testid={`call-sheet-phone-${i}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <a href={`tel:${phone.value}`} className="text-sm font-mono font-medium" data-testid={`link-call-phone-${i}`}>
-                              {phone.displayValue}
-                            </a>
-                            {phone.lineType && (
-                              <span className="text-[10px] text-muted-foreground">{phone.lineType}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {phone.isRecommended && <span className="text-[10px] font-medium text-primary">Best</span>}
-                            <span className="text-[10px] text-muted-foreground" data-testid={`text-phone-score-${i}`}>{Math.round(phone.effectiveScore)}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-[10px] text-muted-foreground">
-                            {phone.sourceCount} {phone.sourceCount === 1 ? "source" : "sources"}
-                            {phone.validationStatus === "VERIFIED" || phone.validationStatus === "CONFIRMED" ? " · Verified" : ""}
-                          </span>
-                          <div className="flex gap-0.5">
-                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => confirmGoodMutation.mutate(phone.evidenceId)} disabled={confirmGoodMutation.isPending} data-testid={`button-confirm-phone-${i}`}>
-                              <ThumbsUp className="w-3 h-3" />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => markWrongMutation.mutate(phone.evidenceId)} disabled={markWrongMutation.isPending} data-testid={`button-wrong-phone-${i}`}>
-                              <ThumbsDown className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        </div>
-                        {phone.warnings.length > 0 && (
-                          <div className="text-[10px] text-muted-foreground mt-0.5">{phone.warnings.join(" · ")}</div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {contactPath.emails.length > 0 && (
-                  <div className="space-y-1.5">
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Emails</div>
-                    {contactPath.emails.map((email, i) => (
-                      <div key={email.evidenceId} className="py-2 border-b last:border-0" data-testid={`call-sheet-email-${i}`}>
-                        <div className="flex items-center justify-between">
-                          <a href={`mailto:${email.value}`} className="text-sm font-mono font-medium truncate" data-testid={`link-email-${i}`}>
-                            {email.displayValue}
-                          </a>
-                          <div className="flex items-center gap-2">
-                            {email.isRecommended && <span className="text-[10px] font-medium text-primary">Best</span>}
-                            <span className="text-[10px] text-muted-foreground">{Math.round(email.effectiveScore)}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-[10px] text-muted-foreground">
-                            {email.sourceCount} {email.sourceCount === 1 ? "source" : "sources"}
-                            {email.validationStatus === "VERIFIED" ? " · Verified" : ""}
-                          </span>
-                          <div className="flex gap-0.5">
-                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => confirmGoodMutation.mutate(email.evidenceId)} disabled={confirmGoodMutation.isPending} data-testid={`button-confirm-email-${i}`}>
-                              <ThumbsUp className="w-3 h-3" />
-                            </Button>
-                            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => markWrongMutation.mutate(email.evidenceId)} disabled={markWrongMutation.isPending} data-testid={`button-wrong-email-${i}`}>
-                              <ThumbsDown className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {contactPath.warnings.length > 0 && (
-                  <div className="text-[10px] text-muted-foreground pt-1">
-                    {contactPath.warnings.join(" · ")}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-base font-semibold">Owner / Contact</CardTitle>
-              {confidence && (
-                <Badge
-                  variant={confidence.level === "high" ? "default" : confidence.level === "medium" ? "secondary" : "outline"}
-                  className="text-[10px]"
-                  data-testid="badge-contact-confidence"
-                >
-                  {confidence.level === "high" ? "High" : confidence.level === "medium" ? "Medium" : "Low"} ({confidence.score}/100)
-                </Badge>
-              )}
-            </CardHeader>
-            <CardContent className="p-6 pt-0 space-y-1">
-              <DetailRow icon={User} label="Owner" value={lead.ownerName} />
-              <DetailRow icon={Building2} label="Owner Type" value={lead.ownerType} />
-              {lead.llcName && <DetailRow icon={FileText} label="LLC Name" value={lead.llcName} />}
-              {lead.registeredAgent && <DetailRow icon={Shield} label="Entity Type" value={lead.registeredAgent} />}
-              {lead.officerName && (
-                <DetailRow
-                  icon={Briefcase}
-                  label="TX Filing Name"
-                  value={lead.officerName.replace(/^TX Filing:\s*/i, "")}
-                />
-              )}
-              {lead.officerTitle && (
-                <DetailRow
-                  icon={FileText}
-                  label="Filing Status"
-                  value={lead.officerTitle}
-                />
-              )}
-              {lead.taxpayerId && <DetailRow icon={Hash} label="TX Taxpayer ID" value={lead.taxpayerId} />}
-              {lead.sosFileNumber && <DetailRow icon={Hash} label="TX SOS File #" value={lead.sosFileNumber} />}
-              <DetailRow icon={MapPin} label="Mailing Address" value={lead.ownerAddress} />
-              <DetailRow
-                icon={Phone}
-                label="Phone"
-                value={lead.ownerPhone ? (
-                  <span className="flex items-center gap-2 flex-wrap">
-                    <a href={`tel:${lead.ownerPhone}`} className="text-primary hover:underline">{lead.ownerPhone}</a>
-                    {lead.phoneSource && (
-                      <span className="text-[10px] text-muted-foreground">via {lead.phoneSource}</span>
-                    )}
-                  </span>
-                ) : null}
-              />
-              <DetailRow icon={Mail} label="Email" value={lead.ownerEmail} />
-              {(lead.contactEnrichedAt || lead.phoneEnrichedAt) && (
-                <p className="text-[10px] text-muted-foreground pt-1">
-                  {lead.contactEnrichedAt && `Contact enriched: ${new Date(lead.contactEnrichedAt).toLocaleDateString()}`}
-                  {lead.contactEnrichedAt && lead.phoneEnrichedAt && " | "}
-                  {lead.phoneEnrichedAt && `Phone searched: ${new Date(lead.phoneEnrichedAt).toLocaleDateString()}`}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {(lead.businessName || lead.contactName || lead.businessWebsite || lead.webResearchedAt) && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Business & Decision Maker</CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-1">
-                {lead.businessName && (
-                  <DetailRow icon={Building2} label="Business Name" value={lead.businessName} />
-                )}
-                {lead.businessWebsite && (
-                  <DetailRow
-                    icon={Globe}
-                    label="Website"
-                    value={
-                      <a href={lead.businessWebsite} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
-                        {lead.businessWebsite.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-                      </a>
-                    }
-                  />
-                )}
-                {lead.contactName && (
-                  <DetailRow
-                    icon={User}
-                    label="Key Contact"
-                    value={
-                      <span>
-                        {lead.contactName}
-                        {lead.contactTitle && (
-                          <span className="text-muted-foreground text-xs ml-1">({lead.contactTitle})</span>
-                        )}
-                      </span>
-                    }
-                  />
-                )}
-                {lead.contactPhone && (
-                  <DetailRow
-                    icon={Phone}
-                    label="Contact Phone"
-                    value={
-                      <a href={`tel:${lead.contactPhone}`} className="text-primary hover:underline">{lead.contactPhone}</a>
-                    }
-                  />
-                )}
-                {lead.contactEmail && (
-                  <DetailRow
-                    icon={Mail}
-                    label="Contact Email"
-                    value={
-                      <a href={`mailto:${lead.contactEmail}`} className="text-primary hover:underline">{lead.contactEmail}</a>
-                    }
-                  />
-                )}
-                {lead.contactSource && (
-                  <p className="text-[10px] text-muted-foreground pt-1">via {lead.contactSource}</p>
-                )}
-                {lead.webResearchedAt && !lead.contactName && !lead.businessWebsite && (
-                  <p className="text-xs text-muted-foreground py-2">Researched - no website or staff found</p>
-                )}
-                {lead.webResearchedAt && (
-                  <p className="text-[10px] text-muted-foreground pt-1">
-                    Researched: {new Date(lead.webResearchedAt).toLocaleDateString()}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {(lead.managementCompany || lead.managementContact || lead.managementPhone || lead.contactRole) && (
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">Property Management</CardTitle>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {lead.contactRole && lead.contactRole !== "Unknown" && (
-                    <Badge variant="secondary" className="text-[10px]" data-testid="badge-contact-role">
-                      {lead.contactRole}
-                    </Badge>
-                  )}
-                  {(lead as any).dmConfidenceScore !== null && (lead as any).dmConfidenceScore !== undefined && (
-                    <Badge
-                      variant={(lead as any).dmConfidenceScore >= 85 ? "default" : (lead as any).dmConfidenceScore >= 60 ? "secondary" : "outline"}
-                      className="text-[10px]"
-                      data-testid="badge-dm-confidence"
-                    >
-                      DM: {(lead as any).dmConfidenceScore}/100
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-1">
-                {lead.managementCompany && (
-                  <DetailRow icon={Building2} label="Management Company" value={lead.managementCompany} />
-                )}
-                {lead.managementContact && (
-                  <DetailRow icon={User} label="Management Contact" value={lead.managementContact} />
-                )}
-                {lead.managementPhone && (
-                  <DetailRow
-                    icon={Phone}
-                    label="Management Phone"
-                    value={
-                      <a href={`tel:${lead.managementPhone}`} className="text-primary hover:underline" data-testid="link-mgmt-phone">
-                        {lead.managementPhone}
-                      </a>
-                    }
-                  />
-                )}
-                {lead.managementEmail && (
-                  <DetailRow
-                    icon={Mail}
-                    label="Management Email"
-                    value={
-                      <a href={`mailto:${lead.managementEmail}`} className="text-primary hover:underline">
-                        {lead.managementEmail}
-                      </a>
-                    }
-                  />
-                )}
-                {lead.contactRole && (
-                  <DetailRow icon={UserCheck} label="Decision Maker Role" value={
-                    <span className="flex items-center gap-2">
-                      {lead.contactRole}
-                      {(lead as any).roleConfidence && (
-                        <span className="text-[10px] text-muted-foreground">({(lead as any).roleConfidence}% confidence)</span>
-                      )}
-                      {(lead as any).decisionMakerRank && (
-                        <span className="text-[10px] text-muted-foreground">Rank #{(lead as any).decisionMakerRank}</span>
-                      )}
+                    <span className={`text-[10px] uppercase tracking-wider font-medium ${step.status === "complete" ? "text-foreground" : "text-muted-foreground"}`}>
+                      {step.name}
                     </span>
-                  } />
-                )}
-                {(lead as any).managementEvidence && Array.isArray((lead as any).managementEvidence) && (lead as any).managementEvidence.length > 0 && (
-                  <div className="pt-2">
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Evidence Sources</p>
-                    <div className="flex gap-1.5 flex-wrap">
-                      {((lead as any).managementEvidence as any[]).map((ev: any, i: number) => (
-                        <Badge key={i} variant="outline" className="text-[10px]">
-                          {ev.source}: {ev.field} ({ev.confidence}%)
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {(lead as any).managementAttributedAt && (
-                  <p className="text-[10px] text-muted-foreground pt-1">
-                    Attributed: {new Date((lead as any).managementAttributedAt).toLocaleDateString()}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {(lead as any).reverseAddressType && (lead as any).reverseAddressType !== "same_as_property" && (
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">Reverse Address Lookup</CardTitle>
-                <Badge
-                  variant={(lead as any).reverseAddressType === "management_office" ? "default" : "secondary"}
-                  className="text-[10px]"
-                  data-testid="badge-reverse-address-type"
-                >
-                  {((lead as any).reverseAddressType || "").replace(/_/g, " ")}
-                </Badge>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-2">
-                {lead.ownerAddress && (
-                  <div className="flex items-start gap-2 text-sm">
-                    <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Owner Mailing Address</p>
-                      <p className="text-sm" data-testid="text-owner-mailing-address">{lead.ownerAddress}</p>
-                    </div>
-                  </div>
-                )}
-                {Array.isArray((lead as any).reverseAddressBusinesses) && (lead as any).reverseAddressBusinesses.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Businesses Found at Address</p>
-                    {((lead as any).reverseAddressBusinesses as any[]).slice(0, 5).map((biz: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between text-sm bg-muted/30 rounded px-2.5 py-1.5">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="w-3 h-3 text-muted-foreground shrink-0" />
-                          <span className="font-medium" data-testid={`text-reverse-biz-${i}`}>{biz.name}</span>
-                        </div>
-                        <Badge variant="outline" className="text-[9px]">
-                          {(biz.classification || "").replace(/_/g, " ")}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {(lead as any).reverseAddressEnrichedAt && (
-                  <p className="text-[10px] text-muted-foreground pt-1">
-                    Enriched: {new Date((lead as any).reverseAddressEnrichedAt).toLocaleDateString()}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-base font-semibold">Owner Intelligence</CardTitle>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {(lead as any).ownershipFlag && (
-                  <Badge
-                    variant="destructive"
-                    className="text-[10px]"
-                    data-testid="badge-ownership-flag"
-                  >
-                    {(lead as any).ownershipFlag}
-                  </Badge>
-                )}
-                {intelligence?.score !== undefined && intelligence.score > 0 && (
-                  <span className="text-xs text-muted-foreground font-medium" data-testid="badge-intel-score">
-                    {intelligence.score}/100
-                  </span>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="p-6 pt-0 space-y-2">
-              {intelligence?.managingMember ? (
-                <>
-                  <DetailRow icon={User} label="Real Owner" value={
-                    <span className="font-semibold">{intelligence.managingMember}</span>
-                  } />
-                  {intelligence.managingMemberTitle && (
-                    <DetailRow icon={Briefcase} label="Role" value={intelligence.managingMemberTitle} />
-                  )}
-                  {intelligence.managingMemberPhone && (
-                    <DetailRow icon={Phone} label="Direct Phone" value={
-                      <a href={`tel:${intelligence.managingMemberPhone}`} className="text-primary hover:underline">{intelligence.managingMemberPhone}</a>
-                    } />
-                  )}
-                  {intelligence.managingMemberEmail && (
-                    <DetailRow icon={Mail} label="Direct Email" value={
-                      <a href={`mailto:${intelligence.managingMemberEmail}`} className="text-primary hover:underline">{intelligence.managingMemberEmail}</a>
-                    } />
-                  )}
-                  {intelligence.llcChain && intelligence.llcChain.length > 0 && (
-                    <div className="pt-2">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">LLC Chain</p>
-                      {intelligence.llcChain.slice(0, 3).map((link, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs pl-3 py-1">
-                          <span className="text-muted-foreground/60">{i > 0 ? "  " : ""}</span>
-                          <span className="font-medium">{link.entityName}</span>
-                          {link.status && <span className="text-[10px] text-muted-foreground">({link.status})</span>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {intelligence.realPeople && intelligence.realPeople.length > 1 && (
-                    <div className="pt-2">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Other People Found</p>
-                      {intelligence.realPeople.slice(1, 5).map((person, i) => (
-                        <div key={i} className="flex items-center justify-between text-xs pl-3 py-1.5 border-b last:border-0" data-testid={`real-person-${i}`}>
-                          <div>
-                            <span className="font-medium">{person.name}</span>
-                            {person.title && <span className="text-muted-foreground ml-1.5">({person.title})</span>}
-                          </div>
-                          {person.confidence && (
-                            <span className="text-[10px] text-muted-foreground">{person.confidence}%</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {intelligence.sources && intelligence.sources.length > 0 && (
-                    <p className="text-[10px] text-muted-foreground pt-2">
-                      Sources: {intelligence.sources.join(", ")}
-                    </p>
-                  )}
-                  {intelligence.generatedAt && (
-                    <div className="flex items-center gap-2 pt-2">
-                      <p className="text-[10px] text-muted-foreground">
-                        Intel gathered: {new Date(intelligence.generatedAt).toLocaleDateString()}
-                      </p>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => runIntelMutation.mutate()}
-                        disabled={runIntelMutation.isPending}
-                        data-testid="button-rerun-intel"
-                      >
-                        {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                      </Button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground mb-3">
-                    {intelligence?.generatedAt ? "No real owner found yet" : "Not investigated yet"}
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => runIntelMutation.mutate()}
-                    disabled={runIntelMutation.isPending}
-                    data-testid="button-run-intel"
-                  >
-                    {runIntelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Play className="w-3 h-3 mr-1" />}
-                    Run 16-Agent Pipeline
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {intelligence?.buildingContacts && intelligence.buildingContacts.length > 0 && (
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">Building Contacts</CardTitle>
-                <span className="text-xs text-muted-foreground" data-testid="badge-building-contacts-count">
-                  {intelligence.buildingContacts.length} found
-                </span>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                {intelligence.buildingContacts.slice(0, 8).map((contact, i) => (
-                  <div key={i} className="space-y-1" data-testid={`building-contact-${i}`}>
-                    <div className="flex items-center gap-2">
-                      <UserCheck className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
-                      <span className="text-sm font-medium" data-testid={`text-building-contact-name-${i}`}>{contact.name}</span>
-                    </div>
-                    <div className="pl-6 space-y-0.5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground" data-testid={`badge-building-contact-role-${i}`}>{contact.role}</span>
-                        {contact.company && (
-                          <span className="text-xs text-muted-foreground" data-testid={`text-building-contact-company-${i}`}>{contact.company}</span>
-                        )}
-                      </div>
-                      {contact.phone && (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <Phone className="w-3 h-3 text-muted-foreground/60" />
-                          <a href={`tel:${contact.phone}`} className="text-primary hover:underline" data-testid={`link-building-contact-phone-${i}`}>{contact.phone}</a>
-                        </div>
-                      )}
-                      {contact.email && (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <Mail className="w-3 h-3 text-muted-foreground/60" />
-                          <a href={`mailto:${contact.email}`} className="text-primary hover:underline" data-testid={`link-building-contact-email-${i}`}>{contact.email}</a>
-                        </div>
-                      )}
-                      <span className="text-[10px] text-muted-foreground" data-testid={`text-building-contact-source-${i}`}>{contact.source}</span>
-                    </div>
-                    {i < intelligence.buildingContacts!.length - 1 && i < 7 && <Separator className="mt-3" />}
                   </div>
                 ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-semibold">Property Details</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="divide-y px-6">
+                    <DetailRow icon={Building2} label="Property Type" value={lead.zoning} />
+                    <DetailRow icon={Ruler} label="Square Footage" value={lead.sqft ? `${lead.sqft.toLocaleString()} sqft` : "N/A"} />
+                    <DetailRow icon={Calendar} label="Year Built" value={lead.yearBuilt || "N/A"} />
+                    <DetailRow icon={MapPin} label="Location" value={`${lead.city}, ${lead.county} County`} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-semibold">Ownership</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="divide-y px-6">
+                    <DetailRow icon={User} label="Owner Name" value={lead.ownerName} />
+                    <DetailRow icon={Briefcase} label="Owner Type" value={lead.ownerType} />
+                    {lead.llcName && <DetailRow icon={Layers} label="LLC Entity" value={lead.llcName} />}
+                    {lead.ownerAddress && <DetailRow icon={Home} label="Mailing Address" value={lead.ownerAddress} />}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <Card className="shadow-sm overflow-hidden">
+              <CardContent className="p-0">
+                <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x">
+                  <div className="p-6 text-center">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Intelligence Score</p>
+                    <div className="flex justify-center">
+                      <ScoreBadge score={lead.leadScore} size="lg" />
+                    </div>
+                  </div>
+                  <div className="p-6 text-center">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Hail Exposure</p>
+                    <p className="text-3xl font-bold" data-testid="text-hail-events">{lead.hailEvents}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Confirmed Events</p>
+                  </div>
+                  <div className="p-6 text-center">
+                    {daysSinceHail !== null ? (
+                      <>
+                        <p className={`text-3xl font-bold ${claimWindow ? "text-emerald-600" : "text-amber-500"}`} data-testid="text-claim-window">
+                          {claimWindow ? "OPEN" : "CLOSED"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Insurance Claim Window
+                          {daysSinceHail !== null && <span className="block">{daysSinceHail} days ago</span>}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-3xl font-bold text-muted-foreground" data-testid="text-claim-window">N/A</p>
+                        <p className="text-xs text-muted-foreground mt-1">Insurance Claim Window</p>
+                      </>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
-          )}
+            
+            <LeadStormHistory lead={lead} />
+            
+            <BuildingContacts intelligence={intelligence} />
+          </div>
 
-          {intelligence?.dossier?.skipTraceHits && intelligence.dossier.skipTraceHits.length > 0 && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
-                <CardTitle className="text-base font-semibold">Skip Trace / Provenance</CardTitle>
-                <span className="text-xs text-muted-foreground" data-testid="badge-skip-trace-count">
-                  {intelligence.dossier.skipTraceHits.length} claims
-                </span>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-3">
-                {intelligence.dossier.skipTraceHits.slice(0, 12).map((hit: any, i: number) => (
-                  <div key={i} className="border rounded-xl p-3 space-y-1" data-testid={`skip-trace-hit-${i}`}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">{hit.fieldName}</span>
-                      <span className="text-xs text-muted-foreground font-medium" data-testid={`badge-skip-confidence-${i}`}>
-                        {hit.confidence}%
-                      </span>
+          <div className="space-y-6">
+            <NetworkIntelligence leadId={id!} />
+
+            {(decisionMakers || (rooftopOwner && rooftopOwner.primary)) && (
+              <Card className="shadow-sm" data-testid="card-rooftop-owner">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base font-semibold">Who Controls This Roof</CardTitle>
+                  {decisionMakers && (
+                    <span className="text-[10px] text-muted-foreground font-medium mt-0.5" data-testid="text-ownership-structure">
+                      {decisionMakers.ownershipLabel} · {decisionMakers.ownershipConfidence}% confidence
+                    </span>
+                  )}
+                </CardHeader>
+                <CardContent className="p-6 pt-0 space-y-3">
+                  {decisionMakers && decisionMakers.decisionMakers.length > 0 ? (
+                    <div className="space-y-3">
+                      {decisionMakers.decisionMakers.map((dm, i) => (
+                        <div key={`${dm.name}-${dm.tier}`} className={`space-y-1 ${i > 0 ? "pt-2 border-t" : ""}`} data-testid={`dm-contact-${dm.tier}`}>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded ${
+                              dm.tier === "primary" ? "bg-primary/10 text-primary" :
+                              dm.tier === "secondary" ? "bg-blue-500/10 text-blue-600 dark:text-blue-400" :
+                              "bg-muted text-muted-foreground"
+                            }`} data-testid={`badge-tier-${dm.tier}`}>
+                              {dm.tier}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">Relevance {dm.titleRelevance}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium" data-testid={`text-dm-name-${dm.tier}`}>{dm.name}</span>
+                            <span className="text-[10px] text-muted-foreground">{dm.combinedScore} pts</span>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {dm.title || dm.role} · via {dm.source}
+                          </div>
+                          {dm.phone && (
+                            <a href={`tel:${dm.phone}`} className="text-[11px] font-mono block" data-testid={`link-dm-phone-${dm.tier}`}>{dm.phone}</a>
+                          )}
+                          {dm.email && (
+                            <a href={`mailto:${dm.email}`} className="text-[11px] font-mono block" data-testid={`link-dm-email-${dm.tier}`}>{dm.email}</a>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    <p className="text-sm font-mono truncate" data-testid={`text-skip-value-${i}`}>{hit.fieldValue}</p>
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
-                      <span>{hit.source}</span>
-                      {hit.parsingMethod && <span>via {hit.parsingMethod}</span>}
-                      {hit.sourceUrl && (
-                        <a href={hit.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-0.5" data-testid={`link-skip-source-${i}`}>
-                          <ExternalLink className="w-2.5 h-2.5" /> source
+                  ) : rooftopOwner && rooftopOwner.primary ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium" data-testid="text-rooftop-owner-name">{rooftopOwner.primary.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{rooftopOwner.primary.confidence}%</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {rooftopOwner.primary.title || rooftopOwner.primary.role} · via {rooftopOwner.primary.source}
+                      </div>
+                      {rooftopOwner.primary.phone && (
+                        <a href={`tel:${rooftopOwner.primary.phone}`} className="text-[11px] font-mono block" data-testid="link-owner-phone">{rooftopOwner.primary.phone}</a>
+                      )}
+                      {rooftopOwner.primary.email && (
+                        <a href={`mailto:${rooftopOwner.primary.email}`} className="text-[11px] font-mono block" data-testid="link-owner-email">{rooftopOwner.primary.email}</a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">No decision makers resolved yet</p>
+                  )}
+
+                  {rooftopOwner && rooftopOwner.primary && rooftopOwner.primary.propertyCount > 1 && (
+                    <a
+                      href={`/portfolios?owner=${encodeURIComponent(rooftopOwner.primary.name)}`}
+                      className="flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline pt-1"
+                      data-testid="link-portfolio"
+                    >
+                      <Users className="w-3 h-3" />
+                      Also controls {rooftopOwner.primary.propertyCount - 1} other {rooftopOwner.primary.propertyCount - 1 === 1 ? "property" : "properties"}
+                      {rooftopOwner.primary.totalPortfolioValue ? ` · $${(rooftopOwner.primary.totalPortfolioValue / 1000000).toFixed(1)}M portfolio` : ""}
+                    </a>
+                  )}
+
+                  {rooftopOwner && rooftopOwner.otherProperties && rooftopOwner.otherProperties.length > 0 && (
+                    <div className="space-y-1 pt-1 border-t">
+                      <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground pt-2">Other Properties</div>
+                      {rooftopOwner.otherProperties.slice(0, 3).map((prop) => (
+                        <a key={prop.leadId} href={`/leads/${prop.leadId}`} className="flex items-center justify-between py-1 text-[11px] rounded px-1 -mx-1" data-testid={`link-portfolio-property-${prop.leadId}`}>
+                          <span className="truncate">{prop.address}, {prop.city}</span>
+                          <span className="text-muted-foreground ml-2 flex-shrink-0">Score {prop.leadScore}</span>
+                        </a>
+                      ))}
+                      {rooftopOwner.otherProperties.length > 3 && rooftopOwner.primary && (
+                        <a href={`/portfolios?owner=${encodeURIComponent(rooftopOwner.primary.name)}`} className="text-[10px] text-primary hover:underline" data-testid="link-more-properties">
+                          +${rooftopOwner.otherProperties.length - 3} more
                         </a>
                       )}
                     </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-          {evidence && evidence.length > 0 && (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold">Contact Evidence</CardTitle>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px]" data-testid="badge-evidence-count">
-                      {evidence.length} record{evidence.length !== 1 ? "s" : ""}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => validateMutation.mutate()}
-                      disabled={validateMutation.isPending}
-                      data-testid="button-validate-contacts"
-                    >
-                      {validateMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
-                      <span className="ml-1">Validate</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setEvidenceExpanded(!evidenceExpanded)}
-                      data-testid="button-toggle-evidence"
-                    >
-                      {evidenceExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                    </Button>
+            {contactPath && (contactPath.phones.length > 0 || contactPath.emails.length > 0) && (
+              <Card className="shadow-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base font-semibold">Call Sheet</CardTitle>
+                    <span className="text-[11px] text-muted-foreground capitalize" data-testid="badge-contact-path-confidence">
+                      {contactPath.overallConfidence} confidence
+                    </span>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6 pt-0">
-                {!evidenceExpanded ? (
-                  <div className="space-y-2">
-                    {Object.entries(
-                      evidence.reduce((acc: Record<string, ContactEvidence[]>, ev) => {
-                        const key = ev.contactType;
-                        if (!acc[key]) acc[key] = [];
-                        acc[key].push(ev);
-                        return acc;
-                      }, {})
-                    ).map(([type, items]) => (
-                      <div key={type} className="flex items-center justify-between py-1.5">
-                        <div className="flex items-center gap-2">
-                          {type === "PHONE" && <Phone className="w-3.5 h-3.5 text-muted-foreground" />}
-                          {type === "EMAIL" && <Mail className="w-3.5 h-3.5 text-muted-foreground" />}
-                          {type !== "PHONE" && type !== "EMAIL" && <Database className="w-3.5 h-3.5 text-muted-foreground" />}
-                          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{type}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-mono">{items.length}</span>
-                          {items.some(i => i.validationStatus === "VERIFIED") && (
-                            <CheckCircle className="w-3 h-3 text-green-500" />
-                          )}
-                          {items.some(i => i.validationStatus === "INVALID") && (
-                            <XCircle className="w-3 h-3 text-red-500" />
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {evidence.map((ev, i) => (
-                      <div key={ev.id} className="border rounded-lg p-3 space-y-2" data-testid={`evidence-item-${i}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px]">{ev.contactType}</Badge>
-                            <span className="text-sm font-mono">{ev.normalizedValue || ev.contactValue}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            {ev.validationStatus === "VERIFIED" && (
-                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">Verified</Badge>
-                            )}
-                            {ev.validationStatus === "INVALID" && (
-                              <Badge variant="destructive" className="text-[10px]">Invalid</Badge>
-                            )}
-                            {ev.validationStatus === "UNVERIFIED" && (
-                              <Badge variant="secondary" className="text-[10px]">Unverified</Badge>
-                            )}
-                            <span className="text-xs font-mono font-medium">{Math.round(ev.computedScore)}</span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Database className="w-3 h-3" />
-                            <span>{ev.sourceName}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Shield className="w-3 h-3" />
-                            <span>Trust: {ev.sourceTrustScore}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Fingerprint className="w-3 h-3" />
-                            <span>{ev.extractorMethod}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Layers className="w-3 h-3" />
-                            <span>Corr: {ev.corroborationCount}</span>
-                          </div>
-                          {ev.sourceUrl && (
-                            <a
-                              href={ev.sourceUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1 col-span-2 hover:underline"
-                              data-testid={`link-evidence-source-${i}`}
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              <span className="truncate">{(() => { try { return new URL(ev.sourceUrl!).hostname; } catch { return ev.sourceUrl; } })()}</span>
-                            </a>
-                          )}
-                          {ev.extractedAt && (
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              <span>{new Date(ev.extractedAt).toLocaleDateString()}</span>
-                            </div>
-                          )}
-                          {ev.validationDetail && (
-                            <div className="col-span-2 text-[10px] italic">{ev.validationDetail}</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {conflicts && conflicts.length > 0 && (
-            <Card className="shadow-sm border-amber-200 dark:border-amber-800">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-500" />
-                    Contact Conflicts
-                  </CardTitle>
-                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-600" data-testid="badge-conflict-count">
-                    {conflicts.filter(c => c.resolution === "UNRESOLVED").length} unresolved
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                {conflicts.map((conflict, ci) => {
-                  const candidates = (conflict.candidateValues as Array<{ value: string; score: number; evidenceId: string; source: string }>) || [];
-                  const isResolved = conflict.resolution !== "UNRESOLVED";
-                  return (
-                    <div key={conflict.id} className={`border rounded-lg p-3 space-y-2 ${isResolved ? "opacity-60" : ""}`} data-testid={`conflict-item-${ci}`}>
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline" className="text-[10px]">{conflict.contactType}</Badge>
-                        {isResolved ? (
-                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px]">
-                            {conflict.resolution}
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                            Needs Review
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="space-y-1.5">
-                        {candidates.map((candidate, ki) => (
-                          <div key={ki} className="flex items-center justify-between gap-2 py-1 px-2 rounded bg-muted/50">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-sm font-mono truncate">{candidate.value}</span>
-                              <span className="text-[10px] text-muted-foreground flex-shrink-0">{candidate.source}</span>
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="text-xs font-mono font-medium">{Math.round(candidate.score)}</span>
-                              {!isResolved && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => resolveConflictMutation.mutate({ conflictId: conflict.id, pickedEvidenceId: candidate.evidenceId })}
-                                  disabled={resolveConflictMutation.isPending}
-                                  data-testid={`button-pick-candidate-${ci}-${ki}`}
-                                >
-                                  Pick
-                                </Button>
+                </CardHeader>
+                <CardContent className="p-6 pt-0 space-y-4">
+                  {contactPath.phones.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Phones</div>
+                      {contactPath.phones.map((phone, i) => (
+                        <div key={phone.evidenceId} className="py-2 border-b last:border-0" data-testid={`call-sheet-phone-${i}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <a href={`tel:${phone.value}`} className="text-sm font-mono font-medium" data-testid={`link-call-phone-${i}`}>
+                                {phone.displayValue}
+                              </a>
+                              {phone.lineType && (
+                                <span className="text-[10px] text-muted-foreground">{phone.lineType}</span>
                               )}
                             </div>
+                            <div className="flex items-center gap-2">
+                              {phone.isRecommended && <span className="text-[10px] font-medium text-primary">Best</span>}
+                              <span className="text-[10px] text-muted-foreground" data-testid={`text-phone-score-${i}`}>{Math.round(phone.effectiveScore)}</span>
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                      {conflict.scoreMargin !== null && conflict.scoreMargin !== undefined && (
-                        <div className="text-[10px] text-muted-foreground">Score margin: {conflict.scoreMargin.toFixed(1)} points</div>
-                      )}
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-[10px] text-muted-foreground">
+                              {phone.sourceCount} {phone.sourceCount === 1 ? "source" : "sources"}
+                              {phone.validationStatus === "VERIFIED" || phone.validationStatus === "CONFIRMED" ? " · Verified" : ""}
+                            </span>
+                            <div className="flex gap-0.5">
+                              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => confirmGoodMutation.mutate(phone.evidenceId)} disabled={confirmGoodMutation.isPending} data-testid={`button-confirm-phone-${i}`}>
+                                <ThumbsUp className="w-3 h-3" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => markWrongMutation.mutate(phone.evidenceId)} disabled={markWrongMutation.isPending} data-testid={`button-wrong-phone-${i}`}>
+                                <ThumbsDown className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          {phone.warnings.length > 0 && (
+                            <div className="text-[10px] text-muted-foreground mt-0.5">{phone.warnings.join(" · ")}</div>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  )}
+                  {contactPath.emails.length > 0 && (
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Emails</div>
+                      {contactPath.emails.map((email, i) => (
+                        <div key={email.evidenceId} className="py-2 border-b last:border-0" data-testid={`call-sheet-email-${i}`}>
+                          <div className="flex items-center justify-between">
+                            <a href={`mailto:${email.value}`} className="text-sm font-mono font-medium truncate" data-testid={`link-email-${i}`}>
+                              {email.displayValue}
+                            </a>
+                            <div className="flex items-center gap-2">
+                              {email.isRecommended && <span className="text-[10px] font-medium text-primary">Best</span>}
+                              <span className="text-[10px] text-muted-foreground">{Math.round(email.effectiveScore)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-[10px] text-muted-foreground">
+                              {email.sourceCount} {email.sourceCount === 1 ? "source" : "sources"}
+                              {email.validationStatus === "VERIFIED" ? " · Verified" : ""}
+                            </span>
+                            <div className="flex gap-0.5">
+                              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => confirmGoodMutation.mutate(email.evidenceId)} disabled={confirmGoodMutation.isPending} data-testid={`button-confirm-email-${i}`}>
+                                <ThumbsUp className="w-3 h-3" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => markWrongMutation.mutate(email.evidenceId)} disabled={markWrongMutation.isPending} data-testid={`button-wrong-email-${i}`}>
+                                <ThumbsDown className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {contactPath.warnings.length > 0 && (
+                    <div className="text-[10px] text-muted-foreground pt-1">
+                      {contactPath.warnings.join(" · ")}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">Owner / Contact</CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Primary Owner</p>
+                  <p className="text-sm font-medium">{lead.ownerName}</p>
+                  {lead.ownerPhone && (
+                    <a href={`tel:${lead.ownerPhone}`} className="text-xs font-mono block text-primary hover:underline" data-testid="link-owner-phone-raw">{lead.ownerPhone}</a>
+                  )}
+                  {lead.ownerEmail && (
+                    <a href={`mailto:${lead.ownerEmail}`} className="text-xs font-mono block text-primary hover:underline" data-testid="link-owner-email-raw">{lead.ownerEmail}</a>
+                  )}
+                </div>
+                
+                <Separator />
+
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Contact Person</p>
+                  <p className="text-sm font-medium">{lead.contactName || "Not identified"}</p>
+                  {lead.contactTitle && <p className="text-xs text-muted-foreground">{lead.contactTitle}</p>}
+                  {lead.contactPhone && (
+                    <a href={`tel:${lead.contactPhone}`} className="text-xs font-mono block text-primary hover:underline" data-testid="link-contact-phone-raw">{lead.contactPhone}</a>
+                  )}
+                  {lead.contactEmail && (
+                    <a href={`mailto:${lead.contactEmail}`} className="text-xs font-mono block text-primary hover:underline" data-testid="link-contact-email-raw">{lead.contactEmail}</a>
+                  )}
+                </div>
               </CardContent>
             </Card>
-          )}
 
-          {enrichmentJobHistory && enrichmentJobHistory.length > 0 && (
-            <Card className="shadow-sm">
+            <Card className="shadow-sm" data-testid="card-distress-signals">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Enrichment Timeline</CardTitle>
+                <CardTitle className="text-base font-semibold">Distress Signals</CardTitle>
               </CardHeader>
               <CardContent className="p-6 pt-0">
                 <div className="space-y-3">
-                  {enrichmentJobHistory.slice(0, 5).map((job, ji) => {
-                    const stages = (job.stages as Array<{ name: string; status: string; startedAt?: string; finishedAt?: string; error?: string }>) || [];
-                    const duration = job.startedAt && job.finishedAt
-                      ? Math.round((new Date(job.finishedAt).getTime() - new Date(job.startedAt).getTime()) / 1000)
-                      : null;
-                    return (
-                      <div key={job.id} className="border rounded-lg p-3 space-y-2" data-testid={`enrichment-job-${ji}`}>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {job.status === "complete" && <CheckCircle className="w-3.5 h-3.5 text-green-500" />}
-                            {job.status === "running" && <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
-                            {job.status === "error" && <XCircle className="w-3.5 h-3.5 text-red-500" />}
-                            {job.status === "queued" && <Clock className="w-3.5 h-3.5 text-muted-foreground" />}
-                            <span className="text-xs font-medium capitalize">{job.status}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                            {duration !== null && <span>{duration}s</span>}
-                            {job.createdAt && <span>{new Date(job.createdAt).toLocaleString()}</span>}
-                          </div>
-                        </div>
-                        {stages.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {stages.map((stage, si) => (
-                              <Badge
-                                key={si}
-                                variant={stage.status === "complete" ? "default" : stage.status === "error" ? "destructive" : "secondary"}
-                                className="text-[9px]"
-                              >
-                                {stage.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                        {job.lastError && (
-                          <div className="text-[10px] text-red-500 bg-red-50 dark:bg-red-900/20 rounded p-1.5 font-mono">
-                            {job.lastError}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Roof Age ({lead.roofLastReplaced ? 2026 - lead.roofLastReplaced : "Unknown"} years)</span>
+                    <Badge variant={lead.roofLastReplaced && (2026 - lead.roofLastReplaced) > 15 ? "destructive" : "secondary"}>
+                      {lead.roofLastReplaced && (2026 - lead.roofLastReplaced) > 15 ? "High Risk" : "Moderate"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Storm Recency</span>
+                    <Badge variant={lead.lastHailDate && (new Date().getTime() - new Date(lead.lastHailDate).getTime()) < 180 * 24 * 60 * 60 * 1000 ? "destructive" : "secondary"}>
+                      {lead.lastHailDate ? new Date(lead.lastHailDate).toLocaleDateString() : "No recent"}
+                    </Badge>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          {(lead.foreclosureFlag || lead.taxDelinquent || (lead.lienCount && lead.lienCount > 0) || (lead.violationCount && lead.violationCount > 0) || lead.floodZone) && (
             <Card className="shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base font-semibold">Distress & Risk Signals</CardTitle>
-                {lead.distressScore !== undefined && lead.distressScore !== null && lead.distressScore > 0 && (
-                  <Badge variant="destructive" className="text-[10px]" data-testid="badge-distress-score">
-                    Distress: {lead.distressScore}
-                  </Badge>
-                )}
+                <CardTitle className="text-base font-semibold">CRM Status</CardTitle>
               </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-2">
-                {lead.foreclosureFlag && (
-                  <DetailRow icon={Ban} label="Foreclosure" value={
-                    <Badge variant="destructive" className="text-[10px]" data-testid="badge-foreclosure">Active Foreclosure</Badge>
-                  } />
-                )}
-                {lead.taxDelinquent && (
-                  <DetailRow icon={DollarSign} label="Tax Status" value={
-                    <Badge variant="destructive" className="text-[10px]" data-testid="badge-tax-delinquent">Tax Delinquent</Badge>
-                  } />
-                )}
-                {lead.lienCount !== undefined && lead.lienCount !== null && lead.lienCount > 0 && (
-                  <DetailRow icon={Scale} label="Liens" value={
-                    <span data-testid="text-lien-count">{lead.lienCount} lien{lead.lienCount > 1 ? 's' : ''} on record</span>
-                  } />
-                )}
-                {lead.violationCount !== undefined && lead.violationCount !== null && lead.violationCount > 0 && (
-                  <DetailRow icon={ShieldAlert} label="Code Violations" value={
-                    <span data-testid="text-violation-count">{lead.violationCount} violation{lead.violationCount > 1 ? 's' : ''}</span>
-                  } />
-                )}
-                {lead.floodZone && (
-                  <DetailRow icon={Droplets} label="Flood Zone" value={
-                    <Badge variant={
-                      ['A', 'AE', 'AH', 'AO', 'AR', 'V', 'VE'].includes(lead.floodZone) ? "destructive" : "outline"
-                    } className="text-[10px]" data-testid="badge-flood-zone">
-                      Zone {lead.floodZone}{lead.floodZoneSubtype ? ` (${lead.floodZoneSubtype})` : ''}
-                    </Badge>
-                  } />
-                )}
+              <CardContent className="p-6 pt-0 space-y-4">
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Current Status</p>
+                  <Select
+                    value={lead.status}
+                    onValueChange={(val) => updateMutation.mutate({ status: val })}
+                    disabled={updateMutation.isPending}
+                  >
+                    <SelectTrigger className="w-full h-9" data-testid="select-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">New</SelectItem>
+                      <SelectItem value="contacted">Contacted</SelectItem>
+                      <SelectItem value="qualified">Qualified</SelectItem>
+                      <SelectItem value="proposal">Proposal</SelectItem>
+                      <SelectItem value="closed">Closed</SelectItem>
+                      <SelectItem value="lost">Lost</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Internal Notes</p>
+                  <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    onBlur={() => updateMutation.mutate({ notes })}
+                    placeholder="Add notes about this lead..."
+                    className="min-h-[100px] text-sm resize-none"
+                    data-testid="textarea-notes"
+                  />
+                </div>
               </CardContent>
             </Card>
-          )}
-
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Compliance</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 pt-0">
-              <DetailRow icon={Shield} label="Consent Status" value={
-                <Badge variant={lead.consentStatus === "granted" ? "default" : lead.consentStatus === "denied" || lead.consentStatus === "revoked" ? "destructive" : "secondary"} className="text-[10px]" data-testid="badge-consent-status">
-                  {lead.consentStatus || "unknown"}
-                </Badge>
-              } />
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-semibold">Lead Status</CardTitle>
-            </CardHeader>
-            <CardContent className="p-6 pt-0 space-y-4">
-              <Select
-                value={lead.status}
-                onValueChange={(val) => updateMutation.mutate({ status: val })}
-              >
-                <SelectTrigger data-testid="select-lead-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="contacted">Contacted</SelectItem>
-                  <SelectItem value="qualified">Qualified</SelectItem>
-                  <SelectItem value="proposal">Proposal</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                </SelectContent>
-              </Select>
-              <Separator />
-              <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">Notes</label>
-                <Textarea
-                  value={notes || lead.notes || ""}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add notes about this lead..."
-                  className="resize-none text-sm"
-                  rows={4}
-                  data-testid="textarea-lead-notes"
-                />
-                <Button
-                  size="sm"
-                  className="mt-3 w-full"
-                  onClick={() => updateMutation.mutate({ notes })}
-                  disabled={updateMutation.isPending}
-                  data-testid="button-save-notes"
-                >
-                  {updateMutation.isPending ? "Saving..." : "Save Notes"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <ScoreBreakdownCard leadId={id!} leadScore={lead.leadScore} />
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function ScoreBreakdownCard({ leadId, leadScore }: { leadId: string; leadScore: number }) {
-  const { data } = useQuery<{ score: number; distressScore: number; breakdown: Record<string, { points: number; max: number; detail: string }> }>({
-    queryKey: ["/api/leads", leadId, "score-breakdown"],
-    queryFn: async () => {
-      const res = await fetch(`/api/leads/${leadId}/score-breakdown`);
-      if (!res.ok) throw new Error("Failed to fetch score breakdown");
-      return res.json();
-    },
-  });
-
-  const breakdown = data?.breakdown;
-  const categories = [
-    "Roof Age", "Hail Exposure", "Storm Recency", "Roof Area", "Contactability",
-    "Owner Type", "Property Value", "Distress Signals", "Flood Risk", "Property Condition"
-  ];
+function LeadStormHistory({ lead }: { lead: Lead }) {
+  const claimWindow = lead.claimWindowOpen;
+  const daysSinceHail = lead.lastHailDate ? Math.floor((new Date().getTime() - new Date(lead.lastHailDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
     <Card className="shadow-sm">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold">Lead Score v3 Breakdown</CardTitle>
+        <CardTitle className="text-base font-semibold">Storm Exposure</CardTitle>
       </CardHeader>
-      <CardContent className="p-6 pt-0">
-        <div className="space-y-3">
-          {breakdown ? categories.map(cat => {
-            const item = breakdown[cat];
-            if (!item) return null;
-            return <ScoreBar key={cat} label={cat} value={item.points} max={item.max} />;
-          }) : (
-            <div className="space-y-3">
-              {categories.map(cat => (
-                <div key={cat} className="space-y-1">
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-2 w-full" />
-                </div>
-              ))}
-            </div>
-          )}
-          <Separator />
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-medium">Total Score</span>
-            <ScoreBadge score={leadScore} />
+      <CardContent className="p-6 pt-0 space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Hits</p>
+            <p className="text-xl font-bold">{lead.hailEvents}</p>
           </div>
+          <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Max Size</p>
+            <p className="text-xl font-bold">{lead.lastHailSize ? `${lead.lastHailSize}"` : "N/A"}</p>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">Last Storm Date</p>
+          <p className="text-sm font-medium">{lead.lastHailDate ? new Date(lead.lastHailDate).toLocaleDateString() : "None recorded"}</p>
+          {daysSinceHail !== null && (
+            <p className="text-[10px] text-muted-foreground italic">Approx. ${daysSinceHail} days ago</p>
+          )}
+        </div>
+        <div className="pt-2">
+          <Badge variant={claimWindow ? "default" : "secondary"} className="w-full justify-center py-1">
+            {claimWindow ? "Insurance Claim Window Active" : "No Active Claim Window"}
+          </Badge>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function ScoreBar({ label, value, max }: { label: string; value: number; max: number }) {
-  const pct = Math.min((value / max) * 100, 100);
+function BuildingContacts({ intelligence }: { intelligence: any }) {
+  if (!intelligence || !intelligence.buildingContacts) return null;
   return (
-    <div>
-      <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-xs font-mono font-medium">{value}/{max}</span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className="h-full bg-primary rounded-full transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
+    <Card className="shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold">Building Contacts</CardTitle>
+      </CardHeader>
+      <CardContent className="p-6 pt-0 space-y-3">
+        {intelligence.buildingContacts.map((c: any, i: number) => (
+          <div key={i} className={`space-y-1 ${i > 0 ? "pt-2 border-t" : ""}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">{c.name}</span>
+              <Badge variant="outline" className="text-[9px]">{c.confidence}%</Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {c.role} {c.company ? `at ${c.company}` : ""} · via {c.source}
+            </p>
+            {c.phone && <p className="text-[11px] font-mono">{c.phone}</p>}
+            {c.email && <p className="text-[11px] font-mono">{c.email}</p>}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
