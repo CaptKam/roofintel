@@ -98,8 +98,19 @@ function HunterPDLButtons({ leadId }: { leadId: string }) {
         toast({ title: "Hunter.io", description: "No emails found for this domain" });
       }
     },
-    onError: (err: any) => {
-      toast({ title: "Hunter.io failed", description: err.message, variant: "destructive" });
+    onError: async (err: any) => {
+      let description = err.message || "Unknown error";
+      try {
+        const raw = description.replace(/^\d+:\s*/, "");
+        const body = JSON.parse(raw);
+        if (body.detail) {
+          description = body.detail;
+          if (body.suggestions?.length) description += " Try: " + body.suggestions[0];
+        } else if (body.message) {
+          description = body.message;
+        }
+      } catch {}
+      toast({ title: "Hunter.io", description, variant: "destructive" });
     },
   });
 

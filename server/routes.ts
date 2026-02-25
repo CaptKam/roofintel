@@ -2728,28 +2728,85 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       const lead = await storage.getLeadById(req.params.leadId);
       if (!lead) return res.status(404).json({ message: "Lead not found" });
 
+      const genericDomains = new Set(["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com", "me.com", "live.com", "msn.com", "protonmail.com", "mail.com"]);
+
       let domain: string | null = null;
+      let domainSource = "";
+
       if (lead.businessWebsite) {
         try {
           const url = lead.businessWebsite.startsWith("http") ? lead.businessWebsite : `https://${lead.businessWebsite}`;
-          domain = new URL(url).hostname.replace(/^www\./, "");
+          const d = new URL(url).hostname.replace(/^www\./, "");
+          if (!genericDomains.has(d)) { domain = d; domainSource = "business website"; }
         } catch {}
       }
+
       if (!domain && lead.ownerEmail) {
         const parts = lead.ownerEmail.split("@");
-        if (parts.length === 2) domain = parts[1];
+        if (parts.length === 2 && !genericDomains.has(parts[1])) {
+          domain = parts[1]; domainSource = "owner email";
+        }
       }
       if (!domain && lead.contactEmail) {
         const parts = lead.contactEmail.split("@");
-        if (parts.length === 2) domain = parts[1];
+        if (parts.length === 2 && !genericDomains.has(parts[1])) {
+          domain = parts[1]; domainSource = "contact email";
+        }
+      }
+      if (!domain && lead.managingMemberEmail) {
+        const parts = lead.managingMemberEmail.split("@");
+        if (parts.length === 2 && !genericDomains.has(parts[1])) {
+          domain = parts[1]; domainSource = "managing member email";
+        }
+      }
+
+      if (!domain && lead.ownerIntelligence) {
+        const intel = lead.ownerIntelligence as any;
+        if (intel.businessProfiles) {
+          for (const profile of intel.businessProfiles) {
+            if (profile.website) {
+              try {
+                const url = profile.website.startsWith("http") ? profile.website : `https://${profile.website}`;
+                const d = new URL(url).hostname.replace(/^www\./, "");
+                if (!genericDomains.has(d)) { domain = d; domainSource = `${profile.source || "business"} profile`; break; }
+              } catch {}
+            }
+          }
+        }
+        if (!domain && intel.emails) {
+          for (const em of intel.emails) {
+            const addr = typeof em === "string" ? em : em.email;
+            if (addr) {
+              const parts = addr.split("@");
+              if (parts.length === 2 && !genericDomains.has(parts[1])) {
+                domain = parts[1]; domainSource = "intelligence email"; break;
+              }
+            }
+          }
+        }
+      }
+
+      if (!domain && lead.managementEmail) {
+        const parts = lead.managementEmail.split("@");
+        if (parts.length === 2 && !genericDomains.has(parts[1])) {
+          domain = parts[1]; domainSource = "management company email";
+        }
       }
 
       if (!domain) {
-        return res.status(400).json({ message: "No domain found. Lead needs a business website or email address for Hunter.io lookup." });
+        const suggestions: string[] = [];
+        if (!lead.businessWebsite) suggestions.push("add a business website to the lead");
+        if (!lead.lastEnrichedAt) suggestions.push("run free enrichment first to discover websites");
+        suggestions.push("try PDL enrichment instead (works with person name)");
+        return res.status(400).json({
+          message: "No domain found for Hunter.io lookup.",
+          detail: "Hunter.io searches for email addresses at a company domain (e.g. @company.com). This lead has no website or business email on file.",
+          suggestions,
+        });
       }
 
       const result = await searchHunterDomain(domain, lead.id);
-      res.json(result);
+      res.json({ ...result, domainSource, domainUsed: domain });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
