@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { SavedFilterBar } from "@/components/saved-filter-bar";
 import type { Lead, StormRun, ResponseQueueItem, StormAlertConfig, AlertHistoryRecord } from "@shared/schema";
 
 interface LeadsResponse {
@@ -162,6 +163,8 @@ export default function MapStorms() {
   const [footprintLoading, setFootprintLoading] = useState(false);
   const [daysBack, setDaysBack] = useState("7");
 
+  const [mapFilters, setMapFilters] = useState<Record<string, any>>({});
+
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("Default Alert");
   const [newMinHailSize, setNewMinHailSize] = useState("1.0");
@@ -188,10 +191,26 @@ export default function MapStorms() {
     refetchInterval: 30000,
   });
 
+  const mapLeadParams = new URLSearchParams();
+  mapLeadParams.set("limit", "500");
+  Object.entries(mapFilters).forEach(([key, val]) => {
+    if (val !== undefined && val !== "" && val !== false && val !== "all" && val !== "any") {
+      mapLeadParams.set(key, String(val));
+    }
+  });
+  const mapLeadQuery = mapLeadParams.toString();
+
   const { data: leadsData, isLoading: leadsLoading } = useQuery<LeadsResponse>({
-    queryKey: ["/api/leads?limit=500"],
+    queryKey: [`/api/leads?${mapLeadQuery}`],
   });
   const leads = leadsData?.leads;
+
+  const applyMapFilter = (filters: Record<string, any>) => {
+    setMapFilters(filters);
+  };
+  const clearMapFilters = () => {
+    setMapFilters({});
+  };
 
   const { data: hailData, isLoading: hailLoading } = useQuery<HailTrackerData>({
     queryKey: [`/api/hail-tracker?daysBack=${daysBack}`],
@@ -808,6 +827,13 @@ export default function MapStorms() {
         </div>
 
         <TabsContent value="map" className="flex-1 mt-0 flex flex-col">
+          <div className="px-4 pt-3">
+            <SavedFilterBar
+              currentFilters={mapFilters}
+              onApplyFilter={applyMapFilter}
+              onClearFilters={clearMapFilters}
+            />
+          </div>
           <div className="p-4 border-b flex items-center justify-between gap-2 flex-wrap">
             <p className="text-xs text-muted-foreground">
               {leadsData ? `${leads?.length} of ${leadsData.total.toLocaleString()} properties` : "Loading..."} plotted by score

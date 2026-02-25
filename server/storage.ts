@@ -140,6 +140,71 @@ export class DatabaseStorage implements IStorage {
         )!
       );
     }
+    if (filter?.hasEmail) {
+      conditions.push(
+        or(
+          isNotNull(leads.ownerEmail),
+          isNotNull(leads.contactEmail),
+        )!
+      );
+    }
+    if (filter?.hasDecisionMaker) {
+      conditions.push(isNotNull(leads.contactName));
+    }
+    if (filter?.minRoofAge) {
+      const cutoffYear = new Date().getFullYear() - filter.minRoofAge;
+      conditions.push(
+        or(
+          lte(leads.roofLastReplaced, cutoffYear),
+          and(sql`${leads.roofLastReplaced} IS NULL`, lte(leads.yearBuilt, cutoffYear))
+        )!
+      );
+    }
+    if (filter?.maxRoofAge) {
+      const cutoffYear = new Date().getFullYear() - filter.maxRoofAge;
+      conditions.push(
+        or(
+          gte(leads.roofLastReplaced, cutoffYear),
+          and(sql`${leads.roofLastReplaced} IS NULL`, gte(leads.yearBuilt, cutoffYear))
+        )!
+      );
+    }
+    if (filter?.minRoofArea) {
+      conditions.push(gte(leads.estimatedRoofArea, filter.minRoofArea));
+    }
+    if (filter?.maxRoofArea) {
+      conditions.push(lte(leads.estimatedRoofArea, filter.maxRoofArea));
+    }
+    if (filter?.minHailEvents) {
+      conditions.push(gte(leads.hailEvents, filter.minHailEvents));
+    }
+    if (filter?.lastHailWithin) {
+      const cutoffDate = new Date();
+      cutoffDate.setMonth(cutoffDate.getMonth() - filter.lastHailWithin);
+      conditions.push(gte(leads.lastHailDate, cutoffDate.toISOString().split("T")[0]));
+    }
+    if (filter?.minHailSize) {
+      conditions.push(gte(leads.lastHailSize, filter.minHailSize));
+    }
+    if (filter?.claimWindowOpen) {
+      conditions.push(eq(leads.claimWindowOpen, true));
+    }
+    if (filter?.minPropertyValue) {
+      conditions.push(gte(leads.totalValue, filter.minPropertyValue));
+    }
+    if (filter?.maxPropertyValue) {
+      conditions.push(lte(leads.totalValue, filter.maxPropertyValue));
+    }
+    if (filter?.ownershipStructure && filter.ownershipStructure !== "all") {
+      conditions.push(eq(leads.ownershipStructure, filter.ownershipStructure));
+    }
+    if (filter?.enrichmentStatus && filter.enrichmentStatus !== "all") {
+      if (filter.enrichmentStatus === "complete") {
+        conditions.push(isNotNull(leads.lastEnrichedAt));
+      } else if (filter.enrichmentStatus === "none") {
+        conditions.push(sql`${leads.lastEnrichedAt} IS NULL`);
+      }
+    }
     if (filter?.search) {
       const term = `%${filter.search}%`;
       conditions.push(

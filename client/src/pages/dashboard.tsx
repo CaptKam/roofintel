@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { PageMeta } from "@/components/page-meta";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { SavedFilterBar } from "@/components/saved-filter-bar";
 
 interface CommandCenter {
   totalLeads: number;
@@ -136,9 +138,20 @@ function SkeletonDashboard() {
 }
 
 export default function Dashboard() {
+  const [, navigate] = useLocation();
   const { data, isLoading } = useQuery<CommandCenter>({
     queryKey: ["/api/dashboard/command-center"],
   });
+
+  const applyDashboardFilter = (filters: Record<string, any>) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, val]) => {
+      if (val !== undefined && val !== "" && val !== false && val !== "all" && val !== "any") {
+        params.set(key, String(val));
+      }
+    });
+    navigate(`/leads?${params.toString()}`);
+  };
 
   if (isLoading || !data) return <SkeletonDashboard />;
 
@@ -163,6 +176,12 @@ export default function Dashboard() {
           </Button>
         </Link>
       </div>
+
+      <SavedFilterBar
+        currentFilters={{}}
+        onApplyFilter={applyDashboardFilter}
+        onClearFilters={() => {}}
+      />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>

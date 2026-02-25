@@ -33,7 +33,7 @@ import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, ge
 import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
-import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker } from "@shared/schema";
+import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker, savedFilters, insertSavedFilterSchema } from "@shared/schema";
 import { getHunterUsage, searchHunterDomain, findHunterEmail } from "./hunter-io";
 import { getPDLUsage, enrichPersonPDL, enrichCompanyPDL } from "./pdl-enrichment";
 import { enrichLeadFromEdgar, searchEdgarCompany } from "./sec-edgar";
@@ -328,6 +328,20 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
         ownerType: req.query.ownerType as string | undefined,
         minSqft: req.query.minSqft ? Number(req.query.minSqft) : undefined,
         hasPhone: req.query.hasPhone === "true" ? true : undefined,
+        hasEmail: req.query.hasEmail === "true" ? true : undefined,
+        hasDecisionMaker: req.query.hasDecisionMaker === "true" ? true : undefined,
+        minRoofAge: req.query.minRoofAge ? Number(req.query.minRoofAge) : undefined,
+        maxRoofAge: req.query.maxRoofAge ? Number(req.query.maxRoofAge) : undefined,
+        minRoofArea: req.query.minRoofArea ? Number(req.query.minRoofArea) : undefined,
+        maxRoofArea: req.query.maxRoofArea ? Number(req.query.maxRoofArea) : undefined,
+        minHailEvents: req.query.minHailEvents ? Number(req.query.minHailEvents) : undefined,
+        lastHailWithin: req.query.lastHailWithin ? Number(req.query.lastHailWithin) : undefined,
+        minHailSize: req.query.minHailSize ? Number(req.query.minHailSize) : undefined,
+        claimWindowOpen: req.query.claimWindowOpen === "true" ? true : undefined,
+        minPropertyValue: req.query.minPropertyValue ? Number(req.query.minPropertyValue) : undefined,
+        maxPropertyValue: req.query.maxPropertyValue ? Number(req.query.maxPropertyValue) : undefined,
+        ownershipStructure: req.query.ownershipStructure as string | undefined,
+        enrichmentStatus: req.query.enrichmentStatus as string | undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
         offset: req.query.offset ? Number(req.query.offset) : undefined,
       };
@@ -2879,6 +2893,54 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       res.json(output);
     } catch (error: any) {
       console.error("Batch footprint error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/saved-filters", async (_req, res) => {
+    try {
+      const filters = await db.select().from(savedFilters).orderBy(savedFilters.createdAt);
+      res.json(filters);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/saved-filters", async (req, res) => {
+    try {
+      const parsed = insertSavedFilterSchema.parse(req.body);
+      if (parsed.isDefault) {
+        await db.update(savedFilters).set({ isDefault: false });
+      }
+      const [created] = await db.insert(savedFilters).values(parsed).returning();
+      res.json(created);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/saved-filters/:id", async (req, res) => {
+    try {
+      const { name, filters: filterData, color, isDefault } = req.body;
+      if (isDefault) {
+        await db.update(savedFilters).set({ isDefault: false });
+      }
+      const [updated] = await db.update(savedFilters)
+        .set({ ...(name !== undefined && { name }), ...(filterData !== undefined && { filters: filterData }), ...(color !== undefined && { color }), ...(isDefault !== undefined && { isDefault }) })
+        .where(eq(savedFilters.id, req.params.id))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Filter not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/saved-filters/:id", async (req, res) => {
+    try {
+      await db.delete(savedFilters).where(eq(savedFilters.id, req.params.id));
+      res.json({ success: true });
+    } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });

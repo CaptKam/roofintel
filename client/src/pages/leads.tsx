@@ -34,7 +34,11 @@ import {
   Fingerprint,
   HardHat,
   Download,
+  DollarSign,
+  Shield,
+  Layers,
 } from "lucide-react";
+import { SavedFilterBar } from "@/components/saved-filter-bar";
 import type { Lead } from "@shared/schema";
 
 const PAGE_SIZE = 50;
@@ -57,8 +61,14 @@ export default function Leads() {
   const [zoning, setZoning] = useState<string>(urlParams.get("zoning") || "");
   const [status, setStatus] = useState<string>(urlParams.get("status") || "");
   const [hasPhone, setHasPhone] = useState(urlParams.get("hasPhone") === "true");
+  const [minRoofAge, setMinRoofAge] = useState<string>(urlParams.get("minRoofAge") || "");
+  const [minRoofArea, setMinRoofArea] = useState<string>(urlParams.get("minRoofArea") || "");
+  const [lastHailWithin, setLastHailWithin] = useState<string>(urlParams.get("lastHailWithin") || "");
+  const [claimWindowOpen, setClaimWindowOpen] = useState(urlParams.get("claimWindowOpen") === "true");
+  const [minPropertyValue, setMinPropertyValue] = useState<string>(urlParams.get("minPropertyValue") || "");
+  const [ownershipStructure, setOwnershipStructure] = useState<string>(urlParams.get("ownershipStructure") || "");
   const [page, setPage] = useState(1);
-  const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true");
+  const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true" || !!urlParams.get("minRoofAge") || !!urlParams.get("minRoofArea") || !!urlParams.get("lastHailWithin") || urlParams.get("claimWindowOpen") === "true" || !!urlParams.get("minPropertyValue") || !!urlParams.get("ownershipStructure"));
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -72,12 +82,24 @@ export default function Leads() {
     const newZoning = fresh.get("zoning") || "";
     const newStatus = fresh.get("status") || "";
     const newHasPhone = fresh.get("hasPhone") === "true";
+    const newMinRoofAge = fresh.get("minRoofAge") || "";
+    const newMinRoofArea = fresh.get("minRoofArea") || "";
+    const newLastHailWithin = fresh.get("lastHailWithin") || "";
+    const newClaimWindowOpen = fresh.get("claimWindowOpen") === "true";
+    const newMinPropertyValue = fresh.get("minPropertyValue") || "";
+    const newOwnershipStructure = fresh.get("ownershipStructure") || "";
     setMinScore(newMinScore);
     setCounty(newCounty);
     setZoning(newZoning);
     setStatus(newStatus);
     setHasPhone(newHasPhone);
-    if (newMinScore || newCounty || newZoning || newStatus || newHasPhone) {
+    setMinRoofAge(newMinRoofAge);
+    setMinRoofArea(newMinRoofArea);
+    setLastHailWithin(newLastHailWithin);
+    setClaimWindowOpen(newClaimWindowOpen);
+    setMinPropertyValue(newMinPropertyValue);
+    setOwnershipStructure(newOwnershipStructure);
+    if (newMinScore || newCounty || newZoning || newStatus || newHasPhone || newMinRoofAge || newMinRoofArea || newLastHailWithin || newClaimWindowOpen || newMinPropertyValue || newOwnershipStructure) {
       setShowFilters(true);
     }
     setPage(1);
@@ -85,7 +107,7 @@ export default function Leads() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, county, minScore, zoning, status, hasPhone]);
+  }, [debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure]);
 
   const params = new URLSearchParams();
   if (debouncedSearch) params.set("search", debouncedSearch);
@@ -94,6 +116,12 @@ export default function Leads() {
   if (zoning) params.set("zoning", zoning);
   if (status) params.set("status", status);
   if (hasPhone) params.set("hasPhone", "true");
+  if (minRoofAge) params.set("minRoofAge", minRoofAge);
+  if (minRoofArea) params.set("minRoofArea", minRoofArea);
+  if (lastHailWithin) params.set("lastHailWithin", lastHailWithin);
+  if (claimWindowOpen) params.set("claimWindowOpen", "true");
+  if (minPropertyValue) params.set("minPropertyValue", minPropertyValue);
+  if (ownershipStructure) params.set("ownershipStructure", ownershipStructure);
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String((page - 1) * PAGE_SIZE));
 
@@ -106,7 +134,30 @@ export default function Leads() {
   const leads = data?.leads;
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const hasFilters = county || minScore || zoning || status || hasPhone;
+  const hasFilters = county || minScore || zoning || status || hasPhone || minRoofAge || minRoofArea || lastHailWithin || claimWindowOpen || minPropertyValue || ownershipStructure;
+
+  const currentFilterState = {
+    county, minScore, zoning, status,
+    hasPhone: hasPhone || undefined,
+    minRoofAge, minRoofArea, lastHailWithin,
+    claimWindowOpen: claimWindowOpen || undefined,
+    minPropertyValue, ownershipStructure,
+  };
+
+  const applyFilterPreset = (filters: Record<string, any>) => {
+    setCounty(filters.county || "");
+    setMinScore(filters.minScore ? String(filters.minScore) : "");
+    setZoning(filters.zoning || "");
+    setStatus(filters.status || "");
+    setHasPhone(!!filters.hasPhone);
+    setMinRoofAge(filters.minRoofAge ? String(filters.minRoofAge) : "");
+    setMinRoofArea(filters.minRoofArea ? String(filters.minRoofArea) : "");
+    setLastHailWithin(filters.lastHailWithin ? String(filters.lastHailWithin) : "");
+    setClaimWindowOpen(!!filters.claimWindowOpen);
+    setMinPropertyValue(filters.minPropertyValue ? String(filters.minPropertyValue) : "");
+    setOwnershipStructure(filters.ownershipStructure || "");
+    setShowFilters(true);
+  };
 
   const clearFilters = () => {
     setCounty("");
@@ -114,6 +165,12 @@ export default function Leads() {
     setZoning("");
     setStatus("");
     setHasPhone(false);
+    setMinRoofAge("");
+    setMinRoofArea("");
+    setLastHailWithin("");
+    setClaimWindowOpen(false);
+    setMinPropertyValue("");
+    setOwnershipStructure("");
   };
 
   const handleExport = async () => {
@@ -205,9 +262,15 @@ export default function Leads() {
         )}
       </div>
 
+      <SavedFilterBar
+        currentFilters={currentFilterState}
+        onApplyFilter={applyFilterPreset}
+        onClearFilters={clearFilters}
+      />
+
       {showFilters && (
         <Card>
-          <CardContent className="p-5">
+          <CardContent className="p-5 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1.5 block">County</label>
@@ -279,6 +342,102 @@ export default function Leads() {
                   <Phone className="w-4 h-4 mr-1.5" />
                   Has Phone
                 </Button>
+              </div>
+            </div>
+
+            <div className="border-t pt-4">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3">Roof & Property Filters</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Roof Age</label>
+                  <Select value={minRoofAge} onValueChange={setMinRoofAge}>
+                    <SelectTrigger data-testid="select-roof-age">
+                      <SelectValue placeholder="Any age" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any age</SelectItem>
+                      <SelectItem value="5">5+ years</SelectItem>
+                      <SelectItem value="10">10+ years</SelectItem>
+                      <SelectItem value="15">15+ years</SelectItem>
+                      <SelectItem value="20">20+ years</SelectItem>
+                      <SelectItem value="25">25+ years</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Roof Area</label>
+                  <Select value={minRoofArea} onValueChange={setMinRoofArea}>
+                    <SelectTrigger data-testid="select-roof-area">
+                      <SelectValue placeholder="Any size" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any size</SelectItem>
+                      <SelectItem value="5000">5,000+ sqft</SelectItem>
+                      <SelectItem value="10000">10,000+ sqft</SelectItem>
+                      <SelectItem value="20000">20,000+ sqft</SelectItem>
+                      <SelectItem value="50000">50,000+ sqft</SelectItem>
+                      <SelectItem value="100000">100,000+ sqft</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Hail Exposure</label>
+                  <Select value={lastHailWithin} onValueChange={setLastHailWithin}>
+                    <SelectTrigger data-testid="select-hail-exposure">
+                      <SelectValue placeholder="Any time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any time</SelectItem>
+                      <SelectItem value="6">Last 6 months</SelectItem>
+                      <SelectItem value="12">Last year</SelectItem>
+                      <SelectItem value="24">Last 2 years</SelectItem>
+                      <SelectItem value="36">Last 3 years</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Property Value</label>
+                  <Select value={minPropertyValue} onValueChange={setMinPropertyValue}>
+                    <SelectTrigger data-testid="select-property-value">
+                      <SelectValue placeholder="Any value" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any value</SelectItem>
+                      <SelectItem value="1000000">$1M+</SelectItem>
+                      <SelectItem value="2000000">$2M+</SelectItem>
+                      <SelectItem value="5000000">$5M+</SelectItem>
+                      <SelectItem value="10000000">$10M+</SelectItem>
+                      <SelectItem value="25000000">$25M+</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Owner Type</label>
+                  <Select value={ownershipStructure} onValueChange={setOwnershipStructure}>
+                    <SelectTrigger data-testid="select-ownership-structure">
+                      <SelectValue placeholder="All types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All types</SelectItem>
+                      <SelectItem value="small_private">Small Private</SelectItem>
+                      <SelectItem value="investment_firm">Investment Firm</SelectItem>
+                      <SelectItem value="institutional_reit">Institutional/REIT</SelectItem>
+                      <SelectItem value="third_party_managed">Third-Party Managed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Claim Window</label>
+                  <Button
+                    variant={claimWindowOpen ? "default" : "outline"}
+                    className="w-full toggle-elevate"
+                    onClick={() => setClaimWindowOpen(!claimWindowOpen)}
+                    data-testid="button-filter-claim-window"
+                  >
+                    <Shield className="w-4 h-4 mr-1.5" />
+                    Open
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>

@@ -697,6 +697,20 @@ export const leadFilterSchema = z.object({
   hasDistress: z.boolean().optional(),
   floodRisk: z.boolean().optional(),
   hasViolations: z.boolean().optional(),
+  minRoofAge: z.number().optional(),
+  maxRoofAge: z.number().optional(),
+  minRoofArea: z.number().optional(),
+  maxRoofArea: z.number().optional(),
+  minHailEvents: z.number().optional(),
+  lastHailWithin: z.number().optional(),
+  minHailSize: z.number().optional(),
+  claimWindowOpen: z.boolean().optional(),
+  minPropertyValue: z.number().optional(),
+  maxPropertyValue: z.number().optional(),
+  ownershipStructure: z.string().optional(),
+  hasEmail: z.boolean().optional(),
+  hasDecisionMaker: z.boolean().optional(),
+  enrichmentStatus: z.string().optional(),
   limit: z.number().optional(),
   offset: z.number().optional(),
 });
@@ -738,3 +752,16 @@ export const buildingFootprints = pgTable("building_footprints", {
 export const insertBuildingFootprintSchema = createInsertSchema(buildingFootprints).omit({ id: true, fetchedAt: true });
 export type InsertBuildingFootprint = z.infer<typeof insertBuildingFootprintSchema>;
 export type BuildingFootprint = typeof buildingFootprints.$inferSelect;
+
+export const savedFilters = pgTable("saved_filters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  filters: jsonb("filters").notNull(),
+  color: text("color"),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSavedFilterSchema = createInsertSchema(savedFilters).omit({ id: true, createdAt: true });
+export type InsertSavedFilter = z.infer<typeof insertSavedFilterSchema>;
+export type SavedFilter = typeof savedFilters.$inferSelect;
