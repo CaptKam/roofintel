@@ -2837,6 +2837,52 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  app.get("/api/leads/:id/building-footprint", async (req, res) => {
+    try {
+      const rows = await db.select().from(leadsTable).where(eq(leadsTable.id, req.params.id)).limit(1);
+      const lead = rows[0];
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      if (!lead.latitude || !lead.longitude) {
+        return res.status(400).json({ message: "Lead has no coordinates" });
+      }
+      const { getBuildingFootprint } = await import("./building-footprint-agent");
+      const result = await getBuildingFootprint(lead.id, lead.latitude, lead.longitude);
+      if (!result) {
+        return res.json({ found: false, message: "No building footprint found at this location" });
+      }
+      res.json({ found: true, ...result });
+    } catch (error: any) {
+      console.error("Building footprint error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/building-footprints/batch", async (req, res) => {
+    try {
+      const { leadIds } = req.body;
+      if (!Array.isArray(leadIds) || leadIds.length === 0) {
+        return res.status(400).json({ message: "leadIds array required" });
+      }
+      const leadsData: Array<{ id: string; latitude: number; longitude: number }> = [];
+      for (const id of leadIds.slice(0, 50)) {
+        const rows = await db.select({ id: leadsTable.id, latitude: leadsTable.latitude, longitude: leadsTable.longitude }).from(leadsTable).where(eq(leadsTable.id, id)).limit(1);
+        if (rows[0]?.latitude && rows[0]?.longitude) {
+          leadsData.push({ id: rows[0].id, latitude: rows[0].latitude, longitude: rows[0].longitude });
+        }
+      }
+      const { getBuildingFootprintsBatch } = await import("./building-footprint-agent");
+      const results = await getBuildingFootprintsBatch(leadsData);
+      const output: Record<string, any> = {};
+      for (const [id, fp] of results) {
+        output[id] = fp;
+      }
+      res.json(output);
+    } catch (error: any) {
+      console.error("Batch footprint error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

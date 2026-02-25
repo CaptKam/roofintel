@@ -723,3 +723,18 @@ export const apiUsageTracker = pgTable("api_usage_tracker", {
 export const insertApiUsageSchema = createInsertSchema(apiUsageTracker).omit({ id: true, createdAt: true });
 export type InsertApiUsage = z.infer<typeof insertApiUsageSchema>;
 export type ApiUsage = typeof apiUsageTracker.$inferSelect;
+
+export const buildingFootprints = pgTable("building_footprints", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  latitude: real("latitude").notNull(),
+  longitude: real("longitude").notNull(),
+  polygon: jsonb("polygon").notNull(),
+  roofAreaSqft: real("roof_area_sqft"),
+  source: text("source").notNull().default("overpass"),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+});
+
+export const insertBuildingFootprintSchema = createInsertSchema(buildingFootprints).omit({ id: true, fetchedAt: true });
+export type InsertBuildingFootprint = z.infer<typeof insertBuildingFootprintSchema>;
+export type BuildingFootprint = typeof buildingFootprints.$inferSelect;

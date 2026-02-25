@@ -68,6 +68,7 @@ import { useState, useEffect, useRef } from "react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
 import { NetworkIntelligence } from "@/components/network-intelligence";
+import { RoofIntelligence } from "@/components/roof-intelligence";
 
 function HunterPDLButtons({ leadId }: { leadId: string }) {
   const { toast } = useToast();
@@ -713,6 +714,20 @@ export default function LeadDetail() {
                 </CardContent>
               </Card>
             </div>
+
+            {lead.latitude && lead.longitude && (
+              <RoofIntelligence
+                leadId={lead.id}
+                latitude={lead.latitude}
+                longitude={lead.longitude}
+                address={lead.address}
+                existingRoofArea={lead.estimatedRoofArea}
+                yearBuilt={lead.yearBuilt}
+                roofMaterial={(lead as any).roofMaterial}
+                roofType={(lead as any).roofType}
+                roofLastReplaced={lead.roofLastReplaced}
+              />
+            )}
             
             <Card className="shadow-sm overflow-hidden">
               <CardContent className="p-0">

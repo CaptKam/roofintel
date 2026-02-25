@@ -43,12 +43,13 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
     - `contact-validation`: E.164 phone normalization, MX-based email domain validation, phone structure validation (TX area codes, toll-free, invalid patterns), email syntax validation with disposable domain detection.
     - `source-policy`: Compliance module with robots.txt checking, per-domain rate limiting (in-memory), blocked domain list (social media, people search sites), proper User-Agent header, and database-backed blocklist integration.
     - `source-trust`: Trust configuration for 30+ data sources (DCAD: 95, TX Comptroller: 92, Google Places: 75, etc.) with type and category classification.
+    - `building-footprint-agent`: GIS building intelligence using OpenStreetMap Overpass API (free, no key). Finds nearest building polygon by centroid, computes roof area via Shoelace/Haversine formula, caches in `building_footprints` table.
 - **Lead Scoring (v3)**: A refined scoring algorithm (0-100) optimized for roofing contractors, incorporating roof age, hail exposure, storm recency, roof area, contactability, owner type, property value, distress signals, flood risk, and property condition.
 
 **Feature Specifications:**
 - **Dashboard**: Provides key statistics, score distribution, and top-scoring leads.
 - **Leads Management**: Filterable and searchable leads list, detailed lead view with property, owner, hail, and contact info.
-- **Map & Storms**: Interactive map view, live hail tracker, and predictive hail threat visualization.
+- **Map & Storms**: Interactive map view, live hail tracker, predictive hail threat visualization, and building footprint overlay toggle (zoom 14+ for street-level roof outlines).
 - **Data Imports**: Support for NOAA hail data, DCAD properties, Tarrant CAD, Collin CAD, Denton CAD, and generic property CSVs. Full DFW 4-county coverage.
 - **Data Coverage Dashboard**: Admin tab showing real-time data completeness metrics — coverage bars for owner names, phones, emails, contacts, websites, managing members, taxpayer IDs, SOS numbers. Phone/evidence source breakdowns.
 - **Contact & Phone Enrichment**: Two-tier enrichment architecture — **free agents auto-run** (TX SOS, LLC Chain, TX Comptroller, Property Tax, Email Discovery, TREC, TDLR, HUD, BBB, Skip Trace, free phone providers) and **paid APIs are manual-only buttons** (Google Places, Serper, Hunter.io 25/mo, PDL 100/mo). `enrichLead()` defaults to `skipPaidApis=true`. Batch free enrichment processes all unenriched leads via `/api/enrichment/batch-free`.
@@ -58,6 +59,7 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **Predictive Hail Monitoring**: Integrates Xweather for advanced hail threat forecasting and alerts.
 - **Decision-Maker Discovery (Layer 3)**: Ownership structure classification (4 buckets: Small Private Owner, Real Estate Investment Firm, Institutional/REIT, Third-Party Managed), title relevance scoring weighted by structure type, multi-contact strategy (Primary/Secondary/Operational decision makers per property), management attribution (manager vs owner separation), role inference & ranking (8 role types with authority scoring), compliance gating (opt-out/consent/DNC), decomposed confidence scoring (7-factor formula with auto-publish/review/suppress tiers), human-in-the-loop review console
 - **Reverse Address Enrichment**: Automatic mailing-vs-property address comparison with Google Places lookup to discover management companies, law firms, title companies, and corporate offices at owner mailing addresses
+- **GIS Roof Intelligence**: Satellite imagery view (Esri World Imagery, free) with building footprint polygon overlay on lead detail pages. Shows computed roof area from GIS data, roof age, material, and type. Toggle on main map shows footprints at street-level zoom (14+) with batch fetching for visible leads. Data cached in `building_footprints` table.
 - **Admin**: Centralized management for property sources, storm data, contact enrichment, and system settings.
 - **SEO & Compliance**: Per-page titles/descriptions via react-helmet-async, dynamic sitemap.xml and robots.txt (domain-aware), compression middleware, static HTML nav/footer/skip-link/main landmark for crawler visibility, noscript fallback content. Privacy policy, about, and contact pages for E-E-A-T and legal compliance. Security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, production CSP/HSTS).
 

@@ -152,10 +152,14 @@ export default function MapStorms() {
   const alertLayerRef = useRef<L.LayerGroup | null>(null);
   const swathLayerRef = useRef<L.LayerGroup | null>(null);
   const threatLayerRef = useRef<L.LayerGroup | null>(null);
+  const footprintLayerRef = useRef<L.LayerGroup | null>(null);
+  const footprintCacheRef = useRef<Map<string, any>>(new Map());
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showHailTracker, setShowHailTracker] = useState(false);
   const [showSwathZones, setShowSwathZones] = useState(true);
   const [showThreatForecast, setShowThreatForecast] = useState(true);
+  const [showFootprints, setShowFootprints] = useState(false);
+  const [footprintLoading, setFootprintLoading] = useState(false);
   const [daysBack, setDaysBack] = useState("7");
 
   const [showCreate, setShowCreate] = useState(false);
@@ -399,6 +403,7 @@ export default function MapStorms() {
     alertLayerRef.current = L.layerGroup().addTo(map);
     swathLayerRef.current = L.layerGroup().addTo(map);
     threatLayerRef.current = L.layerGroup().addTo(map);
+    footprintLayerRef.current = L.layerGroup().addTo(map);
 
     mapInstanceRef.current = map;
 
@@ -631,6 +636,151 @@ export default function MapStorms() {
     }
   }, [threats, showThreatForecast]);
 
+  useEffect(() => {
+    if (!footprintLayerRef.current) return;
+    footprintLayerRef.current.clearLayers();
+
+    if (!showFootprints || !leads || !mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+
+    if (zoom < 14) return;
+
+    const visibleLeads = leads.filter(l =>
+      l.latitude && l.longitude &&
+      bounds.contains([l.latitude, l.longitude])
+    );
+
+    const uncachedIds = visibleLeads
+      .filter(l => !footprintCacheRef.current.has(l.id))
+      .map(l => l.id)
+      .slice(0, 50);
+
+    const renderCached = () => {
+      if (!footprintLayerRef.current) return;
+      for (const lead of visibleLeads) {
+        const fp = footprintCacheRef.current.get(lead.id);
+        if (!fp?.found || !fp.polygon || fp.polygon.length < 3) continue;
+
+        const latlngs = fp.polygon.map((c: number[]) => [c[1], c[0]] as [number, number]);
+        const poly = L.polygon(latlngs, {
+          color: "#f59e0b",
+          weight: 2,
+          fillColor: "#f59e0b",
+          fillOpacity: 0.15,
+          dashArray: "4 4",
+        });
+        poly.bindPopup(
+          `<div style="font-size:12px;font-family:Inter,sans-serif;">
+            <strong>${lead.address}</strong><br/>
+            Roof Area: ${fp.roofAreaSqft?.toLocaleString() || "N/A"} sqft<br/>
+            Source: ${fp.source || "OpenStreetMap"}
+          </div>`
+        );
+        footprintLayerRef.current!.addLayer(poly);
+      }
+    };
+
+    renderCached();
+
+    if (uncachedIds.length > 0) {
+      setFootprintLoading(true);
+      fetch("/api/building-footprints/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadIds: uncachedIds }),
+      })
+        .then(r => r.json())
+        .then((data: Record<string, any>) => {
+          for (const [id, fp] of Object.entries(data)) {
+            footprintCacheRef.current.set(id, fp);
+          }
+          footprintLayerRef.current?.clearLayers();
+          renderCached();
+        })
+        .catch(() => {})
+        .finally(() => setFootprintLoading(false));
+    }
+  }, [leads, showFootprints]);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !showFootprints) return;
+
+    const handler = () => {
+      if (!footprintLayerRef.current || !leads) return;
+      footprintLayerRef.current.clearLayers();
+
+      const map = mapInstanceRef.current!;
+      const bounds = map.getBounds();
+      const zoom = map.getZoom();
+      if (zoom < 14) return;
+
+      const visibleLeads = leads.filter(l =>
+        l.latitude && l.longitude &&
+        bounds.contains([l.latitude, l.longitude])
+      );
+
+      const uncachedIds = visibleLeads
+        .filter(l => !footprintCacheRef.current.has(l.id))
+        .map(l => l.id)
+        .slice(0, 50);
+
+      for (const lead of visibleLeads) {
+        const fp = footprintCacheRef.current.get(lead.id);
+        if (!fp?.found || !fp.polygon || fp.polygon.length < 3) continue;
+
+        const latlngs = fp.polygon.map((c: number[]) => [c[1], c[0]] as [number, number]);
+        const poly = L.polygon(latlngs, {
+          color: "#f59e0b",
+          weight: 2,
+          fillColor: "#f59e0b",
+          fillOpacity: 0.15,
+          dashArray: "4 4",
+        });
+        poly.bindPopup(
+          `<div style="font-size:12px;font-family:Inter,sans-serif;">
+            <strong>${lead.address}</strong><br/>
+            Roof Area: ${fp.roofAreaSqft?.toLocaleString() || "N/A"} sqft<br/>
+            Source: ${fp.source || "OpenStreetMap"}
+          </div>`
+        );
+        footprintLayerRef.current!.addLayer(poly);
+      }
+
+      if (uncachedIds.length > 0) {
+        setFootprintLoading(true);
+        fetch("/api/building-footprints/batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ leadIds: uncachedIds }),
+        })
+          .then(r => r.json())
+          .then((data: Record<string, any>) => {
+            for (const [id, fp] of Object.entries(data)) {
+              footprintCacheRef.current.set(id, fp);
+            }
+            footprintLayerRef.current?.clearLayers();
+            const bds = map.getBounds();
+            for (const lead of leads.filter(l => l.latitude && l.longitude && bds.contains([l.latitude, l.longitude]))) {
+              const f = footprintCacheRef.current.get(lead.id);
+              if (!f?.found || !f.polygon || f.polygon.length < 3) continue;
+              const ll = f.polygon.map((c: number[]) => [c[1], c[0]] as [number, number]);
+              const p = L.polygon(ll, { color: "#f59e0b", weight: 2, fillColor: "#f59e0b", fillOpacity: 0.15, dashArray: "4 4" });
+              p.bindPopup(`<div style="font-size:12px;"><strong>${lead.address}</strong><br/>Roof: ${f.roofAreaSqft?.toLocaleString() || "N/A"} sqft</div>`);
+              footprintLayerRef.current!.addLayer(p);
+            }
+          })
+          .catch(() => {})
+          .finally(() => setFootprintLoading(false));
+      }
+    };
+
+    mapInstanceRef.current.on("moveend", handler);
+    return () => { mapInstanceRef.current?.off("moveend", handler); };
+  }, [leads, showFootprints]);
+
   const sigCount = hailData?.radarSignatures?.length || 0;
   const alertCount = hailData?.alerts?.length || 0;
   const threatCount = threats?.length || 0;
@@ -699,6 +849,18 @@ export default function MapStorms() {
                   <span className="ml-1.5 text-[10px] opacity-70">{sigCount}</span>
                 )}
               </Button>
+              <Button
+                variant={showFootprints ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowFootprints(!showFootprints)}
+                data-testid="button-toggle-footprints"
+              >
+                <Building2 className="w-3.5 h-3.5 mr-1.5" />
+                Roofs
+                {footprintLoading && (
+                  <span className="ml-1.5 animate-spin text-[10px]">⟳</span>
+                )}
+              </Button>
               {showHailTracker && (
                 <Select value={daysBack} onValueChange={setDaysBack}>
                   <SelectTrigger className="w-[110px]" data-testid="select-hail-days">
@@ -733,6 +895,13 @@ export default function MapStorms() {
               </div>
             </div>
           </div>
+
+          {showFootprints && (
+            <div className="px-4 py-1 border-b flex items-center gap-2 text-[10px] text-muted-foreground">
+              <div className="w-3 h-2 border border-amber-500 bg-amber-500/15" style={{ borderStyle: "dashed" }} />
+              <span>Building footprints — zoom to street level (14+) to view</span>
+            </div>
+          )}
 
           {(showHailTracker || (showThreatForecast && threatCount > 0)) && (
             <div className="px-4 py-2 border-b flex items-center gap-4 flex-wrap text-[10px] text-muted-foreground">
