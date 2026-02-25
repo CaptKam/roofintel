@@ -198,6 +198,9 @@ export class DatabaseStorage implements IStorage {
     if (filter?.ownershipStructure && filter.ownershipStructure !== "all") {
       conditions.push(eq(leads.ownershipStructure, filter.ownershipStructure));
     }
+    if (filter?.roofType && filter.roofType !== "all") {
+      conditions.push(eq(leads.roofType, filter.roofType));
+    }
     if (filter?.enrichmentStatus && filter.enrichmentStatus !== "all") {
       if (filter.enrichmentStatus === "complete") {
         conditions.push(isNotNull(leads.lastEnrichedAt));

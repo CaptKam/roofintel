@@ -67,8 +67,9 @@ export default function Leads() {
   const [claimWindowOpen, setClaimWindowOpen] = useState(urlParams.get("claimWindowOpen") === "true");
   const [minPropertyValue, setMinPropertyValue] = useState<string>(urlParams.get("minPropertyValue") || "");
   const [ownershipStructure, setOwnershipStructure] = useState<string>(urlParams.get("ownershipStructure") || "");
+  const [roofType, setRoofType] = useState<string>(urlParams.get("roofType") || "");
   const [page, setPage] = useState(1);
-  const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true" || !!urlParams.get("minRoofAge") || !!urlParams.get("minRoofArea") || !!urlParams.get("lastHailWithin") || urlParams.get("claimWindowOpen") === "true" || !!urlParams.get("minPropertyValue") || !!urlParams.get("ownershipStructure"));
+  const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true" || !!urlParams.get("minRoofAge") || !!urlParams.get("minRoofArea") || !!urlParams.get("lastHailWithin") || urlParams.get("claimWindowOpen") === "true" || !!urlParams.get("minPropertyValue") || !!urlParams.get("ownershipStructure") || !!urlParams.get("roofType"));
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -88,6 +89,7 @@ export default function Leads() {
     const newClaimWindowOpen = fresh.get("claimWindowOpen") === "true";
     const newMinPropertyValue = fresh.get("minPropertyValue") || "";
     const newOwnershipStructure = fresh.get("ownershipStructure") || "";
+    const newRoofType = fresh.get("roofType") || "";
     setMinScore(newMinScore);
     setCounty(newCounty);
     setZoning(newZoning);
@@ -99,7 +101,8 @@ export default function Leads() {
     setClaimWindowOpen(newClaimWindowOpen);
     setMinPropertyValue(newMinPropertyValue);
     setOwnershipStructure(newOwnershipStructure);
-    if (newMinScore || newCounty || newZoning || newStatus || newHasPhone || newMinRoofAge || newMinRoofArea || newLastHailWithin || newClaimWindowOpen || newMinPropertyValue || newOwnershipStructure) {
+    setRoofType(newRoofType);
+    if (newMinScore || newCounty || newZoning || newStatus || newHasPhone || newMinRoofAge || newMinRoofArea || newLastHailWithin || newClaimWindowOpen || newMinPropertyValue || newOwnershipStructure || newRoofType) {
       setShowFilters(true);
     }
     setPage(1);
@@ -107,7 +110,7 @@ export default function Leads() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure]);
+  }, [debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure, roofType]);
 
   const params = new URLSearchParams();
   if (debouncedSearch) params.set("search", debouncedSearch);
@@ -122,6 +125,7 @@ export default function Leads() {
   if (claimWindowOpen) params.set("claimWindowOpen", "true");
   if (minPropertyValue) params.set("minPropertyValue", minPropertyValue);
   if (ownershipStructure) params.set("ownershipStructure", ownershipStructure);
+  if (roofType) params.set("roofType", roofType);
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String((page - 1) * PAGE_SIZE));
 
@@ -134,14 +138,14 @@ export default function Leads() {
   const leads = data?.leads;
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const hasFilters = county || minScore || zoning || status || hasPhone || minRoofAge || minRoofArea || lastHailWithin || claimWindowOpen || minPropertyValue || ownershipStructure;
+  const hasFilters = county || minScore || zoning || status || hasPhone || minRoofAge || minRoofArea || lastHailWithin || claimWindowOpen || minPropertyValue || ownershipStructure || roofType;
 
   const currentFilterState = {
     county, minScore, zoning, status,
     hasPhone: hasPhone || undefined,
     minRoofAge, minRoofArea, lastHailWithin,
     claimWindowOpen: claimWindowOpen || undefined,
-    minPropertyValue, ownershipStructure,
+    minPropertyValue, ownershipStructure, roofType,
   };
 
   const applyFilterPreset = (filters: Record<string, any>) => {
@@ -156,6 +160,7 @@ export default function Leads() {
     setClaimWindowOpen(!!filters.claimWindowOpen);
     setMinPropertyValue(filters.minPropertyValue ? String(filters.minPropertyValue) : "");
     setOwnershipStructure(filters.ownershipStructure || "");
+    setRoofType(filters.roofType || "");
     setShowFilters(true);
   };
 
@@ -171,6 +176,7 @@ export default function Leads() {
     setClaimWindowOpen(false);
     setMinPropertyValue("");
     setOwnershipStructure("");
+    setRoofType("");
   };
 
   const handleExport = async () => {
@@ -347,7 +353,7 @@ export default function Leads() {
 
             <div className="border-t pt-4">
               <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3">Roof & Property Filters</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Roof Age</label>
                   <Select value={minRoofAge} onValueChange={setMinRoofAge}>
@@ -377,6 +383,23 @@ export default function Leads() {
                       <SelectItem value="20000">20,000+ sqft</SelectItem>
                       <SelectItem value="50000">50,000+ sqft</SelectItem>
                       <SelectItem value="100000">100,000+ sqft</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Roof Type</label>
+                  <Select value={roofType} onValueChange={setRoofType}>
+                    <SelectTrigger data-testid="select-roof-type">
+                      <SelectValue placeholder="All types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All types</SelectItem>
+                      <SelectItem value="TPO">TPO</SelectItem>
+                      <SelectItem value="EPDM">EPDM</SelectItem>
+                      <SelectItem value="Modified Bitumen">Modified Bitumen</SelectItem>
+                      <SelectItem value="Built-Up (BUR)">Built-Up (BUR)</SelectItem>
+                      <SelectItem value="Metal">Metal</SelectItem>
+                      <SelectItem value="Shingle">Shingle</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

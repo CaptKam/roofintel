@@ -341,6 +341,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
         minPropertyValue: req.query.minPropertyValue ? Number(req.query.minPropertyValue) : undefined,
         maxPropertyValue: req.query.maxPropertyValue ? Number(req.query.maxPropertyValue) : undefined,
         ownershipStructure: req.query.ownershipStructure as string | undefined,
+        roofType: req.query.roofType as string | undefined,
         enrichmentStatus: req.query.enrichmentStatus as string | undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
         offset: req.query.offset ? Number(req.query.offset) : undefined,

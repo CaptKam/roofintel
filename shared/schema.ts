@@ -708,6 +708,7 @@ export const leadFilterSchema = z.object({
   minPropertyValue: z.number().optional(),
   maxPropertyValue: z.number().optional(),
   ownershipStructure: z.string().optional(),
+  roofType: z.string().optional(),
   hasEmail: z.boolean().optional(),
   hasDecisionMaker: z.boolean().optional(),
   enrichmentStatus: z.string().optional(),
