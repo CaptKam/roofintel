@@ -639,7 +639,7 @@ export default function MapStorms() {
   return (
     <div className="flex flex-col h-full">
       <div className="p-6 pb-2">
-        <h2 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Map & Storms</h2>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Map & Storms</h1>
         <p className="text-sm text-muted-foreground mt-1">Real-time storm monitoring, threat detection, and alert management</p>
       </div>
       <Tabs defaultValue="map" className="flex-1 flex flex-col">

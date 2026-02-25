@@ -144,7 +144,7 @@ export default function Leads() {
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Leads</h2>
+          <h1 className="text-2xl font-bold tracking-tight">Leads</h1>
           <div className="flex items-center gap-2 mt-1">
             <p className="text-sm text-muted-foreground">
               {isLoading ? "Loading..." : `${total.toLocaleString()} properties`} in your pipeline

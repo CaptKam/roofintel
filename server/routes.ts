@@ -51,6 +51,28 @@ export async function registerRoutes(
   await seedDatabase();
   startJobScheduler();
 
+  app.get("/robots.txt", (req, res) => {
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    res.type("text/plain").send(
+      `User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml\n`
+    );
+  });
+
+  app.get("/sitemap.xml", (req, res) => {
+    const pages = ["/", "/leads", "/map", "/portfolios", "/network", "/admin"];
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq></url>`).join("\n")}
+</urlset>`;
+    res.type("application/xml").send(xml);
+  });
+
+  const sitemapVariants = ["/sitemap_index.xml", "/sitemap-index.xml", "/sitemaps.xml", "/sitemap1.xml", "/post-sitemap.xml", "/page-sitemap.xml", "/category-sitemap.xml", "/news-sitemap.xml"];
+  for (const path of sitemapVariants) {
+    app.get(path, (_req, res) => res.status(404).type("text/plain").send("Not found"));
+  }
+
   app.get("/api/markets", async (_req, res) => {
     try {
       const markets = await storage.getMarkets();

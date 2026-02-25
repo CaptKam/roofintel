@@ -107,7 +107,7 @@ export default function Portfolios() {
     <div className="p-8 space-y-6" data-testid="page-portfolios">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Portfolios</h2>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Portfolios</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Multi-property owners discovered from rooftop intelligence
           </p>

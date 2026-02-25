@@ -1297,7 +1297,7 @@ export default function Admin() {
   return (
     <div className="p-8 space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Admin</h2>
+        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Admin</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Manage data sources, enrichment pipelines, and system configuration
         </p>

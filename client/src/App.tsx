@@ -44,6 +44,9 @@ function App() {
         <MarketProvider>
           <TooltipProvider>
             <SidebarProvider style={style as React.CSSProperties}>
+              <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md" data-testid="link-skip-nav">
+                Skip to main content
+              </a>
               <div className="flex h-screen w-full">
                 <AppSidebar />
                 <div className="flex flex-col flex-1 min-w-0">
@@ -51,7 +54,7 @@ function App() {
                     <SidebarTrigger data-testid="button-sidebar-toggle" className="w-8 h-8" />
                     <ThemeToggle />
                   </header>
-                  <main className="flex-1 overflow-auto">
+                  <main id="main-content" className="flex-1 overflow-auto">
                     <Router />
                   </main>
                 </div>
