@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { PageMeta } from "@/components/page-meta";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -145,6 +146,11 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 space-y-8">
+      <PageMeta
+        title="Dashboard"
+        description="RoofIntel command center — monitor your commercial roofing lead pipeline, score distribution, and top-scoring properties across the DFW metro area."
+        path="/"
+      />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-dashboard-title">Command Center</h1>

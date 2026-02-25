@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { PageMeta } from "@/components/page-meta";
 import { Building2, Users, ChevronRight, TrendingUp, Search, Loader2, Network, RefreshCw, ChevronDown, AlertCircle, MapPin } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,11 @@ export default function Portfolios() {
 
   return (
     <div className="p-8 space-y-6" data-testid="page-portfolios">
+      <PageMeta
+        title="Portfolios"
+        description="Discover multi-property owners and investment portfolios across DFW commercial properties. View ownership networks and portfolio intelligence."
+        path="/portfolios"
+      />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Portfolios</h1>

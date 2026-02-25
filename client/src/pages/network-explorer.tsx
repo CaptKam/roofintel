@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { PageMeta } from "@/components/page-meta";
 import ForceGraph2D from "react-force-graph-2d";
 import { Search, Loader2, Share2, Building2, User, Landmark, MapPin, RefreshCw, ZoomIn, ZoomOut, Maximize2, Info, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -242,6 +243,11 @@ export default function NetworkExplorer() {
 
   return (
     <div className="h-full flex flex-col" data-testid="page-network-explorer">
+      <PageMeta
+        title="Network Explorer"
+        description="Visualize ownership relationship networks — discover shared officers, registered agents, LLC chains, and mailing address clusters across commercial properties."
+        path="/network"
+      />
       <div className="flex items-center justify-between gap-4 px-6 py-4 border-b bg-background/80 backdrop-blur-sm">
         <div className="flex items-center gap-3">
           <Share2 className="w-5 h-5 text-primary" />

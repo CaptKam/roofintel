@@ -59,6 +59,7 @@ RoofIntel employs a modern web architecture with a clear separation of concerns.
 - **Decision-Maker Discovery (Layer 3)**: Ownership structure classification (4 buckets: Small Private Owner, Real Estate Investment Firm, Institutional/REIT, Third-Party Managed), title relevance scoring weighted by structure type, multi-contact strategy (Primary/Secondary/Operational decision makers per property), management attribution (manager vs owner separation), role inference & ranking (8 role types with authority scoring), compliance gating (opt-out/consent/DNC), decomposed confidence scoring (7-factor formula with auto-publish/review/suppress tiers), human-in-the-loop review console
 - **Reverse Address Enrichment**: Automatic mailing-vs-property address comparison with Google Places lookup to discover management companies, law firms, title companies, and corporate offices at owner mailing addresses
 - **Admin**: Centralized management for property sources, storm data, contact enrichment, and system settings.
+- **SEO & Compliance**: Per-page titles/descriptions via react-helmet-async, dynamic sitemap.xml and robots.txt (domain-aware), compression middleware, static HTML nav/footer/skip-link/main landmark for crawler visibility, noscript fallback content. Privacy policy, about, and contact pages for E-E-A-T and legal compliance. Security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, production CSP/HSTS).
 
 ## External Dependencies
 - **PostgreSQL**: Primary database for all application data.

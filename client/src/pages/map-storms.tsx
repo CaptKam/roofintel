@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
+import { PageMeta } from "@/components/page-meta";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -638,6 +639,11 @@ export default function MapStorms() {
 
   return (
     <div className="flex flex-col h-full">
+      <PageMeta
+        title="Map & Storms"
+        description="Interactive map with real-time NOAA hail tracking, NEXRAD radar overlays, and Xweather predictive storm threat monitoring for commercial roofing leads."
+        path="/map"
+      />
       <div className="p-6 pb-2">
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Map & Storms</h1>
         <p className="text-sm text-muted-foreground mt-1">Real-time storm monitoring, threat detection, and alert management</p>

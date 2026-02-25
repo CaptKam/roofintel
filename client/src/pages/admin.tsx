@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { Link } from "wouter";
+import { PageMeta } from "@/components/page-meta";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1296,6 +1297,11 @@ export default function Admin() {
 
   return (
     <div className="p-8 space-y-6">
+      <PageMeta
+        title="Admin"
+        description="RoofIntel administration — manage property data sources, enrichment pipelines, API credits, storm monitoring, and system configuration."
+        path="/admin"
+      />
       <div>
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Admin</h1>
         <p className="text-sm text-muted-foreground mt-1">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
+import { PageMeta } from "@/components/page-meta";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,6 +143,11 @@ export default function Leads() {
 
   return (
     <div className="p-8 space-y-6">
+      <PageMeta
+        title="Leads"
+        description="Browse, filter, and manage commercial roofing leads scored by roof age, hail exposure, and property data. Prioritize your best opportunities."
+        path="/leads"
+      />
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Leads</h1>

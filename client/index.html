@@ -21,12 +21,29 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="root"></div>
+    <a href="#main-content" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">Skip to main content</a>
+    <nav aria-label="Main navigation" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
+      <a href="/">Dashboard</a>
+      <a href="/leads">Leads</a>
+      <a href="/map">Map & Storms</a>
+      <a href="/portfolios">Portfolios</a>
+      <a href="/network">Network Explorer</a>
+      <a href="/admin">Admin</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+    <main id="main-content">
+      <div id="root"></div>
+    </main>
     <noscript>
       <h1>RoofIntel - Commercial Roofing Lead Intelligence</h1>
       <p>RoofIntel is a data-driven platform for commercial roofing contractors. It helps you identify, score, and prioritize qualified roofing leads using property assessment data, historical hail exposure, roof age analysis, and public owner intelligence across the DFW metro area. Features include real-time storm monitoring, predictive hail nowcasting, multi-source contact enrichment, and a 16-agent owner intelligence pipeline.</p>
       <p>Please enable JavaScript to use RoofIntel.</p>
     </noscript>
+    <footer style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0;">
+      <a href="/privacy">Privacy Policy</a> | <a href="/about">About</a> | <a href="/contact">Contact</a>
+    </footer>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
