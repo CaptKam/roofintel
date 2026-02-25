@@ -738,3 +738,68 @@ export const buildingFootprints = pgTable("building_footprints", {
 export const insertBuildingFootprintSchema = createInsertSchema(buildingFootprints).omit({ id: true, fetchedAt: true });
 export type InsertBuildingFootprint = z.infer<typeof insertBuildingFootprintSchema>;
 export type BuildingFootprint = typeof buildingFootprints.$inferSelect;
+
+export const chaseSessions = pgTable("chase_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull().default("default"),
+  latitude: real("latitude").notNull(),
+  longitude: real("longitude").notNull(),
+  speedMph: real("speed_mph"),
+  heading: real("heading"),
+  alertRadius: real("alert_radius").notNull().default(5),
+  minScore: integer("min_score").notNull().default(50),
+  stormAlerts: boolean("storm_alerts").notNull().default(true),
+  scoreAlerts: boolean("score_alerts").notNull().default(true),
+  quietStart: text("quiet_start"),
+  quietEnd: text("quiet_end"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastUpdatedAt: timestamp("last_updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertChaseSessionSchema = createInsertSchema(chaseSessions).omit({ id: true, createdAt: true, lastUpdatedAt: true });
+export type InsertChaseSession = z.infer<typeof insertChaseSessionSchema>;
+export type ChaseSession = typeof chaseSessions.$inferSelect;
+
+export const chaseActions = pgTable("chase_actions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull().default("default"),
+  leadId: varchar("lead_id").notNull(),
+  action: text("action").notNull(),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertChaseActionSchema = createInsertSchema(chaseActions).omit({ id: true, createdAt: true });
+export type InsertChaseAction = z.infer<typeof insertChaseActionSchema>;
+export type ChaseAction = typeof chaseActions.$inferSelect;
+
+export const pushDevices = pgTable("push_devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull().default("default"),
+  pushToken: text("push_token").notNull(),
+  platform: text("platform").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPushDeviceSchema = createInsertSchema(pushDevices).omit({ id: true, createdAt: true });
+export type InsertPushDevice = z.infer<typeof insertPushDeviceSchema>;
+export type PushDevice = typeof pushDevices.$inferSelect;
+
+export const chaseAlertHistory = pgTable("chase_alert_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull().default("default"),
+  leadId: varchar("lead_id").notNull(),
+  triggerType: text("trigger_type").notNull(),
+  distanceMiles: real("distance_miles"),
+  leadScore: integer("lead_score"),
+  dismissed: boolean("dismissed").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertChaseAlertHistorySchema = createInsertSchema(chaseAlertHistory).omit({ id: true, createdAt: true });
+export type InsertChaseAlertHistory = z.infer<typeof insertChaseAlertHistorySchema>;
+export type ChaseAlertHistory = typeof chaseAlertHistory.$inferSelect;
