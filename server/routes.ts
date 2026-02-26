@@ -3762,7 +3762,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
   app.post("/api/admin/ai-agent/run", async (req, res) => {
     try {
-      const { runDataAudit, getAuditProgress, resetAuditProgress } = await import("./data-audit-agent");
+      const { runDataAudit, getAuditProgress, resetAuditProgress, runContractorScrub, runWebsiteExtract, runPortfolioDetection, runStaleDataDetection } = await import("./data-audit-agent");
       const { runAiWebSearch } = await import("./ai-web-search-agent");
       const progress = getAuditProgress();
       if (progress.running) {
@@ -3770,7 +3770,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       }
       resetAuditProgress();
       const batchSize = Math.min(Math.max(parseInt(req.body?.batchSize) || 25, 1), 500);
-      const mode = (req.body?.mode || "audit") as "audit" | "search" | "both";
+      const mode = (req.body?.mode || "audit") as string;
 
       res.json({ message: `AI agent started in ${mode} mode for ${batchSize} leads`, batchSize, mode });
 
@@ -3782,6 +3782,18 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           if (mode === "search" || mode === "both") {
             if (mode === "both") resetAuditProgress();
             await runAiWebSearch(batchSize);
+          }
+          if (mode === "contractor_scrub") {
+            await runContractorScrub(batchSize);
+          }
+          if (mode === "website_extract") {
+            await runWebsiteExtract(batchSize);
+          }
+          if (mode === "portfolio") {
+            await runPortfolioDetection(batchSize);
+          }
+          if (mode === "stale_data") {
+            await runStaleDataDetection(batchSize);
           }
         } catch (err: any) {
           console.error("[ai-agent] Error:", err.message);
@@ -3857,7 +3869,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
   app.post("/api/admin/ai-agent/apply/:resultId", async (req, res) => {
     try {
-      const { id: resultId } = req.params;
+      const resultId = req.params.resultId;
 
       const rows = await db.execute(sql`
         SELECT * FROM ai_audit_results WHERE id = ${resultId}
@@ -3947,6 +3959,99 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           updates.businessType = findings.likelyBusinessType;
         }
         if (Object.keys(updates).length > 0) {
+          await storage.updateLead(result.lead_id, updates);
+        }
+      }
+
+      if (result.audit_type === "contractor_scrub" && findings.isContractor) {
+        const updates: any = { managingMember: null, managingMemberTitle: null };
+        if (findings.suggestedReplacement && isPersonName(findings.suggestedReplacement)) {
+          updates.managingMember = findings.suggestedReplacement;
+          updates.managingMemberTitle = findings.replacementSource || "Corrected by AI";
+        }
+        const existingLead = await storage.getLeadById(result.lead_id);
+        const existingNotes = existingLead?.notes || "";
+        updates.notes = existingNotes
+          ? `${existingNotes}\n[AI Scrub] Removed contractor "${findings.flaggedValue}" from managing member`
+          : `[AI Scrub] Removed contractor "${findings.flaggedValue}" from managing member`;
+        await storage.updateLead(result.lead_id, updates);
+      }
+
+      if (result.audit_type === "website_extract") {
+        const contacts = findings.contacts || [];
+        const companyInfo = findings.companyInfo || {};
+        const updates: any = {};
+        const evidenceInputs: EvidenceInput[] = [];
+
+        const existingLead = await storage.getLeadById(result.lead_id);
+        const bestContact = contacts[0];
+        if (bestContact) {
+          if (bestContact.name && isPersonName(bestContact.name) && !existingLead?.contactName) {
+            updates.contactName = bestContact.name;
+            evidenceInputs.push({ leadId: result.lead_id, evidenceType: "PERSON", value: bestContact.name, source: "ai_website_extraction", trustScore: 55 });
+          }
+          if (bestContact.title && !existingLead?.contactTitle) updates.contactTitle = bestContact.title;
+          if (bestContact.phone && !existingLead?.contactPhone) {
+            const norm = normalizePhoneE164(bestContact.phone);
+            if (norm) {
+              updates.contactPhone = norm;
+              evidenceInputs.push({ leadId: result.lead_id, evidenceType: "PHONE", value: norm, source: "ai_website_extraction", trustScore: 55 });
+            }
+          }
+          if (bestContact.email && !existingLead?.contactEmail) {
+            const check = validateEmailSyntax(bestContact.email);
+            if (check.valid) {
+              updates.contactEmail = bestContact.email;
+              evidenceInputs.push({ leadId: result.lead_id, evidenceType: "EMAIL", value: bestContact.email, source: "ai_website_extraction", trustScore: 55 });
+            }
+          }
+        }
+
+        if (!updates.contactPhone && !existingLead?.contactPhone && companyInfo.mainPhone) {
+          const norm = normalizePhoneE164(companyInfo.mainPhone);
+          if (norm) {
+            updates.contactPhone = norm;
+            evidenceInputs.push({ leadId: result.lead_id, evidenceType: "PHONE", value: norm, source: "ai_website_extraction", trustScore: 50 });
+          }
+        }
+        if (!updates.contactEmail && !existingLead?.contactEmail && companyInfo.mainEmail) {
+          const check = validateEmailSyntax(companyInfo.mainEmail);
+          if (check.valid) {
+            updates.contactEmail = companyInfo.mainEmail;
+            evidenceInputs.push({ leadId: result.lead_id, evidenceType: "EMAIL", value: companyInfo.mainEmail, source: "ai_website_extraction", trustScore: 50 });
+          }
+        }
+        if (companyInfo.companyName && !updates.contactName && !existingLead?.businessName) {
+          updates.businessName = companyInfo.companyName;
+        }
+
+        if (Object.keys(updates).length > 0) await storage.updateLead(result.lead_id, updates);
+        if (evidenceInputs.length > 0) await recordBatchEvidence(evidenceInputs);
+      }
+
+      if (result.audit_type === "portfolio_analysis") {
+        const existingNotes = (await storage.getLeadById(result.lead_id))?.notes || "";
+        const portfolioNote = `[Portfolio] ${findings.ownerName}: ${findings.propertyCount} properties, $${Number(findings.totalValue || 0).toLocaleString()} total value. ${findings.contactStrategy || ""}`;
+        const updates: any = {
+          notes: existingNotes ? `${existingNotes}\n${portfolioNote}` : portfolioNote,
+        };
+        await storage.updateLead(result.lead_id, updates);
+      }
+
+      if (result.audit_type === "stale_data") {
+        const existingNotes = (await storage.getLeadById(result.lead_id))?.notes || "";
+        let staleNote = "";
+        if (findings.subType === "shared_phone") {
+          staleNote = `[Stale Data] Phone ${findings.phone} shared by ${findings.sharedByCount} leads — likely contractor/service phone`;
+        } else if (findings.subType === "absentee_owner") {
+          staleNote = `[Stale Data] Absentee owner — mailing address (${findings.ownerAddress}) differs from property`;
+        } else if (findings.subType === "old_roof_unknown") {
+          staleNote = `[Stale Data] Building ${findings.buildingAge}yrs old (${findings.yearBuilt}), no roof replacement record — likely replaced, data incomplete`;
+        }
+        if (staleNote) {
+          const updates: any = {
+            notes: existingNotes ? `${existingNotes}\n${staleNote}` : staleNote,
+          };
           await storage.updateLead(result.lead_id, updates);
         }
       }

@@ -1955,7 +1955,7 @@ export default function Admin() {
   const [showContactAdvanced, setShowContactAdvanced] = useState(false);
   const [showBulkDataFixes, setShowBulkDataFixes] = useState(false);
   const [showAiResults, setShowAiResults] = useState(false);
-  const [aiMode, setAiMode] = useState<"audit" | "search" | "both">("audit");
+  const [aiMode, setAiMode] = useState<string>("audit");
   const [aiBatchSize, setAiBatchSize] = useState(25);
 
   const { data: aiStatus, refetch: refetchAiStatus } = useQuery<any>({
@@ -3276,13 +3276,17 @@ export default function Admin() {
                   <Label className="text-xs">Mode:</Label>
                   <select
                     value={aiMode}
-                    onChange={(e) => setAiMode(e.target.value as any)}
+                    onChange={(e) => setAiMode(e.target.value)}
                     className="text-xs border rounded px-2 py-1 bg-background"
                     data-testid="select-ai-mode"
                   >
                     <option value="audit">Data Audit</option>
                     <option value="search">Web Search</option>
-                    <option value="both">Both</option>
+                    <option value="contractor_scrub">Contractor Scrub</option>
+                    <option value="website_extract">Website Extract</option>
+                    <option value="portfolio">Portfolio Detection</option>
+                    <option value="stale_data">Stale Data</option>
+                    <option value="both">Audit + Search</option>
                   </select>
                 </div>
                 <div className="flex items-center gap-2">
@@ -3301,8 +3305,19 @@ export default function Admin() {
                   </select>
                 </div>
                 <span className="text-[10px] text-muted-foreground">
-                  Est. cost: ~${(aiBatchSize * 0.001).toFixed(3)}
+                  Est. cost: ~${(aiBatchSize * (aiMode === "stale_data" ? 0 : aiMode === "contractor_scrub" ? 0.0005 : aiMode === "search" ? 0.003 : 0.001)).toFixed(3)}
                 </span>
+              </div>
+              <div className="text-[10px] text-muted-foreground italic" data-testid="ai-mode-description">
+                {{
+                  audit: "Analyzes owner names, classifies entities, identifies who to contact",
+                  search: "Web research to find decision-maker contacts (needs Serper API)",
+                  contractor_scrub: "Finds contractor names (plumbers, electricians) stored as managing members and cleans them",
+                  website_extract: "Scrapes lead websites to extract phone, email, and contact names",
+                  portfolio: "Identifies owners with 3+ properties for portfolio-based outreach",
+                  stale_data: "Flags shared phones, absentee owners, and old buildings with missing roof data",
+                  both: "Runs Data Audit then Web Search sequentially",
+                }[aiMode] || ""}
               </div>
 
               {aiStatus?.running && (
