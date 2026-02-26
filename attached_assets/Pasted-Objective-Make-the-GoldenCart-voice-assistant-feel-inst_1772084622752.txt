@@ -1,0 +1,60 @@
+Objective
+Make the GoldenCart voice assistant feel instant, reliable, and senior-proof. Zero confusion points. The assistant should greet the user the moment they tap the button, respond fast, show clear visual feedback at every stage, and recover gracefully from any hiccup. A 65+ user should never wonder "did it hear me?" or "is it broken?"
+
+Tasks
+T001: Instant Greeting on Tap — Assistant Speaks First
+Blocked By: []
+Details:
+When the user taps the voice hero button, the assistant should immediately speak a short warm greeting ("Hi there! What can I help you find?") instead of silently waiting for the user to talk first
+Send a pre-built greeting via WebSocket user_text with a special flag so the server generates a quick spoken greeting, OR use a cached/pre-generated TTS greeting audio for zero-latency playback
+Best approach: have the server send an instant greeting TTS on connection (no LLM round-trip needed — hardcoded friendly phrase), so the user hears a voice within ~500ms of tapping
+While greeting plays, the UI shows "Speaking..." state with the pulsing mic — user immediately knows it's alive
+After greeting finishes (tts_done), auto-listen kicks in as normal
+Files: server/voice-ws.ts (send greeting on connection), app/(tabs)/home.tsx (remove the 300ms delay, let greeting play first), lib/voice.ts (don't suppress the initial "Connected" status)
+Acceptance: Tapping the hero button produces audible greeting within 1 second
+T002: Parallelize Product DB Lookups
+Blocked By: []
+Details:
+matchProductsByName in server/voice-ws.ts runs sequential await pool.query() for each item. If the user says "add milk, eggs, bread, and cheese" that's 4 sequential DB round-trips
+Change to Promise.all() to run all queries in parallel
+Files: server/voice-ws.ts (lines 140-174)
+Acceptance: Multiple-item add_to_cart requests complete in ~1 DB round-trip time instead of N
+T003: Clearer Visual States — Never Leave the User Guessing
+Blocked By: []
+Details:
+Listening state: Show large "Listening..." text (not just "Just start talking" which is vague). Add a subtle animated waveform indicator or more prominent text
+Processing state: The icon swap from mic→ellipsis is too subtle for seniors. Show clear "Thinking..." text prominently below the mic, in gold color
+Speaking state: Show the assistant's response text as it arrives, with "Speaking..." label
+Error recovery: Instead of just showing error text, add a clear "Tap to try again" button, don't just silently restart listening after 1.5s — seniors may not realize what happened
+Fix the text display logic: the condition statusText !== "I'm listening..." && statusText !== 'Thinking...' actively HIDES useful status from the user. The user should always see what state we're in
+Always show a state label: "Listening...", "Thinking...", "Speaking..." — clear, large, gold text below the mic
+Files: app/(tabs)/home.tsx (voice UI section, lines 1113-1195, voice styles)
+Acceptance: At every moment during a voice interaction, the user can see clear text telling them what's happening
+T004: Reduce Post-Speech Delays
+Blocked By: []
+Details:
+Remove or reduce the 300ms startup delay (line 949) — if the WS connects fast, start listening immediately
+Reduce the 400ms post-tts_done delay before auto-listen (line 542) to 200ms — keeps conversation snappy
+Reduce the 150ms delay after stopping recorder before reading audio (stopAndSendNativeRecording) if possible
+Reduce the 1500ms delay after errors before re-listening (line 567) to 800ms
+Start audio playback after 1 chunk instead of 2 in lib/voice.ts (line 92) for faster first-audio
+Files: app/(tabs)/home.tsx, lib/voice.ts
+Acceptance: Measurably faster transitions between voice states
+T005: Robust Error Recovery UI
+Blocked By: [T003]
+Details:
+When errors occur ("I had trouble hearing that", "I had trouble thinking"), show a visible retry prompt with a tap target, not just text that disappears
+Add a "Tap mic to try again" hint below error messages
+If WS disconnects mid-conversation, show "Reconnecting..." with a spinner instead of silently trying to reconnect
+If 3+ errors happen in a row, offer to end the call gracefully: "Having trouble? Tap here to try again or close"
+Files: app/(tabs)/home.tsx (error event handler, voice UI), lib/voice.ts (disconnection handling)
+Acceptance: User always knows what went wrong and what to do about it
+T006: Smarter Suggestion Chips — Always Available
+Blocked By: [T003]
+Details:
+Currently chips only show when conversationLog.length === 0 — they disappear after the first interaction
+Keep showing contextual chips even mid-conversation: after assistant responds, show relevant follow-up chips like "Add more items", "Go to cart", "That's all"
+This gives seniors a fallback if the mic isn't working or they're unsure what to say
+Show chips whenever assistant is done speaking and we're in idle/listening state
+Files: app/(tabs)/home.tsx (suggestion chips section, lines 1163-1183)
+Acceptance: Helpful action chips visible after every assistant response, not just the first

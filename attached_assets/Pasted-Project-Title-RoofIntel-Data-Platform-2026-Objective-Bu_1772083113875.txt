@@ -1,0 +1,65 @@
+Project Title: RoofIntel Data Platform 2026
+
+Objective: Build a scalable property‑intelligence platform that ingests statewide parcel data, normalizes and enriches it, resolves ownership chains, streams hazard and market events and exposes a unified API for lead scoring. The architecture must be modular so individual services can be scaled independently and new data sources added without rewriting core code.
+
+Tech Stack:
+
+Backend language: TypeScript (Node.js)
+
+Ingestion messaging: Kafka or NATS for event streaming
+
+Databases: PostgreSQL with PostGIS for parcel and event data; Neo4j for ownership/relationship graph; Redis for caching
+
+API: GraphQL Gateway that aggregates queries across micro‑services
+
+Infrastructure: Docker Compose for local dev; Kubernetes manifests for production; use environment variables for configuration
+
+ML/analytics: Python service using FastAPI for scoring and entity‑resolution models
+
+Micro‑services:
+
+parcel‑ingest – Downloads and imports statewide parcel datasets. Reads configuration files describing field mappings and transforms them into the canonical schema. Publishes parcel_ingested events to Kafka.
+
+event‑enrich – Listens to parcel_ingested, fetches assessor, sale, mortgage and permit data, attaches trust scores and writes to PostGIS. Publishes parcel_enriched.
+
+ownership‑resolver – Consumes parcel_enriched, queries Secretary‑of‑State and SEC APIs to resolve LLC chains and builds an ownership graph in Neo4j. Exposes endpoints to fetch direct and indirect owners with match scores.
+
+weather‑stream – Ingests real‑time radar/nowcasting feeds from NOAA and emits hazard events keyed to parcel IDs.
+
+scoring‑service – Python service that listens to enrichment and weather events, calculates lead scores using multi‑factor models (hazard risk, transaction history, owner propensity to sell) and persists scores.
+
+api‑gateway – GraphQL server that federates queries across PostGIS, Neo4j and scoring service. Handles authentication, rate limiting and filters out personally identifiable information when requested.
+
+Data Models:
+
+Parcel (id, state, county, apn, address, latitude, longitude, land_use_code, improvement_value, last_update)
+
+PropertyEvent (event_id, parcel_id, source, event_type, description, date, metadata JSON)
+
+Owner (owner_id, name, type [individual/company], contact info, match_score)
+
+OwnershipEdge (parent_id, child_id, relationship_type, confidence)
+
+Score (parcel_id, base_score, hazard_modifier, owner_modifier, market_modifier, timestamp)
+
+Functional Requirements:
+
+Import Washington’s and North Carolina’s statewide parcel datasets as initial sources; support adding new states by editing a config file.
+
+Normalize field names and units across datasets; store original raw fields for audit.
+
+Maintain idempotency so re‑imports don’t create duplicates.
+
+Provide API queries to fetch a parcel’s details, owner hierarchy, recent events and current lead score.
+
+Expose a webhook endpoint clients can subscribe to for real‑time hazard or market alerts.
+
+Stretch Goals:
+
+Add a UI in React to visualise parcels, ownership trees and scores.
+
+Integrate phone/email validation through external APIs.
+
+Provide CLI scripts to bootstrap a new state data source.
+
+Drop this into Ghostwriter Chat inside a new Node.js + TypeScript Repl. It will scaffold the services, set up Docker Compose with Kafka/Postgres/Neo4j, generate basic GraphQL schema and TypeORM models, and wire up event consumers and producers. From there you can refine the business logic and expand on the models to meet your roadmap.

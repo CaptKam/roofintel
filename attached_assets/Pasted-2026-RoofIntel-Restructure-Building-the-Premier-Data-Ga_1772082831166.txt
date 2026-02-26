@@ -1,0 +1,84 @@
+2026 RoofIntel Restructure – Building the Premier Data‑Gathering Platform
+Vision for 2026
+
+By 2026, RoofIntel must evolve from a regional lead tool into the backbone of a nation‑wide commercial property intelligence platform. The goal is not merely to “catch up” but to leapfrog incumbents by delivering fresher data, deeper insight and a more modular architecture. That means embracing state‑aggregated parcel datasets like Washington’s statewide tax parcel project, which normalizes owner and property attributes across the entire state, and North Carolina’s NC OneMap, which standardizes parcel attributes across 100 counties. It also means learning from Reonomy’s playbook: combine assessor, census, transaction, geospatial, ownership and occupant data to create a single unique identifier for each asset and augment that with violations, capital expenditures and other metrics scraped from more than 200 public databases.
+
+The restructuring plan below lays out how to transform RoofIntel’s 2023‑era monolith into an extensible, state‑agnostic system that can integrate new data feeds, scale to millions of parcels and deliver actionable leads faster than any competitor.
+
+1 Data Foundation – Build a National Property Graph
+
+Adopt normalized, statewide parcel data as the base layer. For states with standardized parcel projects (e.g. WA Parcels, NC OneMap, Florida’s FGDL, Pennsylvania’s PA Parcels), ingest the entire state via a single configuration instead of county‑by‑county imports. For states without statewide datasets, lobby for open data or partner with aggregators. Store all parcels in a unified schema; attach a synthetic “RoofIntel ID” to each parcel similar to Reonomy’s approach.
+
+Layer on assessor, transaction, mortgage and tax data. Use scraping agents to integrate assessor records and transaction histories from county, state and federal sources. Normalize fields like sale price, deed type and mortgage origination across states. Assign trust scores based on source reliability and recency, following the evidence system.
+
+Integrate building violations, permits and capital expenditure records. Many municipalities publish building permits and code violations through Socrata or ArcGIS. Standardize field mappings and load them into a “property_events” table. Use NLP to categorize violation descriptions and flag properties with deferred maintenance.
+
+Continuously enrich with satellite and hazard data. Pull roof geometry from open building footprint datasets and remote sensing. Augment with FEMA flood zones, NOAA historical hail/tornado data and climate change projections. This enables risk‑adjusted lead scoring and helps clients prioritize resilient properties.
+
+2 Ingestion & Normalization Framework
+
+Configurable importers. Replace the four county‑specific CAD agents with a single ParcelImporter that accepts a configuration describing the source URL, pagination, authentication, field mapping and filter expressions. Each new data source becomes a row in a data_sources table rather than a new TypeScript file.
+
+Schema registry. Maintain a field_mappings registry that maps each external field to the canonical RoofIntel schema. This allows quick adaptation when a county changes field names or a new statewide dataset is onboarded.
+
+Event‑driven ingestion. Use a message broker (Kafka or NATS) to publish “ParcelIngested”, “PermitImported”, “HailEvent” etc. Separate ingestion services subscribe to relevant events and enrich the parcel graph asynchronously.
+
+3 Owner, Tenant & Decision‑Maker Intelligence
+
+Recursive entity resolution. Expand the owner intelligence pipeline to traverse LLC chains across state lines. Use secretary‑of‑state APIs, SEC EDGAR filings and tax records to link subsidiaries to parent entities. Persist a graph of companies and individuals similar to Reonomy’s ownership tree and store match scores for each connection.
+
+Automated role inference. Train machine‑learning models on job titles and corporate hierarchies to infer a contact’s decision‑making authority (e.g. CFO vs property manager). Continue to refine the 7‑factor confidence score by feeding outcomes back into the model.
+
+Continuous contact validation. Integrate phone and email validation services (Twilio Lookups, MX checks) into the pipeline. Implement heuristics to detect stale or invalid numbers and trigger re‑enrichment.
+
+Data privacy & compliance. Adopt GDPR‑style consent tracking. Tag contacts with communication preferences and implement dynamic do‑not‑call/opt‑out suppression based on federal and state registries.
+
+4 Real‑Time Hazard & Market Signals
+
+Streaming weather & climate feeds. Replace the existing 10‑minute storm polling with a streaming ingestion of radar and nowcasting feeds (e.g. NOAA’s MRMS, Xweather). Implement micro‑services that calculate hail size, wind speed and precipitation in real time for each parcel.
+
+Macro‑economic and market data. Subscribe to public datasets on vacancy rates, construction starts, unemployment and interest rates. Combine these with property‑level data to produce lead scores that account for market conditions.
+
+Community sentiment & signals. Scrape news articles, social media posts and 311 complaints to identify distressed properties or owners facing community pressure. Use sentiment analysis to flag high‑opportunity leads.
+
+5 System Architecture & Infrastructure
+
+Micro‑services & containers. Break the monolith into stateless services for ingestion, enrichment, analysis, scoring and API delivery. Containerize each service, orchestrate with Kubernetes and deploy across multiple regions for resilience. This ensures that compute‑heavy tasks like geospatial clustering or machine‑learning inference do not block API requests.
+
+Polyglot storage. Use PostgreSQL (with PostGIS) for transactional data and geospatial queries, a graph database (Neo4j or JanusGraph) for ownership and relationship data, and a time‑series database (TimescaleDB or InfluxDB) for streaming weather and event data. Partition tables by state or market to maintain performance at scale.
+
+API gateway & rate limiting. Expose a unified GraphQL or REST API that aggregates data from micro‑services. Use a gateway to handle authentication, throttling and schema evolution. Provide real‑time WebSocket streams for clients who need push notifications.
+
+Observability and security. Instrument all services with structured logging, distributed tracing and metrics. Enforce least‑privilege IAM roles and encrypt data at rest and in transit. Conduct regular penetration tests and third‑party security audits.
+
+6 Lead Scoring & Prioritization
+
+Multi‑dimensional scoring. Expand the current lead‑scoring algorithm by incorporating new vectors: hazard risk, owner propensity to sell (modelled after Reonomy’s likely‑to‑sell score), permit violations, tenant quality and macro‑economic trends.
+
+Explainability. Provide a breakdown of how each factor influences the score. Allow customers to adjust weightings via a configuration UI to tailor the algorithm to their strategy.
+
+Active learning. Collect feedback on outreach outcomes. Use success/failure signals to retrain models and adjust scoring heuristics automatically.
+
+7 Five‑Year Roadmap (2026–2031)
+
+Complete statewide coverage. Finish ingesting all Texas metros by end of 2026. Onboard at least five states with standardized parcel datasets (WA, NC, FL, PA, NY) by 2028. By 2031, cover at least 20 states and all major MSAs. Expand into Canada where parcel data is available.
+
+Partnerships and licensing. Secure agreements with national parcel aggregators and data vendors (e.g. CoreLogic for property characteristics, Black Knight for mortgage data) to enrich the graph. Negotiate revenue‑share deals for co‑branded solutions.
+
+Third‑party marketplace. Open APIs to allow trusted partners to contribute enrichment modules (e.g. solar potential, insurance claims). Build a revenue stream by charging per‑use or per‑enriched record.
+
+Hiring & org structure. Build specialized teams for data acquisition, ML & analytics, platform engineering and client success. Establish a data governance committee to oversee privacy and compliance across states.
+
+8 Ten‑Year Vision (2036)
+
+National parcel graph. Achieve near‑complete coverage of U.S. commercial parcels with continuous updates and accuracy comparable to Reonomy’s 52 million parcels and 38 million properties. Provide cross‑border coverage in Canada and Mexico.
+
+Automated decision‑maker discovery. Use large language models to extract contacts and org structures from unstructured web content (news releases, LinkedIn bios, SEC filings). The system should automatically suggest the top three decision makers for any property.
+
+Real‑time risk & opportunity alerts. Deliver push notifications when hail storms hit, when a property is listed for sale, when a loan matures or when a local government issues a fine. Let users subscribe to bespoke criteria and geographies.
+
+Data marketplace leader. Position RoofIntel as the premier data‑as‑a‑service provider for roofing, solar, insurance and other property‑adjacent industries. Offer anonymized, aggregated insights to researchers and governments.
+
+Conclusion
+
+This plan moves RoofIntel from a regional tool into a national, data‑driven intelligence engine. By leveraging standardized parcel datasets, adopting a modular micro‑services architecture, enriching the property graph with violations, hazards and market data, and applying machine learning to decision‑maker discovery and lead scoring, the company can create the most impressive data‑gathering platform in the market. The roadmap balances immediate engineering tasks with long‑term strategic initiatives, ensuring RoofIntel remains ahead of competitors well into the next decade.

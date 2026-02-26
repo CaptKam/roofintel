@@ -1,0 +1,119 @@
+RoofIntel System Audit & Restructure Plan
+To address the issues identified in the audit and prepare RoofIntel for multi-market scale, we recommend a complete overhaul of the data pipeline and architecture. The overall approach should follow data‐engineering best practices: build modular ETL/ELT pipelines that are configuration‑driven, validate and verify all incoming data, and add dashboards to monitor data quality. Figure 1 below illustrates a modern data pipeline pattern: raw data is ingested from multiple sources into a data lake, then transformed and loaded into downstream systems for analytics and ML
+. In RoofIntel’s case, this means streaming CAD/permit data and third‑party feeds into PostGIS, enriching and resolving ownership in Neo4j, and then exposing results via GraphQL or REST APIs.
+
+Data Pipeline Architecture Explained: 6 Diagrams And Best Practices
+Figure 1: Modern data pipelines gather data from diverse sources (CAD, APIs, etc.), load it into a central repository (data lake/warehouse), and then transform and serve it to consumers
+.
+
+The following sections address tasks T001–T007 in order, with recommended solutions and references to relevant engineering practices.
+
+T001: Fix Contact Name Pollution (Person vs. Company Names)
+Issue: Many “contact” fields contain organization names (e.g. “LLC”, “Inc.”, churches, contractors) instead of real people. This corrupts owner contact data.
+
+Solution: Introduce strict name validation in the data pipeline. Implement an isPersonName(name: string) utility that rejects common organizational terms and suffixes. For example, if the name contains tokens like “LLC, Inc, Co, Corp, Ltd, Trust, Church, School, Plumbing, Electric, Restaurant”, or patterns like “c/o”, “attn”, “dept”, then treat it as a business name, not a person. Only names that match person‐name patterns (allowing “Sr”, “Jr”, Roman numerals, hyphens, apostrophes) should pass
+. Add this check wherever contact names are written (owners resolver, skip-trace, web-scrape agents, etc.), and if a name fails, clear it or store it separately. All stored contacts must include a contact_source.
+
+A one-time cleanup migration should also run: any existing lead whose contact_name matches a business pattern should be nulled out, and any legacy NULL contact_source set to something like “Unknown (Legacy)”. This aligns with general data quality principles: automate cleaning and validation to catch errors early, as “keeping your data clean and reliable” by removing garbage entries is crucial
+.
+
+“Keep your data clean and reliable by regularly removing duplicates, fixing errors, and verifying its accuracy. Automating these tasks can save time and ensure consistency.”
+ – i.e. avoid storing polluted contact names.
+
+T002: Fix Evidence Verification (Auto-Verification Rules)
+Issue: All evidence records are unverified by default. High-trust sources (government data) aren’t marked more confident.
+
+Solution: Enhance the evidence-recorder to auto-verify evidence when appropriate. For example, evidence from authoritative public sources (county assessor records, TX Comptroller, county clerk filings, building permits, etc.) typically has high trust (e.g. trust score ≥85) – these should be flagged as VERIFIED automatically. Similarly, any data point that appears from multiple independent sources (corroboration count ≥2) is likely correct and should be verified regardless of source. For phone/email, apply format validation: if a phone number is normalized to E.164, mark it as FORMAT_VALID (and likewise for an email with a valid domain); only mark emails as fully VERIFIED if they are corroborated or come from trusted sources.
+
+Implement these rules in server/evidence-recorder.ts. Also run a backfill script to mark existing evidence: set VERIFIED on all historical evidence that meets these criteria (e.g. matches a known government source or has corroboration_count ≥2). This practice follows data quality best practices of certifying data provenance. As one data‐quality guide notes, organizations should “create and assign data certificates” for trusted data to support auditability
+. In practice, that means moving high-quality evidence from “unverified” to “verified” status automatically, which boosts confidence in leads.
+
+T003: Recalibrate Lead Scoring Thresholds (DM Confidence)
+Issue: The decision-maker (DM) scoring is overly aggressive: ~84% of leads are “suppressed.” The current thresholds (auto-publish ≥85, suppress <60) assume most leads have complete data, but in reality enrichment is incomplete.
+
+Solution: Lower the bar for publishing and introduce an “insufficient_data” tier. Based on lead scoring best practices, thresholds should be data-driven and revisited regularly
+. We recommend:
+
+Suppress if score < 30 (instead of <60).
+Auto-publish if score ≥ 70 (instead of ≥85).
+Insufficient_data if a lead scores low only because of missing enrichment (for example, no role inference, no contact reachability, low source count, and no evidence flags) but not because of bad data. In other words, if the lead looks clean but lacks data, mark it insufficient_data instead of suppressed. This new tier lets sales teams see the lead needs more research, rather than discarding it outright.
+Adjust server/dm-confidence.ts accordingly and update any enums/schemas to include the new status. Then batch-recompute all scores (see T004). This aligns with lead-scoring advice: “base your thresholds on actual data, not guesses,” and “adjust thresholds regularly” to match changing conditions
+.
+
+T004: Batch Ownership Classification & DM Assignment
+Issue: Only a tiny fraction of leads have ownership chains or decision-makers filled in, because the classification agents haven’t run on the backlog.
+
+Solution: Build admin endpoints (e.g. under /api/admin) to run batch jobs. Use a cursor/pagination approach to process leads in chunks (e.g. 200–500 at a time) to avoid memory overload
+. Specifically:
+
+Ownership Classification: Run classifyAndAssignDecisionMakers() on all leads lacking an ownership tree. This will populate ownership_structure in Neo4j.
+Management Attribution: Run runManagementAttribution() on all leads missing attribution, to set decision_makers.
+Recompute Confidence: Re-run the DM confidence scoring with the new thresholds for all leads.
+These batch jobs should log progress and be re-entrant (use checkpointing or updated timestamps) to handle failures gracefully
+. Using controlled batch processing prevents crashes or timeouts when scanning thousands of rows. In Node.js, streaming from a database cursor and processing in small batches is a standard pattern for scaling to millions of records
+.
+
+Once complete, all 16,691 current leads should have ownership hierarchies and decision-makers assigned where possible, and updated confidence statuses.
+
+T005: Multi-Market Architecture (Hierarchical Markets & Config-Driven Sources)
+Issue: The market model is flat (just DFW) and new cities/countries require code changes. Data sources are hardcoded.
+
+Solution: Redesign the markets schema for hierarchy and configurability:
+
+Markets table: Add columns for state, metroArea, counties (array), boundingBox (geo), timezone, and isActive. This lets you define markets (e.g. “Dallas-Fort Worth, TX” with DFW counties) with structured metadata.
+market_data_sources table: Each record ties a market to a specific data feed. Columns: marketId, sourceType (e.g. cad_arcgis, permits_socrata, NOAA_hail), endpoint, fieldMapping (JSON map of source→canonical fields), filterConfig (JSON for query filters), isActive, etc.
+Use this config table to drive ingestion. For example, instead of writing four separate CAD agents for Dallas, insert four rows in market_data_sources (Dallas, Tarrant, Collin, Denton) with the appropriate ArcGIS URLs and attribute mappings. Then, a generic ArcGIS importer (T006) can consume these configs.
+
+This approach mirrors industry practice: we’re essentially creating a config-driven ingestion engine. Large organizations do this for scalability – for example, McDonald’s built a reusable ETL engine where all source logic comes from YAML configuration, letting them plug in new data feeds without coding
+. As the McDonald’s team notes, “Teams define job logic in configuration, and the engine reads these files to perform data operations automatically. This design makes the engine ideal for handling diverse data sources”
+. By analogy, RoofIntel’s new market_data_sources table serves as the configuration that the pipeline reads at runtime. This allows adding a new city simply by inserting config rows, not new code.
+
+Implement the schema changes via Drizzle migrations (update shared/schema.ts), backfill the existing DFW market record with state/metro/counties, and insert the four CAD sources as initial entries. Provide admin tools or scripts to edit these configs as needed. With this change, the pipeline orchestrator can iterate over each active market, load its sources from config, and run the appropriate importers.
+
+T006: Config-Driven CAD Agent (Generic ArcGIS Importer)
+Issue: The CAD agents are hardcoded to specific counties. We need a flexible importer.
+
+Solution: Write a new server/arcgis-importer.ts that reads from the market_data_sources table for entries of type cad_arcgis. For each source row:
+
+Query the ArcGIS Feature Service at endpoint, using filterConfig (e.g. where state='TX') and selecting the necessary outFields as defined in fieldMapping.
+Transform each feature’s attributes into the canonical lead schema (applying fieldMapping). For example, map OwnerName→ownerName, etc.
+Compute the centroid (if geometry provided) or bounding box.
+Use the existing owner-type inference and deduplication logic.
+Write leads using the same method as existing agents (to preserve sourceType/sourceId tracking).
+Log import runs (reusing the import_runs table) and allow a “dry run” mode for comparison. Update pipeline-orchestrator.ts: if config exists for a market, use the new generic importer instead of hardcoded code. Test thoroughly by re-importing Dallas and ensuring results match the legacy agents. This generic importer then automatically supports any ArcGIS source in any market, as soon as it’s configured.
+
+Such a generic, config-driven importer ensures that expanding to new cities requires no code changes – only a database insert of the new source’s URL and field mapping. It follows best practices of reusable pipelines: decouple data sources from logic so pipelines are scalable and maintainable
+.
+
+T007: Data Quality Dashboard (Lead Confidence Indicators)
+Issue: Users cannot easily tell which leads have good data. We need UX to highlight data confidence.
+
+Solution: Augment the UI with data-quality badges and summary metrics. In the API (in server/routes.ts for leads), compute a dataConfidence level for each lead:
+
+High: Lead has key verified data (e.g. phone verified, person-name verified, corroborated evidence, full enrichment complete).
+Medium: Lead has some enrichment (maybe phone or email, or partial owner info) but is missing one or two key items.
+Low: Lead is essentially just raw import with minimal info.
+Add this as a computed property (no new DB column). In the React front end, display a colored badge (“High/Medium/Low”) next to each lead and on lead-detail pages.
+
+On the dashboard, add a “Data Quality” panel showing metrics like:
+
+Total leads by confidence tier (pie or counts).
+% of leads with verified phone, with a real person name, or with decision-makers assigned.
+Top missing fields (e.g. % leads missing ownerEmail, ownerPhone, etc.).
+This follows data-quality best practices: dashboards should “tag metrics with quality scores” so users can trust the numbers
+. In our case, showing a confidence score or badge on each lead gives sales reps immediate insight into which leads are action-ready and which need more work. It also helps the team track progress – e.g. are we reducing the number of “Low” leads over time?
+
+By exposing data completeness and verification stats, the platform makes clear which gaps remain. As one guide puts it, improving data completeness (i.e. filling missing fields) “boosts trust” in the data’s quality
+. The new dashboard elements will highlight those gaps and the success of our enrichment processes.
+
+Implementation Outline
+Database Migrations: Update schemas for markets and data sources; add migration scripts for cleaning contact names and backfilling evidence verification flags; extend dmReviewStatus enum.
+Utility Updates: Write isPersonName() and add to all contact-writing paths. Extend evidence-recorder.ts with auto-verify rules. Adjust dm-confidence.ts thresholds and logic.
+New Services/Endpoints: Create arcgis-importer.ts and modify orchestrator. Add admin routes (/api/admin/…) to trigger batch reprocessing (ownership, DM assignment, confidence recompute).
+Front-End Changes: Modify Leads and Dashboard React pages to display the confidence badge and quality metrics.
+Runbook: In production, run the cleanup scripts, then batch-import remaining counties (via the new importer), backfill evidence, recompute DM scores, and run the classification agents. The system should then show dramatically fewer “suppressed” leads and far more with valid decision-makers.
+By enforcing these changes, RoofIntel will have a clean, configurable, and scalable platform ready for expansion. The new design follows proven data engineering principles (streaming pipelines, config-driven ingestion, automated validation) and includes visualizations to monitor data quality
+. This comprehensive restructure will ensure reliable lead data and make adding new cities or states a matter of configuration, not code.
+
+Sources: Data pipeline and quality best practices
+.
