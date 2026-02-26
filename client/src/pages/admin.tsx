@@ -51,6 +51,9 @@ import {
   ThumbsDown,
   BarChart3,
   MapPin,
+  ChevronDown,
+  ChevronRight,
+  Layers,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -1930,6 +1933,33 @@ export default function Admin() {
     },
   });
 
+  const [showIntelAdvanced, setShowIntelAdvanced] = useState(false);
+  const [showContactAdvanced, setShowContactAdvanced] = useState(false);
+  const [showBulkDataFixes, setShowBulkDataFixes] = useState(false);
+
+  const batchReprocessMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/batch-reprocess");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Intelligence Pipeline Started", description: "Running ownership classification, management attribution, role inference, and confidence scoring across all leads" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Pipeline failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const batchReprocessStatusQuery = useQuery<any>({
+    queryKey: ["/api/admin/batch-reprocess/status"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/batch-reprocess/status");
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+    refetchInterval: batchReprocessMutation.isPending || batchReprocessMutation.isSuccess ? 3000 : false,
+  });
+
   const complianceOverviewQuery = useQuery<any>({
     queryKey: ["/api/compliance/overview", dfwMarket?.id],
     queryFn: async () => {
@@ -1998,10 +2028,10 @@ export default function Admin() {
         </p>
       </div>
 
-      <RunAllPipelineCard />
       <EnrichmentCreditsCard />
       <BatchFreeEnrichmentCard />
       <BatchGooglePlacesCard />
+      <RunAllPipelineCard />
 
       <Tabs defaultValue="property-sources" className="space-y-6">
         <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">
@@ -2168,63 +2198,78 @@ export default function Admin() {
               <CardContent className="p-6 pt-0 space-y-4">
                 <p className="text-sm text-muted-foreground">
                   Estimates building stories, roof type, and construction type using property characteristics.
-                  Roof types are inferred from year built, building size, improvement value, and zoning.
+                  These are one-time data quality corrections — run after initial property import.
                 </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    onClick={() => dfwMarket && storyEstimateMutation.mutate({ marketId: dfwMarket.id })}
-                    disabled={storyEstimateMutation.isPending || !dfwMarket}
-                    data-testid="button-estimate-stories"
-                  >
-                    {storyEstimateMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Building2 className="w-3 h-3" />
-                    )}
-                    Estimate Stories
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => dfwMarket && roofTypeEstimateMutation.mutate({ marketId: dfwMarket.id })}
-                    disabled={roofTypeEstimateMutation.isPending || !dfwMarket}
-                    data-testid="button-estimate-roof-type"
-                  >
-                    {roofTypeEstimateMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Building2 className="w-3 h-3" />
-                    )}
-                    Estimate Roof & Construction Types
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => ownershipFlagMutation.mutate()}
-                    disabled={ownershipFlagMutation.isPending}
-                    data-testid="button-flag-ownership"
-                  >
-                    {ownershipFlagMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <ShieldAlert className="w-3 h-3" />
-                    )}
-                    Flag Holding Companies
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => fixLocationsMutation.mutate()}
-                    disabled={fixLocationsMutation.isPending}
-                    data-testid="button-fix-locations"
-                  >
-                    {fixLocationsMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <MapPin className="w-3 h-3" />
-                    )}
-                    Fix Missing Locations
-                  </Button>
-                </div>
+
+                <button
+                  onClick={() => setShowBulkDataFixes(!showBulkDataFixes)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  data-testid="button-toggle-bulk-fixes"
+                >
+                  {showBulkDataFixes ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  Show bulk data fix controls
+                </button>
+
+                {showBulkDataFixes && (
+                  <div className="flex items-center gap-2 flex-wrap pt-2 border-t">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => dfwMarket && storyEstimateMutation.mutate({ marketId: dfwMarket.id })}
+                      disabled={storyEstimateMutation.isPending || !dfwMarket}
+                      data-testid="button-estimate-stories"
+                    >
+                      {storyEstimateMutation.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Building2 className="w-3 h-3" />
+                      )}
+                      Estimate Stories
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => dfwMarket && roofTypeEstimateMutation.mutate({ marketId: dfwMarket.id })}
+                      disabled={roofTypeEstimateMutation.isPending || !dfwMarket}
+                      data-testid="button-estimate-roof-type"
+                    >
+                      {roofTypeEstimateMutation.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Building2 className="w-3 h-3" />
+                      )}
+                      Estimate Roof & Construction Types
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => ownershipFlagMutation.mutate()}
+                      disabled={ownershipFlagMutation.isPending}
+                      data-testid="button-flag-ownership"
+                    >
+                      {ownershipFlagMutation.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <ShieldAlert className="w-3 h-3" />
+                      )}
+                      Flag Holding Companies
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fixLocationsMutation.mutate()}
+                      disabled={fixLocationsMutation.isPending}
+                      data-testid="button-fix-locations"
+                    >
+                      {fixLocationsMutation.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <MapPin className="w-3 h-3" />
+                      )}
+                      Fix Missing Locations
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -2348,7 +2393,7 @@ export default function Admin() {
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-base font-semibold">
-                Contact Enrichment Pipeline
+                Contact Enrichment Overview
               </CardTitle>
               <Button
                 size="sm"
@@ -2364,12 +2409,12 @@ export default function Admin() {
                 ) : (
                   <Play className="w-3 h-3" />
                 )}
-                Run Full Pipeline
+                Quick Enrich (25 Leads)
               </Button>
             </CardHeader>
             <CardContent className="p-6 pt-0 space-y-6">
               <p className="text-sm text-muted-foreground">
-                Automated 3-stage enrichment: TX Filing Lookup, Phone Number Discovery, Web Research for Decision-Makers.
+                For bulk enrichment, use the <strong>Batch Free Enrichment</strong> button at the top of the page. It runs all free agents (TX Filing, Phone Discovery, Web Research) across all unenriched leads automatically. The controls below are for testing individual agents on small batches.
               </p>
               {pipelineLoading ? (
                 <Skeleton className="h-20 w-full" />
@@ -2413,175 +2458,83 @@ export default function Admin() {
                   </div>
                 </>
               ) : null}
+
+              <button
+                onClick={() => setShowContactAdvanced(!showContactAdvanced)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+                data-testid="button-toggle-contact-advanced"
+              >
+                {showContactAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                Manual controls for individual agents
+              </button>
+
+              {showContactAdvanced && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-2 border-t">
+                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold">TX Filing Enrichment</p>
+                      <Badge variant="outline" className="text-[10px]">Free</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      LLC/Corp contacts via Texas Open Data Portal.
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts">
+                        {contactEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserSearch className="w-3 h-3" />}
+                        Enrich (50)
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts-all">
+                        All Leads
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold">Phone Discovery</p>
+                      <Badge variant={phoneStatus?.totalAvailable ? "outline" : "secondary"} className="text-[10px]">
+                        {phoneStatus?.totalAvailable || 0} Provider{(phoneStatus?.totalAvailable || 0) !== 1 ? "s" : ""}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cascading lookup: Google Places, OpenCorporates, web search.
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones">
+                        {phoneEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Phone className="w-3 h-3" />}
+                        Find (50)
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones-all">
+                        All Leads
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold">Web Research</p>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-2 h-2 rounded-full ${webResearchStatus?.googlePlacesAvailable ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                        <span className="text-[10px] text-muted-foreground">{webResearchStatus?.googlePlacesAvailable ? "Active" : "Needs Key"}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Scans business websites for decision-maker contacts.
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 25 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research">
+                        {webResearchMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                        Research (25)
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 100 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research-all">
+                        Research (100)
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  TX Filing Enrichment
-                </CardTitle>
-                <Badge variant="outline" className="text-[10px] font-normal">
-                  Free Data Source
-                </Badge>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Enrich LLC/Corp owner contacts via Texas Open Data Portal.
-                  Finds taxpayer addresses, SOS file numbers, and filing status.
-                </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    onClick={() => dfwMarket && contactEnrichMutation.mutate({
-                      marketId: dfwMarket.id,
-                      batchSize: 50,
-                    })}
-                    disabled={contactEnrichMutation.isPending || !dfwMarket}
-                    data-testid="button-enrich-contacts"
-                  >
-                    {contactEnrichMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <UserSearch className="w-3 h-3" />
-                    )}
-                    Enrich Contacts (50)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => dfwMarket && contactEnrichMutation.mutate({
-                      marketId: dfwMarket.id,
-                      batchSize: 500,
-                    })}
-                    disabled={contactEnrichMutation.isPending || !dfwMarket}
-                    data-testid="button-enrich-contacts-all"
-                  >
-                    Enrich All Leads
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  Phone Number Enrichment
-                </CardTitle>
-                <Badge variant={phoneStatus?.totalAvailable ? "outline" : "secondary"} className="text-[10px] font-normal">
-                  {phoneStatus?.totalAvailable || 0} Provider{(phoneStatus?.totalAvailable || 0) !== 1 ? "s" : ""} Active
-                </Badge>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Cascading phone lookup: tries Google Places, OpenCorporates, and web search in order.
-                  Stops at first match to minimize cost.
-                </p>
-                {phoneStatus?.providers && (
-                  <div className="space-y-1.5">
-                    {phoneStatus.providers.map((p) => (
-                      <div key={p.name} className="flex items-center justify-between gap-2" data-testid={`phone-provider-${p.name}`}>
-                        <span className="text-xs text-muted-foreground">{p.name}</span>
-                        <div className="flex items-center gap-1.5">
-                          <div className={`w-2 h-2 rounded-full ${p.available ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                          <span className="text-[11px] text-muted-foreground">{p.available ? "Ready" : "Needs API Key"}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    onClick={() => dfwMarket && phoneEnrichMutation.mutate({
-                      marketId: dfwMarket.id,
-                      batchSize: 50,
-                    })}
-                    disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable}
-                    data-testid="button-enrich-phones"
-                  >
-                    {phoneEnrichMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Phone className="w-3 h-3" />
-                    )}
-                    Find Phones (50)
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => dfwMarket && phoneEnrichMutation.mutate({
-                      marketId: dfwMarket.id,
-                      batchSize: 500,
-                    })}
-                    disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable}
-                    data-testid="button-enrich-phones-all"
-                  >
-                    Find All Phones
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  Web Research Agent
-                </CardTitle>
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full ${webResearchStatus?.googlePlacesAvailable ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                  <span className="text-[11px] text-muted-foreground">{webResearchStatus?.googlePlacesAvailable ? "Active" : "Needs API Key"}</span>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Scans business websites to find facility managers, property managers, and decision-makers.
-                  Extracts their phone numbers and emails from staff directories and contact pages.
-                </p>
-                {webResearchStatus?.capabilities && (
-                  <div className="space-y-1.5">
-                    {webResearchStatus.capabilities.map((cap) => (
-                      <div key={cap} className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-                        <span className="text-xs text-muted-foreground">{cap}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Button
-                    size="sm"
-                    onClick={() => dfwMarket && webResearchMutation.mutate({
-                      marketId: dfwMarket.id,
-                      batchSize: 25,
-                    })}
-                    disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable}
-                    data-testid="button-web-research"
-                  >
-                    {webResearchMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Search className="w-3 h-3" />
-                    )}
-                    Research 25 Leads
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => dfwMarket && webResearchMutation.mutate({
-                      marketId: dfwMarket.id,
-                      batchSize: 100,
-                    })}
-                    disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable}
-                    data-testid="button-web-research-all"
-                  >
-                    Research 100 Leads
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
 
         <TabsContent value="intelligence" className="space-y-6">
@@ -2981,40 +2934,111 @@ export default function Admin() {
                     )}
                     Run All Leads
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => classifyOwnershipMutation.mutate()}
-                    disabled={classifyOwnershipMutation.isPending}
-                    data-testid="button-classify-ownership"
-                  >
-                    {classifyOwnershipMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <ShieldCheck className="w-3 h-3" />
-                    )}
-                    Classify Ownership
-                  </Button>
                 </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Classify Ownership buckets leads into 4 structures (Small Private, Investment Firm, REIT, Third-Party Managed) and assigns Primary/Secondary/Operational decision makers.
-                </p>
               </CardContent>
             </Card>
 
             <Card className="lg:col-span-2 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  Lead Scoring v2
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Layers className="w-4 h-4" />
+                  Intelligence Pipeline
                 </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => batchReprocessMutation.mutate()}
+                    disabled={batchReprocessMutation.isPending || batchReprocessStatusQuery.data?.running || !dfwMarket}
+                    data-testid="button-run-intel-pipeline"
+                  >
+                    {batchReprocessMutation.isPending || batchReprocessStatusQuery.data?.running ? (
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                    ) : (
+                      <Play className="w-3 h-3 mr-1" />
+                    )}
+                    {batchReprocessStatusQuery.data?.running ? "Running..." : "Run All Steps"}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="p-6 pt-0 space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Recalculate lead scores using the enhanced v2 algorithm that incorporates violations, permits, flood risk, distress signals, and compliance data.
+                  Runs all post-enrichment analysis in sequence: ownership classification, management attribution, role inference, confidence scoring, and lead re-scoring. Use this after importing new data or running enrichment.
                 </p>
-                <div className="flex items-center gap-2 flex-wrap">
+
+                {batchReprocessStatusQuery.data?.running && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                      <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                        Phase: {batchReprocessStatusQuery.data.currentPhase?.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {batchReprocessStatusQuery.data.progress?.processed?.toLocaleString()} / {batchReprocessStatusQuery.data.progress?.total?.toLocaleString()} leads
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  {[
+                    { key: "ownership_classification", label: "Ownership Classification", desc: "Classify ownership structures (private, investment, REIT, managed)", icon: <ShieldCheck className="w-3 h-3" /> },
+                    { key: "management_attribution", label: "Management Attribution", desc: `${attributionStatsQuery.data?.attributed?.toLocaleString() ?? 0} attributed`, icon: <Users className="w-3 h-3" /> },
+                    { key: "role_inference", label: "Role Inference", desc: `${roleStatsQuery.data?.withRole?.toLocaleString() ?? 0} with roles`, icon: <UserCheck className="w-3 h-3" /> },
+                    { key: "confidence_scoring", label: "Confidence Scoring", desc: `${confidenceStatsQuery.data?.scored?.toLocaleString() ?? 0} scored`, icon: <Target className="w-3 h-3" /> },
+                  ].map((step) => {
+                    const phaseData = batchReprocessStatusQuery.data?.phases?.[step.key];
+                    const isActive = batchReprocessStatusQuery.data?.currentPhase === step.key;
+                    const isComplete = phaseData?.status === "completed";
+                    return (
+                      <div key={step.key} className={`flex items-center gap-3 p-2 rounded-lg ${isActive ? "bg-blue-50 dark:bg-blue-900/20" : ""}`} data-testid={`intel-step-${step.key}`}>
+                        <div className="shrink-0">
+                          {isActive ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                          ) : isComplete ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 text-sm">
+                          {step.icon}
+                          <span className="font-medium">{step.label}</span>
+                          <span className="text-xs text-muted-foreground">{step.desc}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {confidenceStatsQuery.data && confidenceStatsQuery.data.scored > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Scored</p>
+                      <p className="text-lg font-bold mt-0.5" data-testid="text-dm-scored">{confidenceStatsQuery.data.scored?.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Avg Score</p>
+                      <p className="text-lg font-bold mt-0.5" data-testid="text-dm-avg-score">{confidenceStatsQuery.data.avgScore}</p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Auto-Publish</p>
+                      <p className="text-lg font-bold mt-0.5 text-emerald-700 dark:text-emerald-400" data-testid="text-dm-auto-publish">{confidenceStatsQuery.data.autoPublish?.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Review Queue</p>
+                      <p className="text-lg font-bold mt-0.5 text-amber-700 dark:text-amber-400" data-testid="text-dm-review">{confidenceStatsQuery.data.review?.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
+                      <p className="text-[11px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Suppress</p>
+                      <p className="text-lg font-bold mt-0.5 text-red-700 dark:text-red-400" data-testid="text-dm-suppress">{confidenceStatsQuery.data.suppress?.toLocaleString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 flex-wrap pt-2">
                   <Button
                     size="sm"
+                    variant="outline"
                     onClick={() => recalcScoresMutation.mutate()}
                     disabled={recalcScoresMutation.isPending || !marketId}
                     data-testid="button-recalculate-scores"
@@ -3024,8 +3048,28 @@ export default function Admin() {
                     ) : (
                       <RefreshCw className="w-3 h-3" />
                     )}
-                    Recalculate All Scores
+                    Recalculate Lead Scores
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => networkAnalysisMutation.mutate()}
+                    disabled={networkAnalysisMutation.isPending || !dfwMarket}
+                    data-testid="button-analyze-network"
+                  >
+                    {networkAnalysisMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Network className="w-3 h-3" />
+                    )}
+                    Analyze Portfolio Network
+                  </Button>
+                  <Link href="/portfolios">
+                    <Button size="sm" variant="ghost" data-testid="button-view-portfolios">
+                      <Network className="w-3 h-3" />
+                      View Portfolios
+                    </Button>
+                  </Link>
                 </div>
                 {lastResults.recalcScores && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
@@ -3033,41 +3077,81 @@ export default function Admin() {
                     <span data-testid="text-result-recalcScores">{lastResults.recalcScores}</span>
                   </div>
                 )}
+
+                <button
+                  onClick={() => setShowIntelAdvanced(!showIntelAdvanced)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+                  data-testid="button-toggle-intel-advanced"
+                >
+                  {showIntelAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  Advanced: Run individual steps
+                </button>
+
+                {showIntelAdvanced && (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2 border-t">
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Management Attribution</p>
+                      <p className="text-xs text-muted-foreground">Separates property managers from owners.</p>
+                      {attributionStatsQuery.data && (
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-[10px]">{attributionStatsQuery.data.attributed?.toLocaleString()} attributed</Badge>
+                          <Badge variant="outline" className="text-[10px]">{attributionStatsQuery.data.withCompany?.toLocaleString()} companies</Badge>
+                        </div>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => attributionScanMutation.mutate()} disabled={attributionScanMutation.isPending || !dfwMarket} data-testid="button-attribution-scan">
+                        {attributionScanMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Users className="w-3 h-3" />}
+                        Scan Management
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Role Inference</p>
+                      <p className="text-xs text-muted-foreground">Classifies contacts into decision-maker roles.</p>
+                      {roleStatsQuery.data && (
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-[10px]">{roleStatsQuery.data.withRole?.toLocaleString()} with roles</Badge>
+                          <Badge variant="outline" className="text-[10px]">{roleStatsQuery.data.avgConfidence}% avg confidence</Badge>
+                        </div>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => roleInferenceMutation.mutate()} disabled={roleInferenceMutation.isPending || !dfwMarket} data-testid="button-role-inference">
+                        {roleInferenceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
+                        Infer Roles
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Reverse Address Enrichment</p>
+                      <p className="text-xs text-muted-foreground">Identifies management companies from mailing address mismatches.</p>
+                      {reverseAddressStatsQuery.data && (
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge variant="outline" className="text-[10px]">{reverseAddressStatsQuery.data.withDifferentAddress?.toLocaleString()} different addr</Badge>
+                          <Badge variant="outline" className="text-[10px]">{reverseAddressStatsQuery.data.mgmtDiscovered?.toLocaleString()} mgmt found</Badge>
+                        </div>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => reverseAddressScanMutation.mutate()} disabled={reverseAddressScanMutation.isPending || !dfwMarket} data-testid="button-reverse-address-scan">
+                        {reverseAddressScanMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+                        Scan Addresses
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Confidence Scoring</p>
+                      <p className="text-xs text-muted-foreground">7-factor decision-maker confidence scoring.</p>
+                      <Button size="sm" variant="outline" onClick={() => confidenceScoringMutation.mutate()} disabled={confidenceScoringMutation.isPending || !dfwMarket} data-testid="button-confidence-scoring">
+                        {confidenceScoringMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
+                        Score Confidence
+                      </Button>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Ownership Classification</p>
+                      <p className="text-xs text-muted-foreground">Classify ownership structures and assign decision-makers.</p>
+                      <Button size="sm" variant="outline" onClick={() => classifyOwnershipMutation.mutate()} disabled={classifyOwnershipMutation.isPending} data-testid="button-classify-ownership">
+                        {classifyOwnershipMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                        Classify Ownership
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
-
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-base font-semibold">
-                Relationship Network Agent
-              </CardTitle>
-              <Button
-                size="sm"
-                onClick={() => networkAnalysisMutation.mutate()}
-                disabled={networkAnalysisMutation.isPending || !dfwMarket}
-                data-testid="button-analyze-network"
-              >
-                {networkAnalysisMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                ) : (
-                  <Network className="w-3 h-3 mr-1" />
-                )}
-                Analyze Network
-              </Button>
-            </CardHeader>
-            <CardContent className="p-6 pt-0 space-y-3">
-              <p className="text-xs text-muted-foreground">
-                Discovers hidden connections between property owners, management companies, and LLC portfolios. Groups leads into portfolios by matching owner names, taxpayer IDs, SOS file numbers, registered agents, and LLC chain entities. Portfolio plays are the highest-ROI leads in commercial roofing.
-              </p>
-              <Link href="/portfolios">
-                <Button size="sm" variant="outline" data-testid="button-view-portfolios">
-                  <Network className="w-3 h-3 mr-1" />
-                  View Portfolio Network
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
 
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -3209,247 +3293,6 @@ export default function Admin() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  Management Attribution
-                </CardTitle>
-                <Button
-                  size="sm"
-                  onClick={() => attributionScanMutation.mutate()}
-                  disabled={attributionScanMutation.isPending || !dfwMarket}
-                  data-testid="button-attribution-scan"
-                >
-                  {attributionScanMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                  ) : (
-                    <Users className="w-3 h-3 mr-1" />
-                  )}
-                  Scan Management
-                </Button>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Separates property managers from owners using permit applicant data, mailing address c/o analysis, web research contacts, and corporate registry records. Identifies who manages vs. who owns.
-                </p>
-
-                {attributionStatsQuery.data && (
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Attributed</p>
-                      <p className="text-lg font-bold mt-0.5" data-testid="text-attribution-total">
-                        {attributionStatsQuery.data.attributed?.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Companies</p>
-                      <p className="text-lg font-bold mt-0.5" data-testid="text-attribution-companies">
-                        {attributionStatsQuery.data.withCompany?.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Contacts</p>
-                      <p className="text-lg font-bold mt-0.5" data-testid="text-attribution-contacts">
-                        {attributionStatsQuery.data.withContact?.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  Role Inference
-                </CardTitle>
-                <Button
-                  size="sm"
-                  onClick={() => roleInferenceMutation.mutate()}
-                  disabled={roleInferenceMutation.isPending || !dfwMarket}
-                  data-testid="button-role-inference"
-                >
-                  {roleInferenceMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                  ) : (
-                    <UserCheck className="w-3 h-3 mr-1" />
-                  )}
-                  Infer Roles
-                </Button>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Classifies contacts into decision-maker roles (Property Manager, Facilities Director, Asset Manager, Owner Rep) using title parsing, corporate registry context, and intelligence claims.
-                </p>
-
-                {roleStatsQuery.data && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-muted/50 rounded-lg p-3">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">With Role</p>
-                        <p className="text-lg font-bold mt-0.5" data-testid="text-roles-assigned">
-                          {roleStatsQuery.data.withRole?.toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="bg-muted/50 rounded-lg p-3">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Avg Confidence</p>
-                        <p className="text-lg font-bold mt-0.5" data-testid="text-roles-confidence">
-                          {roleStatsQuery.data.avgConfidence}%
-                        </p>
-                      </div>
-                    </div>
-                    {roleStatsQuery.data.byRole && Object.keys(roleStatsQuery.data.byRole).length > 0 && (
-                      <div className="flex gap-2 flex-wrap">
-                        {Object.entries(roleStatsQuery.data.byRole).sort((a: any, b: any) => b[1] - a[1]).map(([role, count]: any) => (
-                          <Badge key={role} variant="outline" className="text-[10px]">
-                            {role}: {count.toLocaleString()}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  Reverse Address Enrichment
-                </CardTitle>
-                <Button
-                  size="sm"
-                  onClick={() => reverseAddressScanMutation.mutate()}
-                  disabled={reverseAddressScanMutation.isPending || !dfwMarket}
-                  data-testid="button-reverse-address-scan"
-                >
-                  {reverseAddressScanMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                  ) : (
-                    <MapPin className="w-3 h-3 mr-1" />
-                  )}
-                  Scan Addresses
-                </Button>
-              </CardHeader>
-              <CardContent className="p-6 pt-0 space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Compares owner mailing addresses vs. property addresses. When they differ, queries Google Places to identify what business is at the mailing address — management company, law firm, title company, or corporate HQ.
-                </p>
-
-                {reverseAddressStatsQuery.data && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-muted/50 rounded-lg p-3">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Different Addr</p>
-                        <p className="text-lg font-bold mt-0.5" data-testid="text-reverse-different">
-                          {reverseAddressStatsQuery.data.withDifferentAddress?.toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="bg-muted/50 rounded-lg p-3">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Enriched</p>
-                        <p className="text-lg font-bold mt-0.5" data-testid="text-reverse-enriched">
-                          {reverseAddressStatsQuery.data.enriched?.toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="bg-muted/50 rounded-lg p-3">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Mgmt Found</p>
-                        <p className="text-lg font-bold mt-0.5" data-testid="text-reverse-mgmt">
-                          {reverseAddressStatsQuery.data.mgmtDiscovered?.toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                    {reverseAddressStatsQuery.data.byType && Object.keys(reverseAddressStatsQuery.data.byType).length > 0 && (
-                      <div className="flex gap-2 flex-wrap">
-                        {Object.entries(reverseAddressStatsQuery.data.byType)
-                          .filter(([type]: any) => type !== "same_as_property")
-                          .sort((a: any, b: any) => b[1] - a[1])
-                          .map(([type, count]: any) => (
-                            <Badge key={type} variant="outline" className="text-[10px]">
-                              {type.replace(/_/g, " ")}: {count.toLocaleString()}
-                            </Badge>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-base font-semibold">
-                Decision-Maker Confidence Scoring
-              </CardTitle>
-              <Button
-                size="sm"
-                onClick={() => confidenceScoringMutation.mutate()}
-                disabled={confidenceScoringMutation.isPending || !dfwMarket}
-                data-testid="button-confidence-scoring"
-              >
-                {confidenceScoringMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                ) : (
-                  <Target className="w-3 h-3 mr-1" />
-                )}
-                Score Confidence
-              </Button>
-            </CardHeader>
-            <CardContent className="p-6 pt-0 space-y-4">
-              <p className="text-xs text-muted-foreground">
-                Decomposed 7-factor confidence scoring: PropertyMatch + OwnerMatch + ManagementMatch + PersonRoleFit + Reachability – ConflictPenalty – StalenessPenalty. Scores determine auto-publish (&ge;85), review queue (60-84), or suppress (&lt;60) tiers.
-              </p>
-
-              {confidenceStatsQuery.data && confidenceStatsQuery.data.scored > 0 && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Scored</p>
-                      <p className="text-lg font-bold mt-0.5" data-testid="text-dm-scored">
-                        {confidenceStatsQuery.data.scored?.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="bg-muted/50 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Avg Score</p>
-                      <p className="text-lg font-bold mt-0.5" data-testid="text-dm-avg-score">
-                        {confidenceStatsQuery.data.avgScore}
-                      </p>
-                    </div>
-                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Auto-Publish</p>
-                      <p className="text-lg font-bold mt-0.5 text-emerald-700 dark:text-emerald-400" data-testid="text-dm-auto-publish">
-                        {confidenceStatsQuery.data.autoPublish?.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Review Queue</p>
-                      <p className="text-lg font-bold mt-0.5 text-amber-700 dark:text-amber-400" data-testid="text-dm-review">
-                        {confidenceStatsQuery.data.review?.toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3">
-                      <p className="text-[11px] font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Suppress</p>
-                      <p className="text-lg font-bold mt-0.5 text-red-700 dark:text-red-400" data-testid="text-dm-suppress">
-                        {confidenceStatsQuery.data.suppress?.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  {confidenceStatsQuery.data.reviewStatuses && (
-                    <div className="flex gap-2 flex-wrap">
-                      {Object.entries(confidenceStatsQuery.data.reviewStatuses).map(([status, count]: any) => (
-                        <Badge key={status} variant="outline" className="text-[10px]">
-                          {status.replace(/_/g, " ")}: {count.toLocaleString()}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </CardContent>
