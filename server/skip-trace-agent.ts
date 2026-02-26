@@ -181,20 +181,11 @@ async function dallasPermitLookup(lead: Lead, claims: InsertIntelligenceClaim[])
             ));
           }
 
-          if (isPersonName(parsed.name)) {
-            people.push({
-              name: parsed.name,
-              title: `Contractor (${(record.work_description || record.permit_type || "Building Permit").substring(0, 40)})`,
-              phone: parsed.phone || undefined,
-              source: "Dallas Open Data (Permits)",
-              confidence: 60,
-            });
-          }
         }
       }
     }
 
-    return { people, contacts, detail: `Found ${people.length + contacts.length} from Dallas permits` };
+    return { people, contacts, detail: `Found ${contacts.length} from Dallas permits` };
   } catch (err: any) {
     return { people, contacts, detail: `Dallas permits error: ${err.message}` };
   }
@@ -300,16 +291,6 @@ function processPermitRecords(records: any[], lead: Lead, people: PersonRecord[]
           lead.id, "Skip Trace", "building_contact", "contractor",
           contractorName.trim(), source, 70, "api_structured"
         ));
-
-        if (isPersonName(contractorName.trim())) {
-          people.push({
-            name: contractorName.trim(),
-            title: `Contractor (${permitType.substring(0, 40)})`,
-            phone: phones[0],
-            source,
-            confidence: 60,
-          });
-        }
       }
     }
 
@@ -699,48 +680,7 @@ async function enhancedEmailLookup(lead: Lead, knownPeople: PersonRecord[], clai
     }
   } catch {}
 
-  for (const person of knownPeople.filter(p => !p.email && p.confidence >= 40).slice(0, 5)) {
-    const nameParts = person.name.split(/\s+/);
-    if (nameParts.length < 2) continue;
 
-    const first = nameParts[0].toLowerCase().replace(/[^a-z]/g, "");
-    const last = nameParts[nameParts.length - 1].toLowerCase().replace(/[^a-z]/g, "");
-    const firstInitial = first[0] || "";
-    const lastInitial = last[0] || "";
-
-    const patterns = [
-      `${first}.${last}@${domain}`,
-      `${first}${last}@${domain}`,
-      `${firstInitial}${last}@${domain}`,
-      `${first}@${domain}`,
-      `${last}.${first}@${domain}`,
-      `${first}_${last}@${domain}`,
-      `${firstInitial}.${last}@${domain}`,
-      `${first}${lastInitial}@${domain}`,
-      `${last}@${domain}`,
-      `${first}-${last}@${domain}`,
-    ];
-
-    for (const email of patterns) {
-      emails.push({
-        email,
-        source: `Email Pattern (${person.name})`,
-        verified: false,
-        person: person.name,
-      });
-    }
-  }
-
-  const roleEmails = [
-    `info@${domain}`, `contact@${domain}`, `admin@${domain}`,
-    `office@${domain}`, `management@${domain}`, `leasing@${domain}`,
-    `maintenance@${domain}`, `propertymanager@${domain}`,
-    `facilities@${domain}`, `building@${domain}`,
-  ];
-
-  for (const email of roleEmails) {
-    emails.push({ email, source: "Role-Based Pattern", verified: false });
-  }
 
   if (website) {
     try {
@@ -958,7 +898,7 @@ export function getSkipTraceStatus(): { sources: Array<{ name: string; available
     { name: "OpenCorporates", available: true, description: "Cross-jurisdiction corporate officer/director records (free tier)" },
     { name: "TCEQ Environmental", available: true, description: "TX Commission on Environmental Quality facility contacts and responsible parties" },
     { name: "Domain WHOIS/RDAP", available: true, description: "Domain registration records for business website owners" },
-    { name: "Enhanced Email Patterns", available: true, description: "15+ email patterns per person with MX domain verification" },
+    { name: "Email Discovery (Website Scrape)", available: true, description: "Finds real emails from business websites via scraping contact/about pages" },
     { name: "Reverse Address (DCAD)", available: true, description: "Cross-reference DCAD property records for adjacent owners and entities" },
   ];
 

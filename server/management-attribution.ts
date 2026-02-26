@@ -96,16 +96,6 @@ export async function attributeLeadManagement(lead: Lead): Promise<ManagementAtt
   });
 
   for (const permit of sortedPermits) {
-    if (permit.contractor && ownerDiffersFromPermitApplicant(lead.ownerName, permit.contractor)) {
-      evidence.push({
-        source: "building_permit",
-        field: "contractor",
-        value: permit.contractor,
-        recency: permit.issuedDate,
-        confidence: 60,
-      });
-    }
-
     if (permit.owner && ownerDiffersFromPermitApplicant(lead.ownerName, permit.owner)) {
       if (isManagementCompany(permit.owner)) {
         mgmtCompany = mgmtCompany || permit.owner;
@@ -117,17 +107,6 @@ export async function attributeLeadManagement(lead: Lead): Promise<ManagementAtt
           confidence: 85,
         });
       }
-    }
-
-    if (permit.contractorPhone && !mgmtPhone) {
-      mgmtPhone = permit.contractorPhone;
-      evidence.push({
-        source: "building_permit",
-        field: "contractor_phone",
-        value: permit.contractorPhone,
-        recency: permit.issuedDate,
-        confidence: 70,
-      });
     }
   }
 

@@ -719,40 +719,7 @@ async function emailDiscoveryAgent(lead: Lead, knownPeople: PersonRecord[]): Pro
 
   if (!domain) return { emails, agentDetail: "No business website/domain" };
 
-  for (const person of knownPeople.filter(p => !p.email).slice(0, 3)) {
-    const nameParts = person.name.split(/\s+/);
-    if (nameParts.length < 2) continue;
 
-    const first = nameParts[0].toLowerCase();
-    const last = nameParts[nameParts.length - 1].toLowerCase();
-    const firstInitial = first[0];
-
-    const patterns = [
-      `${first}.${last}@${domain}`,
-      `${first}${last}@${domain}`,
-      `${firstInitial}${last}@${domain}`,
-      `${first}@${domain}`,
-      `${last}@${domain}`,
-      `${first}_${last}@${domain}`,
-    ];
-
-    for (const pattern of patterns) {
-      emails.push({ email: pattern, source: `Email Pattern (${person.name})`, verified: false });
-    }
-  }
-
-  const genericPatterns = [
-    `info@${domain}`,
-    `contact@${domain}`,
-    `admin@${domain}`,
-    `office@${domain}`,
-    `management@${domain}`,
-    `leasing@${domain}`,
-  ];
-
-  for (const email of genericPatterns) {
-    emails.push({ email, source: "Generic Email Pattern", verified: false });
-  }
 
   if (lead.businessWebsite) {
     try {
