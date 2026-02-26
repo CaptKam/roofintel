@@ -520,6 +520,208 @@ function BatchFreeEnrichmentCard() {
   );
 }
 
+interface BatchGPStatus {
+  running: boolean;
+  total: number;
+  processed: number;
+  found: number;
+  skipped: number;
+  errors: number;
+  apiCalls: number;
+  estimatedCost: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  currentAddress: string | null;
+  recentFinds: Array<{ address: string; phone: string }>;
+}
+
+function BatchGooglePlacesCard() {
+  const { toast } = useToast();
+  const [batchSize, setBatchSize] = useState(1000);
+
+  const { data: status, refetch } = useQuery<BatchGPStatus>({
+    queryKey: ["/api/admin/batch-google-places/status"],
+    refetchInterval: (query) => {
+      const data = query.state.data as BatchGPStatus | undefined;
+      return data?.running ? 2000 : false;
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/batch-google-places", { limit: batchSize });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Batch Google Places started", description: `Looking up phone numbers for top ${batchSize} leads by lead score.` });
+      refetch();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to start batch", description: err?.message || "Already running or server error", variant: "destructive" });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/batch-google-places/cancel");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Cancellation requested" });
+      refetch();
+    },
+  });
+
+  const isRunning = status?.running ?? false;
+  const progressPct = status && status.total > 0 ? Math.round((status.processed / status.total) * 100) : 0;
+
+  return (
+    <Card className="shadow-sm border-blue-500/20" data-testid="card-batch-google-places">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <MapPin className="w-4 h-4" />
+            Batch Google Places Phone Lookup
+          </CardTitle>
+          <Badge variant="secondary" className="text-xs">
+            <Globe className="w-3 h-3 mr-1" />
+            ~$0.017/call
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Looks up real, published business phone numbers from Google Places for your highest-scored leads that are missing phone data. Each lead uses ~2 API calls.
+        </p>
+      </CardHeader>
+      <CardContent className="pt-0 space-y-4">
+        {!isRunning && (
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="batch-size" className="text-xs whitespace-nowrap">Batch size:</Label>
+              <Input
+                id="batch-size"
+                type="number"
+                value={batchSize}
+                onChange={(e) => setBatchSize(Math.max(1, Math.min(5000, parseInt(e.target.value) || 100)))}
+                className="w-24 h-8 text-sm"
+                data-testid="input-batch-size"
+              />
+            </div>
+            <Button
+              onClick={() => startMutation.mutate()}
+              disabled={startMutation.isPending}
+              data-testid="button-start-batch-gp"
+            >
+              {startMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Phone className="w-4 h-4" />
+              )}
+              Find Phone Numbers
+            </Button>
+          </div>
+        )}
+
+        {isRunning && status && (
+          <div className="space-y-3" data-testid="batch-gp-progress">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                <span className="font-medium">Looking up phones...</span>
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-muted-foreground tabular-nums" data-testid="text-batch-gp-counts">
+                  {status.processed.toLocaleString()} / {status.total.toLocaleString()}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => cancelMutation.mutate()}
+                  data-testid="button-cancel-batch-gp"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+
+            <div className="h-3 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all"
+                style={{ width: `${progressPct}%` }}
+                data-testid="progress-batch-gp"
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-1">
+              <span>{progressPct}% complete</span>
+              <span className="flex items-center gap-3">
+                <span className="text-emerald-600 dark:text-emerald-400" data-testid="text-gp-found">{status.found} phones found</span>
+                <span>{status.skipped} no result</span>
+                <span className="font-medium" data-testid="text-gp-cost">${status.estimatedCost}</span>
+                {status.errors > 0 && (
+                  <span className="text-destructive">{status.errors} errors</span>
+                )}
+              </span>
+            </div>
+
+            {status.currentAddress && (
+              <div className="p-2 rounded-lg bg-muted/50 text-xs text-muted-foreground truncate" data-testid="text-gp-current">
+                Currently: {status.currentAddress}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isRunning && status && status.total > 0 && status.processed > 0 && (
+          <div className="p-3 rounded-lg bg-muted/50 space-y-2" data-testid="batch-gp-complete">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              Last batch complete
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div>
+                <span className="text-muted-foreground">Processed:</span>{" "}
+                <span className="font-medium">{status.processed.toLocaleString()}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Phones found:</span>{" "}
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">{status.found.toLocaleString()}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">API calls:</span>{" "}
+                <span className="font-medium">{status.apiCalls.toLocaleString()}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Cost:</span>{" "}
+                <span className="font-medium">${status.estimatedCost}</span>
+              </div>
+            </div>
+            {status.startedAt && (
+              <p className="text-[11px] text-muted-foreground">
+                Started {new Date(status.startedAt).toLocaleString()}
+                {status.completedAt && ` — Completed ${new Date(status.completedAt).toLocaleString()}`}
+              </p>
+            )}
+          </div>
+        )}
+
+        {status && status.recentFinds && status.recentFinds.length > 0 && (
+          <div className="space-y-1" data-testid="batch-gp-recent-finds">
+            <p className="text-xs font-medium text-muted-foreground">Recent finds:</p>
+            <div className="space-y-0.5 max-h-32 overflow-y-auto">
+              {status.recentFinds.slice(0, 5).map((f, i) => (
+                <div key={i} className="flex items-center justify-between text-xs p-1.5 rounded bg-emerald-50 dark:bg-emerald-950/30">
+                  <span className="truncate mr-2">{f.address}</span>
+                  <a href={`tel:${f.phone}`} className="text-blue-600 dark:text-blue-400 whitespace-nowrap font-medium">{f.phone}</a>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function CreditMeter({ label, description, used, limit, icon, testId }: {
   label: string;
   description: string;
@@ -1799,6 +2001,7 @@ export default function Admin() {
       <RunAllPipelineCard />
       <EnrichmentCreditsCard />
       <BatchFreeEnrichmentCard />
+      <BatchGooglePlacesCard />
 
       <Tabs defaultValue="property-sources" className="space-y-6">
         <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">

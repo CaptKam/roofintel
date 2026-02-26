@@ -1547,6 +1547,7 @@ async function recordProvenanceFromDossier(leadId: string, result: IntelligenceR
     }
 
     for (const contact of dossier.buildingContacts) {
+      if (!isPersonName(contact.name)) continue;
       evidenceInputs.push({
         leadId,
         contactType: "BUILDING_CONTACT",
@@ -1599,9 +1600,11 @@ async function recordProvenanceFromDossier(leadId: string, result: IntelligenceR
     }
 
     for (const hit of dossier.skipTraceHits) {
+      const hitType = hit.fieldName.toUpperCase();
+      if ((hitType === "PERSON" || hitType === "NAME") && !isPersonName(hit.fieldValue)) continue;
       evidenceInputs.push({
         leadId,
-        contactType: hit.fieldName.toUpperCase(),
+        contactType: hitType,
         contactValue: hit.fieldValue,
         sourceName: hit.source || "Skip Trace",
         sourceUrl: hit.sourceUrl,

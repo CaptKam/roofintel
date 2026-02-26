@@ -35,6 +35,7 @@ import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker, savedFilters, insertSavedFilterSchema } from "@shared/schema";
 import { getHunterUsage, searchHunterDomain, findHunterEmail } from "./hunter-io";
+import { runBatchGooglePlaces, getBatchGooglePlacesStatus, cancelBatchGooglePlaces } from "./batch-google-places";
 import { getPDLUsage, enrichPersonPDL, enrichCompanyPDL } from "./pdl-enrichment";
 import { enrichLeadFromEdgar, searchEdgarCompany } from "./sec-edgar";
 import { enrichLeadFromTXSOS } from "./tx-sos";
@@ -268,7 +269,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           hailEvents: r.hail_events,
           lastHailDate: r.last_hail_date || null,
           claimWindowOpen: r.claim_window_open || false,
-          ownerName: r.owner_name,
+          ownerName: (r.owner_name && isPersonName(r.owner_name)) ? r.owner_name : null,
           contactName: (r.contact_name && isPersonName(r.contact_name)) ? r.contact_name : null,
           contactPhone: r.contact_phone || null,
           totalValue: r.total_value || null,
@@ -353,7 +354,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           address: r.address,
           totalValue: r.total_value,
           leadScore: r.lead_score,
-          ownerName: r.owner_name,
+          ownerName: (r.owner_name && isPersonName(r.owner_name)) ? r.owner_name : null,
         })),
       });
     } catch (error) {
@@ -3639,6 +3640,32 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       console.error("Contractor cleanup error:", error);
       res.status(500).json({ message: "Failed to start contractor data cleanup" });
     }
+  });
+
+  app.post("/api/admin/batch-google-places", async (req, res) => {
+    try {
+      const status = getBatchGooglePlacesStatus();
+      if (status.running) {
+        return res.status(409).json({ message: "Batch already running", status });
+      }
+      const limit = Math.min(Math.max(parseInt(req.body?.limit) || 1000, 1), 5000);
+      res.json({ message: `Batch Google Places lookup started for top ${limit} leads`, limit });
+      runBatchGooglePlaces(limit).catch((err) => {
+        console.error("[Admin] Batch Google Places failed:", err);
+      });
+    } catch (error) {
+      console.error("Batch Google Places error:", error);
+      res.status(500).json({ message: "Failed to start batch" });
+    }
+  });
+
+  app.get("/api/admin/batch-google-places/status", async (_req, res) => {
+    res.json(getBatchGooglePlacesStatus());
+  });
+
+  app.post("/api/admin/batch-google-places/cancel", async (_req, res) => {
+    cancelBatchGooglePlaces();
+    res.json({ message: "Cancellation requested" });
   });
 
   // Start storm monitor on boot
