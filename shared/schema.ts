@@ -7,11 +7,28 @@ export const markets = pgTable("markets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   state: text("state").notNull(),
+  metroArea: text("metro_area"),
   counties: text("counties").array().notNull(),
   centerLat: real("center_lat").notNull(),
   centerLng: real("center_lng").notNull(),
   radiusMiles: integer("radius_miles").notNull().default(50),
+  boundingBox: jsonb("bounding_box"),
+  timezone: text("timezone"),
   isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const marketDataSources = pgTable("market_data_sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id").notNull(),
+  sourceType: text("source_type").notNull(),
+  sourceName: text("source_name").notNull(),
+  endpoint: text("endpoint").notNull(),
+  fieldMapping: jsonb("field_mapping"),
+  filterConfig: jsonb("filter_config"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastSyncAt: timestamp("last_sync_at"),
+  lastSyncRecordCount: integer("last_sync_record_count"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -626,6 +643,7 @@ export type EntityMerge = typeof entityMerges.$inferSelect;
 export type InsertEntityMerge = z.infer<typeof insertEntityMergeSchema>;
 
 export const insertMarketSchema = createInsertSchema(markets).omit({ id: true, createdAt: true });
+export const insertMarketDataSourceSchema = createInsertSchema(marketDataSources).omit({ id: true, createdAt: true });
 export const insertLeadSchema = createInsertSchema(leads).omit({ id: true, createdAt: true });
 export const insertHailEventSchema = createInsertSchema(hailEvents).omit({ id: true });
 export const insertDataSourceSchema = createInsertSchema(dataSources).omit({ id: true, createdAt: true });
@@ -647,6 +665,8 @@ export const insertPortfolioLeadSchema = createInsertSchema(portfolioLeads).omit
 
 export type Market = typeof markets.$inferSelect;
 export type InsertMarket = z.infer<typeof insertMarketSchema>;
+export type MarketDataSource = typeof marketDataSources.$inferSelect;
+export type InsertMarketDataSource = z.infer<typeof insertMarketDataSourceSchema>;
 export type InsertLead = z.infer<typeof insertLeadSchema>;
 export type Lead = typeof leads.$inferSelect;
 export type InsertHailEvent = z.infer<typeof insertHailEventSchema>;

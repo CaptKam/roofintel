@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import type { Lead } from "@shared/schema";
 import * as cheerio from "cheerio";
+import { isPersonName } from "./contact-validation";
 
 interface ContactResult {
   businessName?: string;
@@ -502,7 +503,11 @@ export async function runWebResearch(
 
         if (result.businessName) updates.businessName = result.businessName;
         if (result.businessWebsite) updates.businessWebsite = result.businessWebsite;
-        if (result.contactName) updates.contactName = result.contactName;
+        if (result.contactName && isPersonName(result.contactName)) {
+          updates.contactName = result.contactName;
+        } else if (result.contactName && !result.businessName) {
+          updates.businessName = result.contactName;
+        }
         if (result.contactTitle) updates.contactTitle = result.contactTitle;
         if (result.contactPhone) updates.contactPhone = result.contactPhone;
         if (result.contactEmail) updates.contactEmail = result.contactEmail;

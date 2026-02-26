@@ -2,6 +2,7 @@ import { db } from "./storage";
 import { apiUsageTracker, leads as leadsTable } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { recordEvidence } from "./evidence-recorder";
+import { isPersonName } from "./contact-validation";
 
 const HUNTER_MONTHLY_LIMIT = 25;
 const SERVICE_NAME = "hunter_io";
@@ -102,7 +103,7 @@ export async function searchHunterDomain(domain: string, leadId: string): Promis
         .set({
           ownerEmail: best.value,
           contactEmail: best.value,
-          contactName: best.firstName && best.lastName ? `${best.firstName} ${best.lastName}` : undefined,
+          contactName: best.firstName && best.lastName && isPersonName(`${best.firstName} ${best.lastName}`) ? `${best.firstName} ${best.lastName}` : undefined,
           contactTitle: best.position || undefined,
           contactSource: "Hunter.io",
         })

@@ -23,6 +23,13 @@ import {
   ChevronRight,
   Users,
   BarChart3,
+  CircleCheck,
+  CircleMinus,
+  CircleAlert,
+  Database,
+  User,
+  Layers,
+  AlertTriangle,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
@@ -66,6 +73,24 @@ interface CommandCenter {
   competitors: Array<{ name: string; permitCount: number; recentPermit: string | null }>;
   scoreDistribution: Array<{ range: string; count: number }>;
   topValueLeads: Array<{ id: string; address: string; totalValue: number; leadScore: number; ownerName: string }>;
+}
+
+interface QualitySummary {
+  tiers: {
+    high: { count: number; pct: number };
+    medium: { count: number; pct: number };
+    low: { count: number; pct: number };
+  };
+  metrics: {
+    total: number;
+    hasPhone: number;
+    hasContactName: number;
+    hasDecisionMaker: number;
+    enriched: number;
+    hasEmail: number;
+    hasOwnership: number;
+  };
+  gaps: Array<{ field: string; label: string; count: number; pct: number }>;
 }
 
 function formatCurrency(value: number): string {
@@ -141,6 +166,10 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const { data, isLoading } = useQuery<CommandCenter>({
     queryKey: ["/api/dashboard/command-center"],
+  });
+
+  const { data: qualityData } = useQuery<QualitySummary>({
+    queryKey: ["/api/data/quality-summary"],
   });
 
   const applyDashboardFilter = (filters: Record<string, any>) => {
@@ -402,6 +431,89 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {qualityData && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-base font-semibold">Data Quality</CardTitle>
+            <Badge variant="secondary">{qualityData.metrics.total.toLocaleString()} leads</Badge>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-3">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Confidence Tiers</p>
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-3" data-testid="quality-tier-high">
+                    <CircleCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium">High</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{qualityData.tiers.high.count.toLocaleString()} ({qualityData.tiers.high.pct}%)</span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full transition-all duration-700" style={{ width: `${qualityData.tiers.high.pct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3" data-testid="quality-tier-medium">
+                    <CircleMinus className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium">Medium</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{qualityData.tiers.medium.count.toLocaleString()} ({qualityData.tiers.medium.pct}%)</span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-500 rounded-full transition-all duration-700" style={{ width: `${qualityData.tiers.medium.pct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3" data-testid="quality-tier-low">
+                    <CircleAlert className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium">Low</span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{qualityData.tiers.low.count.toLocaleString()} ({qualityData.tiers.low.pct}%)</span>
+                      </div>
+                      <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-red-500 rounded-full transition-all duration-700" style={{ width: `${qualityData.tiers.low.pct}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Key Metrics</p>
+                <div className="space-y-2.5">
+                  <CoverageGauge label="Verified Phones" value={qualityData.metrics.hasPhone} icon={Phone} />
+                  <CoverageGauge label="Real Person Contacts" value={qualityData.metrics.hasContactName} icon={User} />
+                  <CoverageGauge label="Decision Makers" value={qualityData.metrics.hasDecisionMaker} icon={Fingerprint} />
+                  <CoverageGauge label="Enriched" value={qualityData.metrics.enriched} icon={Zap} />
+                  <CoverageGauge label="Has Email" value={qualityData.metrics.hasEmail} icon={Mail} />
+                  <CoverageGauge label="Ownership Classified" value={qualityData.metrics.hasOwnership} icon={Layers} />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Top Data Gaps</p>
+                <div className="space-y-2.5">
+                  {qualityData.gaps.map((gap, i) => (
+                    <div key={gap.field} className="flex items-center gap-2.5" data-testid={`quality-gap-${i}`}>
+                      <AlertTriangle className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground truncate">{gap.label}</span>
+                          <span className="text-xs font-medium tabular-nums ml-2">{gap.pct}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

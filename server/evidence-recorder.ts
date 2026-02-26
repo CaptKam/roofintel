@@ -2,6 +2,7 @@ import { db } from "./storage";
 import { contactEvidence, conflictSets } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { getSourceTrust, computeEvidenceScore, computeRecencyFactor, CONFLICT_AUTO_RESOLVE_MARGIN } from "./config/sourceTrust";
+import { isE164Format } from "./contact-validation";
 
 export interface EvidenceInput {
   leadId: string;
@@ -17,6 +18,24 @@ export interface EvidenceInput {
   extractorMethod?: string;
   rawSnippet?: string;
   confidence?: number;
+}
+
+function determineValidationStatus(
+  trustScore: number,
+  corroborationCount: number,
+  contactType: string,
+  contactValue: string
+): string {
+  if (corroborationCount >= 2) {
+    return "CORROBORATED";
+  }
+  if (trustScore >= 85) {
+    return "VERIFIED";
+  }
+  if (contactType.toUpperCase() === "PHONE" && isE164Format(contactValue)) {
+    return "FORMAT_VALID";
+  }
+  return "UNVERIFIED";
 }
 
 export async function recordEvidence(input: EvidenceInput): Promise<string> {
@@ -36,6 +55,13 @@ export async function recordEvidence(input: EvidenceInput): Promise<string> {
     );
 
   if (existing.length > 0) {
+    const newCorroborationCount = existing[0].corroborationCount + 1;
+    const validationStatus = determineValidationStatus(
+      trust.baseScore,
+      newCorroborationCount,
+      input.contactType,
+      input.contactValue
+    );
     await db
       .update(contactEvidence)
       .set({
@@ -46,26 +72,35 @@ export async function recordEvidence(input: EvidenceInput): Promise<string> {
         computedScore: computeEvidenceScore({
           sourceTrustScore: trust.baseScore,
           recencyFactor,
-          corroborationCount: existing[0].corroborationCount + 1,
+          corroborationCount: newCorroborationCount,
           domainMatchFactor: existing[0].domainMatchFactor ?? 0,
           extractionQuality: existing[0].extractionQuality ?? 0.7,
         }),
-        corroborationCount: existing[0].corroborationCount + 1,
+        corroborationCount: newCorroborationCount,
         rawSnippet: input.rawSnippet || existing[0].rawSnippet,
         sourceUrl: input.sourceUrl || existing[0].sourceUrl,
+        validationStatus,
       })
       .where(eq(contactEvidence.id, existing[0].id));
     return existing[0].id;
   }
 
   const corroborationCount = await countCorroboration(input.leadId, input.contactType, input.contactValue);
+  const totalCorroboration = corroborationCount + 1;
   const computedScore = computeEvidenceScore({
     sourceTrustScore: trust.baseScore,
     recencyFactor,
-    corroborationCount: corroborationCount + 1,
+    corroborationCount: totalCorroboration,
     domainMatchFactor: 0,
     extractionQuality: 0.7,
   });
+
+  const validationStatus = determineValidationStatus(
+    trust.baseScore,
+    totalCorroboration,
+    input.contactType,
+    input.contactValue
+  );
 
   const [row] = await db
     .insert(contactEvidence)
@@ -85,11 +120,11 @@ export async function recordEvidence(input: EvidenceInput): Promise<string> {
       confidence: input.confidence ?? trust.baseScore,
       sourceTrustScore: trust.baseScore,
       recencyFactor,
-      corroborationCount: corroborationCount + 1,
+      corroborationCount: totalCorroboration,
       domainMatchFactor: 0,
       extractionQuality: 0.7,
       computedScore,
-      validationStatus: "UNVERIFIED",
+      validationStatus,
     })
     .returning({ id: contactEvidence.id });
 
@@ -186,6 +221,29 @@ export async function detectAndStoreConflicts(leadId: string, contactType: strin
         scoreMargin: margin,
       });
   }
+}
+
+export async function backfillEvidenceVerification(): Promise<{ verified: number; corroborated: number }> {
+  const verifiedResult = await db.execute(sql`
+    UPDATE contact_evidence
+    SET validation_status = 'VERIFIED'
+    WHERE source_trust_score >= 85
+      AND validation_status = 'UNVERIFIED'
+  `);
+
+  const corroboratedResult = await db.execute(sql`
+    UPDATE contact_evidence
+    SET validation_status = 'CORROBORATED'
+    WHERE corroboration_count >= 2
+      AND validation_status IN ('UNVERIFIED', 'VERIFIED', 'FORMAT_VALID')
+  `);
+
+  const verifiedCount = Number((verifiedResult as any)?.rowCount ?? 0);
+  const corroboratedCount = Number((corroboratedResult as any)?.rowCount ?? 0);
+
+  console.log(`[Evidence Backfill] Verified: ${verifiedCount}, Corroborated: ${corroboratedCount}`);
+
+  return { verified: verifiedCount, corroborated: corroboratedCount };
 }
 
 export async function getEvidenceForLead(leadId: string): Promise<any[]> {

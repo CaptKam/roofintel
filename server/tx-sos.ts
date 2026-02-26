@@ -2,6 +2,7 @@ import { db } from "./storage";
 import { leads as leadsTable } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { recordEvidence } from "./evidence-recorder";
+import { isPersonName } from "./contact-validation";
 
 const COMPTROLLER_SEARCH = "https://mycpa.cpa.state.tx.us/coa/coaSearchBtn";
 const COMPTROLLER_DETAIL = "https://mycpa.cpa.state.tx.us/coa/coaSearchFn";
@@ -263,7 +264,3 @@ export async function enrichLeadFromTXSOS(leadId: string): Promise<SOSEntityResu
   return result;
 }
 
-function isPersonName(name: string): boolean {
-  const entityPatterns = /\b(LLC|L\.L\.C|LP|L\.P|INC|CORP|LTD|CO\.|COMPANY|TRUST|PARTNERS|PROPERTIES|INVESTMENTS|HOLDINGS|GROUP|ENTERPRISES|DEVELOPMENT|MANAGEMENT|ASSOCIATES|FOUNDATION|CAPITAL|FUND|REALTY|ESTATE)\b/i;
-  return !entityPatterns.test(name);
-}

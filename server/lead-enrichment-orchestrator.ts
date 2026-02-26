@@ -2,6 +2,7 @@ import { db } from "./storage";
 import { leads } from "@shared/schema";
 import type { Lead } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { isPersonName } from "./contact-validation";
 
 export interface EnrichmentStep {
   name: string;
@@ -66,7 +67,13 @@ async function runOwnerIntelligenceStep(lead: Lead, progress: EnrichmentProgress
       intelligenceSources: result.sources,
       intelligenceAt: new Date(),
     };
-    if (result.managingMember && !lead.contactName) updates.contactName = result.managingMember;
+    if (result.managingMember && !lead.contactName) {
+      if (isPersonName(result.managingMember)) {
+        updates.contactName = result.managingMember;
+      } else {
+        if (!lead.businessName) updates.businessName = result.managingMember;
+      }
+    }
     if (result.managingMemberTitle) updates.contactRole = result.managingMemberTitle;
     if (result.managingMemberPhone && !lead.ownerPhone) updates.ownerPhone = result.managingMemberPhone;
     if (result.managingMemberEmail && !lead.ownerEmail) updates.ownerEmail = result.managingMemberEmail;
@@ -167,10 +174,14 @@ async function runBuildingDiscoveryStep(lead: Lead, progress: EnrichmentProgress
 
     if (result.people.length > 0 && !lead.contactName) {
       const best = result.people.sort((a, b) => b.confidence - a.confidence)[0];
-      updates.contactName = best.name;
-      if (best.title) updates.contactTitle = best.title;
-      if (best.phone && !lead.ownerPhone) updates.ownerPhone = best.phone;
-      if (best.email && !lead.ownerEmail) updates.ownerEmail = best.email;
+      if (isPersonName(best.name)) {
+        updates.contactName = best.name;
+        if (best.title) updates.contactTitle = best.title;
+        if (best.phone && !lead.ownerPhone) updates.ownerPhone = best.phone;
+        if (best.email && !lead.ownerEmail) updates.ownerEmail = best.email;
+      } else {
+        if (!lead.businessName) updates.businessName = best.name;
+      }
     }
 
     if (Object.keys(updates).length > 0) {
@@ -421,8 +432,12 @@ export async function enrichLeadPaidApis(leadId: string): Promise<{ googlePlaces
         }
         if (gpeResult.people.length > 0 && !lead.contactName) {
           const best = gpeResult.people.sort((a: any, b: any) => b.confidence - a.confidence)[0];
-          updates.contactName = best.name;
-          if (best.title) updates.contactTitle = best.title;
+          if (isPersonName(best.name)) {
+            updates.contactName = best.name;
+            if (best.title) updates.contactTitle = best.title;
+          } else {
+            if (!lead.businessName) updates.businessName = best.name;
+          }
         }
         if (Object.keys(updates).length > 0) {
           await db.update(leads).set(updates).where(eq(leads.id, leadId));

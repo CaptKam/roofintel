@@ -1,6 +1,7 @@
 import type { Lead } from "@shared/schema";
 import * as cheerio from "cheerio";
 import type { PersonRecord, BuildingContact } from "./owner-intelligence";
+import { isPersonName } from "./contact-validation";
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 12000): Promise<Response | null> {
   try {
@@ -22,20 +23,6 @@ function cleanCompanyName(name: string): string {
     .trim();
 }
 
-function isPersonName(name: string): boolean {
-  if (!name || name.length < 3 || name.length > 80) return false;
-  const cleaned = name.replace(/[\n\r\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
-  if (cleaned.length < 3) return false;
-  const upper = cleaned.toUpperCase();
-  const llcWords = ["LLC", "INC", "CORP", "LP", "LTD", "TRUST", "HOLDING", "PROPERTIES", "INVESTMENTS", "MANAGEMENT", "VENTURES", "PARTNERS", "CAPITAL", "FUND", "ENTERPRISES", "ASSOCIATES", "GROUP", "DEVELOPMENT"];
-  if (llcWords.some(w => upper.includes(w))) return false;
-  if (/[<>{}|\\]/.test(cleaned)) return false;
-  if ((cleaned.match(/[^a-zA-Z\s.\-']/g) || []).length > 2) return false;
-  const parts = cleaned.split(/\s+/);
-  if (parts.length < 2 || parts.length > 5) return false;
-  if (!parts.every(p => /^[A-Z]/i.test(p) && p.length >= 2)) return false;
-  return true;
-}
 
 function extractPhones(text: string): string[] {
   const phoneRegex = /(?:\+?1[-.\s]?)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/g;

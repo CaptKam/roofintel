@@ -61,6 +61,9 @@ import {
   MapPinned,
   Zap,
   GitBranch,
+  CircleCheck,
+  CircleMinus,
+  CircleAlert,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -640,6 +643,28 @@ export default function LeadDetail() {
             </Link>
             <div className="h-6 w-px bg-border" />
             <h1 className="text-2xl font-bold tracking-tight" data-testid="text-lead-address">{lead.address}</h1>
+            {(lead as any).dataConfidence && (
+              <Badge
+                variant="secondary"
+                className={`no-default-hover-elevate no-default-active-elevate text-xs ${
+                  (lead as any).dataConfidence === "high"
+                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                    : (lead as any).dataConfidence === "medium"
+                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                    : "bg-red-500/15 text-red-700 dark:text-red-400"
+                }`}
+                data-testid="badge-data-confidence"
+              >
+                {(lead as any).dataConfidence === "high" ? (
+                  <CircleCheck className="w-3.5 h-3.5 mr-1" />
+                ) : (lead as any).dataConfidence === "medium" ? (
+                  <CircleMinus className="w-3.5 h-3.5 mr-1" />
+                ) : (
+                  <CircleAlert className="w-3.5 h-3.5 mr-1" />
+                )}
+                {(lead as any).dataConfidence === "high" ? "High Confidence" : (lead as any).dataConfidence === "medium" ? "Medium Confidence" : "Low Confidence"}
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <HunterPDLButtons leadId={id!} />

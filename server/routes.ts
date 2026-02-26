@@ -21,8 +21,8 @@ import { startJobScheduler } from "./job-scheduler";
 import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMonitorStatus } from "./storm-monitor";
 import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweatherStatus, getActiveThreats } from "./xweather-hail";
 import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus } from "./owner-intelligence";
-import { recordBatchEvidence, getEvidenceForLead, getConflictsForLead, resolveConflict, type EvidenceInput } from "./evidence-recorder";
-import { validateAllEvidenceForLead, normalizePhoneE164, isValidPhoneStructure, validateEmailSyntax } from "./contact-validation";
+import { recordBatchEvidence, getEvidenceForLead, getConflictsForLead, resolveConflict, backfillEvidenceVerification, type EvidenceInput } from "./evidence-recorder";
+import { validateAllEvidenceForLead, normalizePhoneE164, isValidPhoneStructure, validateEmailSyntax, cleanupPollutedContactNames } from "./contact-validation";
 import { getRateLimitStatus, isDomainBlocked } from "./config/sourcePolicy";
 import { lookupPhone, verifyAllPhonesForLead, isTwilioConfigured } from "./twilio-lookup";
 import { markWrongNumber, markConfirmedGood, suppressContact, unsuppressContact } from "./contact-feedback";
@@ -43,6 +43,19 @@ import { db } from "./storage";
 import { sql, eq } from "drizzle-orm";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+function computeDataConfidence(lead: any): "high" | "medium" | "low" {
+  let indicators = 0;
+  if (lead.ownerPhone || lead.contactPhone || lead.managingMemberPhone) indicators++;
+  if (lead.contactName && lead.contactName.trim().length > 0) indicators++;
+  if (lead.enrichmentStatus === "complete") indicators++;
+  if (lead.ownershipStructure) indicators++;
+  if (lead.decisionMakers && (Array.isArray(lead.decisionMakers) ? lead.decisionMakers.length > 0 : true)) indicators++;
+  if (lead.dmReviewStatus === "auto_approved" || lead.dmReviewStatus === "auto_publish" || lead.dmReviewStatus === "approved") indicators++;
+  if (indicators >= 3) return "high";
+  if (indicators >= 1) return "medium";
+  return "low";
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -80,6 +93,48 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     } catch (error) {
       console.error("Markets fetch error:", error);
       res.status(500).json({ message: "Failed to load markets" });
+    }
+  });
+
+  app.get("/api/markets/:marketId/data-sources", async (req, res) => {
+    try {
+      const sources = await storage.getMarketDataSources(req.params.marketId);
+      res.json(sources);
+    } catch (error) {
+      console.error("Market data sources fetch error:", error);
+      res.status(500).json({ message: "Failed to load market data sources" });
+    }
+  });
+
+  app.get("/api/market-data-sources/:id", async (req, res) => {
+    try {
+      const source = await storage.getMarketDataSourceById(req.params.id);
+      if (!source) return res.status(404).json({ message: "Data source not found" });
+      res.json(source);
+    } catch (error) {
+      console.error("Market data source fetch error:", error);
+      res.status(500).json({ message: "Failed to load data source" });
+    }
+  });
+
+  app.post("/api/market-data-sources", async (req, res) => {
+    try {
+      const source = await storage.createMarketDataSource(req.body);
+      res.status(201).json(source);
+    } catch (error) {
+      console.error("Market data source create error:", error);
+      res.status(500).json({ message: "Failed to create data source" });
+    }
+  });
+
+  app.patch("/api/market-data-sources/:id", async (req, res) => {
+    try {
+      const source = await storage.updateMarketDataSource(req.params.id, req.body);
+      if (!source) return res.status(404).json({ message: "Data source not found" });
+      res.json(source);
+    } catch (error) {
+      console.error("Market data source update error:", error);
+      res.status(500).json({ message: "Failed to update data source" });
     }
   });
 
@@ -347,7 +402,11 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
         offset: req.query.offset ? Number(req.query.offset) : undefined,
       };
       const result = await storage.getLeads(filter);
-      res.json(result);
+      const leadsWithConfidence = result.leads.map((lead: any) => ({
+        ...lead,
+        dataConfidence: computeDataConfidence(lead),
+      }));
+      res.json({ leads: leadsWithConfidence, total: result.total });
     } catch (error) {
       console.error("Leads fetch error:", error);
       res.status(500).json({ message: "Failed to load leads" });
@@ -406,7 +465,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       if (!lead) {
         return res.status(404).json({ message: "Lead not found" });
       }
-      res.json(lead);
+      res.json({ ...lead, dataConfidence: computeDataConfidence(lead) });
     } catch (error) {
       console.error("Lead fetch error:", error);
       res.status(500).json({ message: "Failed to load lead" });
@@ -683,6 +742,46 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     } catch (error) {
       console.error("Denton CAD import error:", error);
       res.status(500).json({ message: "Failed to start Denton CAD import" });
+    }
+  });
+
+  app.post("/api/import/generic-arcgis", async (req, res) => {
+    try {
+      const { dataSourceId, maxRecords, minSqft, dryRun } = req.body;
+      if (!dataSourceId) {
+        return res.status(400).json({ message: "dataSourceId is required" });
+      }
+
+      const { importGenericArcgis } = await import("./arcgis-importer");
+
+      if (dryRun) {
+        const result = await importGenericArcgis(dataSourceId, {
+          maxRecords: maxRecords || 4000,
+          minSqft: minSqft || 0,
+          dryRun: true,
+        });
+        return res.json(result);
+      }
+
+      res.json({
+        message: "Generic ArcGIS import started",
+        dataSourceId,
+        maxRecords: maxRecords || 4000,
+        minSqft: minSqft || 0,
+      });
+
+      importGenericArcgis(dataSourceId, {
+        maxRecords: maxRecords || 4000,
+        minSqft: minSqft || 0,
+        dryRun: false,
+      }).then((result) => {
+        console.log(`Generic ArcGIS import complete (${result.dataSourceName}): ${result.imported} imported, ${result.skipped} skipped`);
+      }).catch((err) => {
+        console.error("Generic ArcGIS import failed:", err);
+      });
+    } catch (error: any) {
+      console.error("Generic ArcGIS import error:", error);
+      res.status(500).json({ message: error.message || "Failed to start generic ArcGIS import" });
     }
   });
 
@@ -1333,6 +1432,18 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       res.json(jobs);
     } catch (error) {
       res.status(500).json({ message: "Failed to get enrichment jobs" });
+    }
+  });
+
+  app.post("/api/admin/backfill-evidence-verification", async (_req, res) => {
+    try {
+      const result = await backfillEvidenceVerification();
+      res.json({
+        message: "Evidence verification backfill complete",
+        ...result,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to backfill evidence verification" });
     }
   });
 
@@ -3071,6 +3182,343 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       res.json({ message: "Pipeline cancellation requested" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/admin/cleanup-contact-names", async (_req, res) => {
+    try {
+      const result = await cleanupPollutedContactNames();
+      res.json({
+        message: "Contact name cleanup complete",
+        nulledOut: result.nulledOut,
+        sourcesFixed: result.sourcesFixed,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  let batchReprocessStatus: {
+    running: boolean;
+    startedAt: string | null;
+    completedAt: string | null;
+    currentPhase: string;
+    progress: { processed: number; total: number };
+    phases: Record<string, { status: string; startedAt?: string; completedAt?: string; result?: any }>;
+    beforeStatus: Record<string, number>;
+    afterStatus: Record<string, number>;
+    transitions: Record<string, number>;
+    error: string | null;
+  } = {
+    running: false,
+    startedAt: null,
+    completedAt: null,
+    currentPhase: "idle",
+    progress: { processed: 0, total: 0 },
+    phases: {},
+    beforeStatus: {},
+    afterStatus: {},
+    transitions: {},
+    error: null,
+  };
+
+  app.post("/api/admin/batch-reprocess", async (_req, res) => {
+    if (batchReprocessStatus.running) {
+      return res.status(409).json({ message: "Batch reprocess already running", status: batchReprocessStatus });
+    }
+
+    batchReprocessStatus = {
+      running: true,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      currentPhase: "initializing",
+      progress: { processed: 0, total: 0 },
+      phases: {},
+      beforeStatus: {},
+      afterStatus: {},
+      transitions: {},
+      error: null,
+    };
+
+    res.json({ message: "Batch reprocess started", status: batchReprocessStatus });
+
+    (async () => {
+      try {
+        const CHUNK_SIZE = 500;
+
+        const beforeResult = await db.execute(sql`
+          SELECT dm_review_status, COUNT(*)::int AS cnt
+          FROM leads
+          GROUP BY dm_review_status
+        `);
+        const beforeStatus: Record<string, number> = {};
+        for (const row of (beforeResult as any).rows) {
+          beforeStatus[row.dm_review_status || "unreviewed"] = row.cnt;
+        }
+        batchReprocessStatus.beforeStatus = beforeStatus;
+
+        const allIdRows = await db.execute(sql`SELECT id FROM leads ORDER BY id`);
+        const allIds: string[] = (allIdRows as any).rows.map((r: any) => r.id);
+        batchReprocessStatus.progress.total = allIds.length;
+
+        console.log(`[batch-reprocess] Starting batch reprocess of ${allIds.length} leads in chunks of ${CHUNK_SIZE}`);
+
+        const chunks: string[][] = [];
+        for (let i = 0; i < allIds.length; i += CHUNK_SIZE) {
+          chunks.push(allIds.slice(i, i + CHUNK_SIZE));
+        }
+
+        batchReprocessStatus.currentPhase = "ownership_classification";
+        batchReprocessStatus.phases.ownership_classification = { status: "running", startedAt: new Date().toISOString() };
+        console.log(`[batch-reprocess] Phase 1: Ownership Classification & DM Assignment`);
+
+        const { classifyAndAssignDecisionMakers } = await import("./ownership-classifier");
+        let classifyTotals = { total: 0, classified: 0, withDecisionMakers: 0, byStructure: {} as Record<string, number> };
+
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const chunk = chunks[ci];
+          const result = await classifyAndAssignDecisionMakers(chunk);
+          classifyTotals.total += result.total;
+          classifyTotals.classified += result.classified;
+          classifyTotals.withDecisionMakers += result.withDecisionMakers;
+          for (const [k, v] of Object.entries(result.byStructure)) {
+            classifyTotals.byStructure[k] = (classifyTotals.byStructure[k] || 0) + v;
+          }
+          batchReprocessStatus.progress.processed = Math.min((ci + 1) * CHUNK_SIZE, allIds.length);
+        }
+
+        batchReprocessStatus.phases.ownership_classification = {
+          status: "complete",
+          startedAt: batchReprocessStatus.phases.ownership_classification.startedAt,
+          completedAt: new Date().toISOString(),
+          result: classifyTotals,
+        };
+        console.log(`[batch-reprocess] Phase 1 complete: ${classifyTotals.classified} classified, ${classifyTotals.withDecisionMakers} with DMs`);
+
+        batchReprocessStatus.currentPhase = "management_attribution";
+        batchReprocessStatus.phases.management_attribution = { status: "running", startedAt: new Date().toISOString() };
+        batchReprocessStatus.progress.processed = 0;
+        console.log(`[batch-reprocess] Phase 2: Management Attribution`);
+
+        const { runManagementAttribution } = await import("./management-attribution");
+        let mgmtTotals = { totalProcessed: 0, attributed: 0, withCompany: 0, withContact: 0 };
+
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const chunk = chunks[ci];
+          const result = await runManagementAttribution(undefined, chunk);
+          mgmtTotals.totalProcessed += result.totalProcessed;
+          mgmtTotals.attributed += result.attributed;
+          mgmtTotals.withCompany += result.withCompany;
+          mgmtTotals.withContact += result.withContact;
+          batchReprocessStatus.progress.processed = Math.min((ci + 1) * CHUNK_SIZE, allIds.length);
+        }
+
+        batchReprocessStatus.phases.management_attribution = {
+          status: "complete",
+          startedAt: batchReprocessStatus.phases.management_attribution.startedAt,
+          completedAt: new Date().toISOString(),
+          result: mgmtTotals,
+        };
+        console.log(`[batch-reprocess] Phase 2 complete: ${mgmtTotals.attributed} attributed, ${mgmtTotals.withCompany} with company`);
+
+        batchReprocessStatus.currentPhase = "role_inference";
+        batchReprocessStatus.phases.role_inference = { status: "running", startedAt: new Date().toISOString() };
+        batchReprocessStatus.progress.processed = 0;
+        console.log(`[batch-reprocess] Phase 3: Role Inference`);
+
+        const { runRoleInference } = await import("./role-inference");
+        let roleTotals = { totalProcessed: 0, rolesAssigned: 0, byRole: {} as Record<string, number> };
+
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const chunk = chunks[ci];
+          const result = await runRoleInference(undefined, chunk);
+          roleTotals.totalProcessed += result.totalProcessed;
+          roleTotals.rolesAssigned += result.rolesAssigned;
+          for (const [k, v] of Object.entries(result.byRole)) {
+            roleTotals.byRole[k] = (roleTotals.byRole[k] || 0) + v;
+          }
+          batchReprocessStatus.progress.processed = Math.min((ci + 1) * CHUNK_SIZE, allIds.length);
+        }
+
+        batchReprocessStatus.phases.role_inference = {
+          status: "complete",
+          startedAt: batchReprocessStatus.phases.role_inference.startedAt,
+          completedAt: new Date().toISOString(),
+          result: roleTotals,
+        };
+        console.log(`[batch-reprocess] Phase 3 complete: ${roleTotals.rolesAssigned} roles assigned`);
+
+        batchReprocessStatus.currentPhase = "confidence_scoring";
+        batchReprocessStatus.phases.confidence_scoring = { status: "running", startedAt: new Date().toISOString() };
+        batchReprocessStatus.progress.processed = 0;
+        console.log(`[batch-reprocess] Phase 4: Confidence Scoring`);
+
+        const { runConfidenceScoring } = await import("./dm-confidence");
+        let scoreTotals = { totalProcessed: 0, autoPublish: 0, review: 0, insufficientData: 0, suppress: 0, avgScore: 0 };
+        let totalScoreSum = 0;
+
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const chunk = chunks[ci];
+          const result = await runConfidenceScoring(undefined, chunk);
+          scoreTotals.totalProcessed += result.totalProcessed;
+          scoreTotals.autoPublish += result.autoPublish;
+          scoreTotals.review += result.review;
+          scoreTotals.insufficientData += result.insufficientData;
+          scoreTotals.suppress += result.suppress;
+          totalScoreSum += result.avgScore * result.totalProcessed;
+          batchReprocessStatus.progress.processed = Math.min((ci + 1) * CHUNK_SIZE, allIds.length);
+        }
+
+        scoreTotals.avgScore = scoreTotals.totalProcessed > 0 ? Math.round(totalScoreSum / scoreTotals.totalProcessed) : 0;
+
+        batchReprocessStatus.phases.confidence_scoring = {
+          status: "complete",
+          startedAt: batchReprocessStatus.phases.confidence_scoring.startedAt,
+          completedAt: new Date().toISOString(),
+          result: scoreTotals,
+        };
+        console.log(`[batch-reprocess] Phase 4 complete: auto_publish=${scoreTotals.autoPublish}, review=${scoreTotals.review}, insufficient_data=${scoreTotals.insufficientData}, suppress=${scoreTotals.suppress}`);
+
+        const afterResult = await db.execute(sql`
+          SELECT dm_review_status, COUNT(*)::int AS cnt
+          FROM leads
+          GROUP BY dm_review_status
+        `);
+        const afterStatus: Record<string, number> = {};
+        for (const row of (afterResult as any).rows) {
+          afterStatus[row.dm_review_status || "unreviewed"] = row.cnt;
+        }
+        batchReprocessStatus.afterStatus = afterStatus;
+
+        const transitions: Record<string, number> = {};
+        const allStatuses = Array.from(new Set([...Object.keys(beforeStatus), ...Object.keys(afterStatus)]));
+        for (const status of allStatuses) {
+          const before = beforeStatus[status] || 0;
+          const after = afterStatus[status] || 0;
+          const diff = after - before;
+          if (diff !== 0) {
+            transitions[status] = diff;
+          }
+        }
+        batchReprocessStatus.transitions = transitions;
+
+        console.log(`[batch-reprocess] Status transitions:`, transitions);
+        console.log(`[batch-reprocess] Before:`, beforeStatus);
+        console.log(`[batch-reprocess] After:`, afterStatus);
+
+        batchReprocessStatus.currentPhase = "complete";
+        batchReprocessStatus.completedAt = new Date().toISOString();
+        batchReprocessStatus.running = false;
+        batchReprocessStatus.progress.processed = allIds.length;
+
+        console.log(`[batch-reprocess] Batch reprocess complete!`);
+      } catch (error: any) {
+        console.error(`[batch-reprocess] Error:`, error);
+        batchReprocessStatus.error = error.message || "Unknown error";
+        batchReprocessStatus.running = false;
+        batchReprocessStatus.currentPhase = "error";
+        batchReprocessStatus.completedAt = new Date().toISOString();
+      }
+    })();
+  });
+
+  app.get("/api/admin/batch-reprocess/status", async (_req, res) => {
+    res.json(batchReprocessStatus);
+  });
+
+  app.get("/api/data/quality-summary", async (_req, res) => {
+    try {
+      const [tierResult, metricsResult, gapsResult] = await Promise.all([
+        db.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE
+              (CASE WHEN owner_phone IS NOT NULL OR contact_phone IS NOT NULL OR managing_member_phone IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN contact_name IS NOT NULL AND contact_name != '' THEN 1 ELSE 0 END) +
+              (CASE WHEN enrichment_status = 'complete' THEN 1 ELSE 0 END) +
+              (CASE WHEN ownership_structure IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN decision_makers IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN dm_review_status IN ('auto_approved', 'auto_publish', 'approved') THEN 1 ELSE 0 END)
+              >= 3
+            )::int AS high_count,
+            COUNT(*) FILTER (WHERE
+              (CASE WHEN owner_phone IS NOT NULL OR contact_phone IS NOT NULL OR managing_member_phone IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN contact_name IS NOT NULL AND contact_name != '' THEN 1 ELSE 0 END) +
+              (CASE WHEN enrichment_status = 'complete' THEN 1 ELSE 0 END) +
+              (CASE WHEN ownership_structure IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN decision_makers IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN dm_review_status IN ('auto_approved', 'auto_publish', 'approved') THEN 1 ELSE 0 END)
+              BETWEEN 1 AND 2
+            )::int AS medium_count,
+            COUNT(*) FILTER (WHERE
+              (CASE WHEN owner_phone IS NOT NULL OR contact_phone IS NOT NULL OR managing_member_phone IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN contact_name IS NOT NULL AND contact_name != '' THEN 1 ELSE 0 END) +
+              (CASE WHEN enrichment_status = 'complete' THEN 1 ELSE 0 END) +
+              (CASE WHEN ownership_structure IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN decision_makers IS NOT NULL THEN 1 ELSE 0 END) +
+              (CASE WHEN dm_review_status IN ('auto_approved', 'auto_publish', 'approved') THEN 1 ELSE 0 END)
+              = 0
+            )::int AS low_count
+          FROM leads
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE owner_phone IS NOT NULL OR contact_phone IS NOT NULL OR managing_member_phone IS NOT NULL)::int AS has_phone,
+            COUNT(*) FILTER (WHERE contact_name IS NOT NULL AND contact_name != '')::int AS has_contact_name,
+            COUNT(*) FILTER (WHERE managing_member IS NOT NULL OR decision_makers IS NOT NULL)::int AS has_decision_maker,
+            COUNT(*) FILTER (WHERE enrichment_status = 'complete')::int AS enriched,
+            COUNT(*) FILTER (WHERE owner_email IS NOT NULL OR contact_email IS NOT NULL)::int AS has_email,
+            COUNT(*) FILTER (WHERE ownership_structure IS NOT NULL)::int AS has_ownership
+          FROM leads
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*) FILTER (WHERE owner_email IS NULL AND contact_email IS NULL)::int AS missing_email,
+            COUNT(*) FILTER (WHERE contact_phone IS NULL AND owner_phone IS NULL AND managing_member_phone IS NULL)::int AS missing_phone,
+            COUNT(*) FILTER (WHERE contact_name IS NULL OR contact_name = '')::int AS missing_contact_name,
+            COUNT(*) FILTER (WHERE ownership_structure IS NULL)::int AS missing_ownership,
+            COUNT(*) FILTER (WHERE decision_makers IS NULL AND managing_member IS NULL)::int AS missing_decision_maker,
+            COUNT(*) FILTER (WHERE enrichment_status != 'complete' OR enrichment_status IS NULL)::int AS missing_enrichment,
+            COUNT(*)::int AS total
+          FROM leads
+        `),
+      ]);
+
+      const tier = (tierResult as any).rows[0];
+      const metrics = (metricsResult as any).rows[0];
+      const gaps = (gapsResult as any).rows[0];
+      const total = tier.total || 1;
+
+      const gapList = [
+        { field: "owner_email", label: "Missing email", count: gaps.missing_email, pct: Math.round((gaps.missing_email / total) * 100) },
+        { field: "phone", label: "Missing phone", count: gaps.missing_phone, pct: Math.round((gaps.missing_phone / total) * 100) },
+        { field: "contact_name", label: "Missing contact name", count: gaps.missing_contact_name, pct: Math.round((gaps.missing_contact_name / total) * 100) },
+        { field: "ownership_structure", label: "Missing ownership classification", count: gaps.missing_ownership, pct: Math.round((gaps.missing_ownership / total) * 100) },
+        { field: "decision_makers", label: "Missing decision-maker", count: gaps.missing_decision_maker, pct: Math.round((gaps.missing_decision_maker / total) * 100) },
+        { field: "enrichment", label: "Not fully enriched", count: gaps.missing_enrichment, pct: Math.round((gaps.missing_enrichment / total) * 100) },
+      ].sort((a, b) => b.pct - a.pct).slice(0, 5);
+
+      res.json({
+        tiers: {
+          high: { count: tier.high_count, pct: Math.round((tier.high_count / total) * 100) },
+          medium: { count: tier.medium_count, pct: Math.round((tier.medium_count / total) * 100) },
+          low: { count: tier.low_count, pct: Math.round((tier.low_count / total) * 100) },
+        },
+        metrics: {
+          total,
+          hasPhone: Math.round((metrics.has_phone / total) * 100),
+          hasContactName: Math.round((metrics.has_contact_name / total) * 100),
+          hasDecisionMaker: Math.round((metrics.has_decision_maker / total) * 100),
+          enriched: Math.round((metrics.enriched / total) * 100),
+          hasEmail: Math.round((metrics.has_email / total) * 100),
+          hasOwnership: Math.round((metrics.has_ownership / total) * 100),
+        },
+        gaps: gapList,
+      });
+    } catch (error) {
+      console.error("Quality summary error:", error);
+      res.status(500).json({ message: "Failed to compute quality summary" });
     }
   });
 

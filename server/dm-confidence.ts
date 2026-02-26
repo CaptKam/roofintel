@@ -16,7 +16,7 @@ interface ConfidenceComponents {
 interface ConfidenceResult {
   overallScore: number;
   components: ConfidenceComponents;
-  tier: "auto_publish" | "review" | "suppress";
+  tier: "auto_publish" | "review" | "insufficient_data" | "suppress";
   explanation: string[];
 }
 
@@ -285,10 +285,26 @@ export function computeDecisionMakerConfidence(lead: Lead): ConfidenceResult {
 
   const overallScore = Math.max(0, Math.min(100, Math.round(raw)));
 
-  let tier: "auto_publish" | "review" | "suppress";
-  if (overallScore >= 85) tier = "auto_publish";
-  else if (overallScore >= 60) tier = "review";
-  else tier = "suppress";
+  let tier: "auto_publish" | "review" | "insufficient_data" | "suppress";
+  if (overallScore >= 70) tier = "auto_publish";
+  else if (overallScore < 30) tier = "suppress";
+  else {
+    let enrichmentSignals = 0;
+    if (lead.contactRole && lead.contactRole !== "Unknown") enrichmentSignals++;
+    if (lead.managementCompany) enrichmentSignals++;
+    const hasCorroboratedEvidence = lead.managementEvidence && Array.isArray(lead.managementEvidence) && (lead.managementEvidence as any[]).length >= 2;
+    if (hasCorroboratedEvidence) enrichmentSignals++;
+    const hasVerifiedPhone = !!(lead.ownerPhone || lead.contactPhone || lead.managingMemberPhone || lead.managementPhone);
+    if (hasVerifiedPhone) enrichmentSignals++;
+    const enrichmentComplete = lead.enrichmentStatus === "complete" || lead.enrichmentStatus === "enriched";
+    if (enrichmentComplete) enrichmentSignals++;
+
+    if (enrichmentSignals < 2) {
+      tier = "insufficient_data";
+    } else {
+      tier = "review";
+    }
+  }
 
   const explanation = [
     ...property.explanations,
@@ -307,6 +323,7 @@ export async function runConfidenceScoring(marketId?: string, filterLeadIds?: st
   totalProcessed: number;
   autoPublish: number;
   review: number;
+  insufficientData: number;
   suppress: number;
   avgScore: number;
 }> {
@@ -320,6 +337,7 @@ export async function runConfidenceScoring(marketId?: string, filterLeadIds?: st
 
   let autoPublish = 0;
   let review = 0;
+  let insufficientData = 0;
   let suppress = 0;
   let totalScore = 0;
 
@@ -328,13 +346,15 @@ export async function runConfidenceScoring(marketId?: string, filterLeadIds?: st
 
     if (result.tier === "auto_publish") autoPublish++;
     else if (result.tier === "review") review++;
+    else if (result.tier === "insufficient_data") insufficientData++;
     else suppress++;
     totalScore += result.overallScore;
 
     const preserveManualReview = lead.dmReviewStatus === "approved" || lead.dmReviewStatus === "rejected" || lead.dmReviewStatus === "reassigned";
     const newStatus = preserveManualReview ? lead.dmReviewStatus : (
       result.tier === "auto_publish" ? "auto_approved" :
-      result.tier === "suppress" ? "suppressed" : "pending_review"
+      result.tier === "suppress" ? "suppressed" :
+      result.tier === "insufficient_data" ? "insufficient_data" : "pending_review"
     );
 
     await db.update(leads).set({
@@ -348,6 +368,7 @@ export async function runConfidenceScoring(marketId?: string, filterLeadIds?: st
     totalProcessed: allLeads.length,
     autoPublish,
     review,
+    insufficientData,
     suppress,
     avgScore: allLeads.length > 0 ? Math.round(totalScore / allLeads.length) : 0,
   };
@@ -365,15 +386,18 @@ export async function getConfidenceStats(marketId?: string) {
   let totalScore = 0;
   const reviewStatuses: Record<string, number> = {};
 
+  let insufficientData = 0;
+
   for (const lead of allLeads) {
     if (lead.dmConfidenceScore !== null && lead.dmConfidenceScore !== undefined) {
       scored++;
       totalScore += lead.dmConfidenceScore;
-      if (lead.dmConfidenceScore >= 85) autoPublish++;
-      else if (lead.dmConfidenceScore >= 60) review++;
-      else suppress++;
+      if (lead.dmConfidenceScore >= 70) autoPublish++;
+      else if (lead.dmConfidenceScore < 30) suppress++;
+      else review++;
     }
     const status = lead.dmReviewStatus || "unreviewed";
+    if (status === "insufficient_data") insufficientData++;
     reviewStatuses[status] = (reviewStatuses[status] || 0) + 1;
   }
 
@@ -383,6 +407,7 @@ export async function getConfidenceStats(marketId?: string) {
     avgScore: scored > 0 ? Math.round(totalScore / scored) : 0,
     autoPublish,
     review,
+    insufficientData,
     suppress,
     reviewStatuses,
   };

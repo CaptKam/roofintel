@@ -2,6 +2,7 @@ import { db } from "./storage";
 import { apiUsageTracker, leads as leadsTable } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { recordEvidence } from "./evidence-recorder";
+import { isPersonName } from "./contact-validation";
 
 const PDL_MONTHLY_LIMIT = 100;
 const SERVICE_NAME = "pdl";
@@ -155,7 +156,7 @@ export async function enrichPersonPDL(
       updates.phoneEnrichedAt = new Date();
     }
     if (person.title) updates.contactTitle = person.title;
-    if (person.fullName) updates.contactName = person.fullName;
+    if (person.fullName && isPersonName(person.fullName)) updates.contactName = person.fullName;
 
     if (Object.keys(updates).length > 1) {
       await db.update(leadsTable).set(updates).where(eq(leadsTable.id, leadId));

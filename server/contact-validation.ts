@@ -1,10 +1,80 @@
 import { db } from "./storage";
-import { contactEvidence } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { contactEvidence, leads } from "@shared/schema";
+import { eq, isNull, isNotNull, sql } from "drizzle-orm";
 import dns from "dns";
 import { promisify } from "util";
 
 const resolveMx = promisify(dns.resolveMx);
+
+const BUSINESS_KEYWORDS = [
+  "LLC", "INC", "CORP", "LTD", "LP", "TRUST",
+  "CHURCH", "SCHOOL", "SERVICES", "PRINTING", "LANDSCAPE",
+  "RESTAURANT", "PLUMBING", "ELECTRIC", "DESIGN", "CONSTRUCTION",
+  "ASSOCIATES", "HOLDINGS", "INVESTMENTS", "PROPERTIES", "MANAGEMENT",
+  "REALTY", "COMPANY", "PARTNERS", "CAPITAL", "FUND", "DEVELOPMENT",
+  "INDUSTRIAL", "COMMERCIAL", "RESIDENTIAL", "ENTERPRISE", "GROUP",
+  "MISSIONARY", "METHODIST", "BAPTIST", "APOSTOLIC", "PTSO", "ISD",
+  "HOLDING", "VENTURES", "ENTERPRISES",
+];
+
+const PREFIX_PATTERNS = [/^C\/O\s/i, /^ATTN\s/i, /^ATTN:\s/i, /^DEPT\s/i, /^DEPT:\s/i];
+
+const JUNK_PATTERNS = [
+  /statewide/i, /links/i, /navigation/i, /menu/i, /footer/i, /header/i,
+  /click here/i, /read more/i, /learn more/i, /sign in/i, /log in/i, /sign up/i,
+  /contact us/i, /about us/i, /home page/i, /skip to/i, /toggle/i,
+  /cookie/i, /privacy/i, /terms of/i, /copyright/i, /all rights/i,
+  /subscribe/i, /follow us/i, /powered by/i, /page \d/i,
+  /^\s*us\s/i, /^the\s/i, /^a\s/i, /^an\s/i,
+];
+
+export function isPersonName(name: string): boolean {
+  if (!name || name.length < 3 || name.length > 80) return false;
+  const cleaned = name.replace(/[\n\r\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  if (cleaned.length < 3) return false;
+  const upper = cleaned.toUpperCase();
+  if (BUSINESS_KEYWORDS.some(w => upper.includes(w))) return false;
+  if (PREFIX_PATTERNS.some(p => p.test(cleaned))) return false;
+  if (JUNK_PATTERNS.some(p => p.test(cleaned))) return false;
+  if (/[<>{}|\\]/.test(cleaned)) return false;
+  if ((cleaned.match(/[^a-zA-Z\s.\-']/g) || []).length > 2) return false;
+  const parts = cleaned.split(/\s+/);
+  if (parts.length < 2 || parts.length > 5) return false;
+  if (!parts.every(p => /^[A-Z]/i.test(p) && p.length >= 2)) return false;
+  return true;
+}
+
+export function validateContactName(name: string | null | undefined): { isValid: boolean; businessName?: string } {
+  if (!name) return { isValid: false };
+  if (isPersonName(name)) return { isValid: true };
+  return { isValid: false, businessName: name };
+}
+
+export async function cleanupPollutedContactNames(): Promise<{ nulledOut: number; sourcesFixed: number; migratedToBusinessName: number }> {
+  const allLeads = await db.select({ id: leads.id, contactName: leads.contactName, contactSource: leads.contactSource, businessName: leads.businessName }).from(leads).where(isNotNull(leads.contactName));
+
+  let nulledOut = 0;
+  let sourcesFixed = 0;
+  let migratedToBusinessName = 0;
+
+  for (const lead of allLeads) {
+    if (lead.contactName && !isPersonName(lead.contactName)) {
+      const updates: any = { contactName: null };
+      if (!lead.businessName) {
+        updates.businessName = lead.contactName;
+        migratedToBusinessName++;
+      }
+      await db.update(leads).set(updates).where(eq(leads.id, lead.id));
+      nulledOut++;
+    }
+  }
+
+  const result = await db.execute(sql`UPDATE leads SET contact_source = 'Unknown (Legacy)' WHERE contact_source IS NULL AND contact_name IS NOT NULL`);
+  sourcesFixed = Number((result as any)?.rowCount ?? 0);
+
+  console.log(`[Contact Cleanup] Nulled out ${nulledOut} polluted contact names, migrated ${migratedToBusinessName} to businessName, fixed ${sourcesFixed} missing sources`);
+  return { nulledOut, sourcesFixed, migratedToBusinessName };
+}
 
 export function normalizePhoneE164(phone: string): string | null {
   const digits = phone.replace(/\D/g, "");
@@ -106,6 +176,13 @@ export async function checkMxRecord(email: string): Promise<{ hasMx: boolean; re
   } catch {
     return { hasMx: false };
   }
+}
+
+export function isE164Format(phone: string): boolean {
+  const e164Pattern = /^\+[1-9]\d{6,14}$/;
+  if (e164Pattern.test(phone)) return true;
+  const normalized = normalizePhoneE164(phone);
+  return normalized !== null && e164Pattern.test(normalized);
 }
 
 export function checkDomainMatch(email: string, orgWebsite: string | null): boolean {

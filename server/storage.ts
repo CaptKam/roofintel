@@ -4,8 +4,10 @@ import pg from "pg";
 import {
   leads, hailEvents, markets, dataSources, importRuns, jobs,
   stormAlertConfigs, stormRuns, alertHistory, responseQueue, intelligenceClaims,
+  marketDataSources,
   type Lead, type InsertLead, type HailEvent, type InsertHailEvent,
   type LeadFilter, type Market, type InsertMarket,
+  type MarketDataSource, type InsertMarketDataSource,
   type DataSource, type InsertDataSource,
   type ImportRun, type InsertImportRun,
   type Job, type InsertJob,
@@ -88,6 +90,11 @@ export interface IStorage {
   createIntelligenceClaims(claims: InsertIntelligenceClaim[]): Promise<number>;
   getClaimsForLead(leadId: string): Promise<IntelligenceClaim[]>;
   deleteClaimsForLead(leadId: string): Promise<void>;
+
+  getMarketDataSources(marketId?: string): Promise<MarketDataSource[]>;
+  getMarketDataSourceById(id: string): Promise<MarketDataSource | undefined>;
+  createMarketDataSource(ds: InsertMarketDataSource): Promise<MarketDataSource>;
+  updateMarketDataSource(id: string, updates: Partial<MarketDataSource>): Promise<MarketDataSource | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -568,6 +575,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteClaimsForLead(leadId: string): Promise<void> {
     await db.delete(intelligenceClaims).where(eq(intelligenceClaims.leadId, leadId));
+  }
+
+  async getMarketDataSources(marketId?: string): Promise<MarketDataSource[]> {
+    if (marketId) {
+      return db.select().from(marketDataSources).where(eq(marketDataSources.marketId, marketId)).orderBy(marketDataSources.sourceName);
+    }
+    return db.select().from(marketDataSources).orderBy(marketDataSources.sourceName);
+  }
+
+  async getMarketDataSourceById(id: string): Promise<MarketDataSource | undefined> {
+    const result = await db.select().from(marketDataSources).where(eq(marketDataSources.id, id));
+    return result[0];
+  }
+
+  async createMarketDataSource(ds: InsertMarketDataSource): Promise<MarketDataSource> {
+    const result = await db.insert(marketDataSources).values(ds).returning();
+    return result[0];
+  }
+
+  async updateMarketDataSource(id: string, updates: Partial<MarketDataSource>): Promise<MarketDataSource | undefined> {
+    const { id: _id, createdAt: _ca, ...safeUpdates } = updates as any;
+    const result = await db.update(marketDataSources).set(safeUpdates).where(eq(marketDataSources.id, id)).returning();
+    return result[0];
   }
 }
 

@@ -37,6 +37,9 @@ import {
   DollarSign,
   Shield,
   Layers,
+  CircleCheck,
+  CircleMinus,
+  CircleAlert,
 } from "lucide-react";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
 import type { Lead } from "@shared/schema";
@@ -557,6 +560,28 @@ export default function Leads() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {(lead as any).dataConfidence && (
+                    <Badge
+                      variant="secondary"
+                      className={`no-default-hover-elevate no-default-active-elevate text-[10px] ${
+                        (lead as any).dataConfidence === "high"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                          : (lead as any).dataConfidence === "medium"
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                          : "bg-red-500/15 text-red-700 dark:text-red-400"
+                      }`}
+                      data-testid={`badge-confidence-${lead.id}`}
+                    >
+                      {(lead as any).dataConfidence === "high" ? (
+                        <CircleCheck className="w-3 h-3 mr-0.5" />
+                      ) : (lead as any).dataConfidence === "medium" ? (
+                        <CircleMinus className="w-3 h-3 mr-0.5" />
+                      ) : (
+                        <CircleAlert className="w-3 h-3 mr-0.5" />
+                      )}
+                      {(lead as any).dataConfidence === "high" ? "High" : (lead as any).dataConfidence === "medium" ? "Med" : "Low"}
+                    </Badge>
+                  )}
                   <StatusBadge status={lead.status} />
                   <ScoreBadge score={lead.leadScore} />
                   <ChevronRight className="w-4 h-4 text-muted-foreground/30" />

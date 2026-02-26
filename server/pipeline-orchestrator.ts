@@ -296,10 +296,23 @@ export async function runFullPipeline(options: { skipPhases?: string[]; filters?
         if (total > 100) {
           updateStepStatus("dcad", "skipped", `${total.toLocaleString()} leads already exist`);
         } else {
-          await runStep("dcad", async () => {
-            const result = await callInternalApi("/api/import/dcad", { marketId, minImpValue: 100000, maxRecords: 5000, minSqft: 0 });
-            return `Imported ${result.imported || 0} properties (${result.skipped || 0} skipped)`;
-          });
+          const { hasMarketDataSources, importAllMarketSources } = await import("./arcgis-importer");
+          const hasGenericConfig = await hasMarketDataSources(marketId);
+
+          if (hasGenericConfig) {
+            await runStep("dcad", async () => {
+              const results = await importAllMarketSources(marketId, { maxRecords: 5000, minSqft: 0 });
+              const totalImported = results.reduce((s, r) => s + r.imported, 0);
+              const totalSkipped = results.reduce((s, r) => s + r.skipped, 0);
+              const sourceNames = results.map(r => r.dataSourceName).join(", ");
+              return `Generic importer: ${totalImported} imported, ${totalSkipped} skipped from ${results.length} sources (${sourceNames})`;
+            });
+          } else {
+            await runStep("dcad", async () => {
+              const result = await callInternalApi("/api/import/dcad", { marketId, minImpValue: 100000, maxRecords: 5000, minSqft: 0 });
+              return `Imported ${result.imported || 0} properties (${result.skipped || 0} skipped)`;
+            });
+          }
         }
         updatePhaseStatus("import", "complete");
       }
