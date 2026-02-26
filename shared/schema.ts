@@ -788,3 +788,21 @@ export const savedFilters = pgTable("saved_filters", {
 export const insertSavedFilterSchema = createInsertSchema(savedFilters).omit({ id: true, createdAt: true });
 export type InsertSavedFilter = z.infer<typeof insertSavedFilterSchema>;
 export type SavedFilter = typeof savedFilters.$inferSelect;
+
+export const aiAuditResults = pgTable("ai_audit_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  auditType: text("audit_type").notNull(),
+  findings: jsonb("findings").notNull(),
+  confidence: real("confidence").notNull().default(0),
+  status: text("status").notNull().default("pending"),
+  tokensUsed: integer("tokens_used").notNull().default(0),
+  appliedAt: timestamp("applied_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAiAuditResultSchema = createInsertSchema(aiAuditResults).omit({ id: true, createdAt: true });
+export type InsertAiAuditResult = z.infer<typeof insertAiAuditResultSchema>;
+export type AiAuditResult = typeof aiAuditResults.$inferSelect;
+
+export * from "./models/chat";

@@ -54,6 +54,9 @@ import {
   ChevronDown,
   ChevronRight,
   Layers,
+  Bot,
+  Sparkles,
+  Ban,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -1951,6 +1954,75 @@ export default function Admin() {
   const [showIntelAdvanced, setShowIntelAdvanced] = useState(false);
   const [showContactAdvanced, setShowContactAdvanced] = useState(false);
   const [showBulkDataFixes, setShowBulkDataFixes] = useState(false);
+  const [showAiResults, setShowAiResults] = useState(false);
+  const [aiMode, setAiMode] = useState<"audit" | "search" | "both">("audit");
+  const [aiBatchSize, setAiBatchSize] = useState(25);
+
+  const { data: aiStatus, refetch: refetchAiStatus } = useQuery<any>({
+    queryKey: ["/api/admin/ai-agent/status"],
+    refetchInterval: (query) => query.state.data?.running ? 2000 : false,
+  });
+
+  const { data: aiSummary, refetch: refetchAiSummary } = useQuery<any>({
+    queryKey: ["/api/admin/ai-agent/summary"],
+  });
+
+  const { data: aiResults, refetch: refetchAiResults } = useQuery<any>({
+    queryKey: ["/api/admin/ai-agent/results", { status: "pending", limit: 20 }],
+    enabled: showAiResults,
+  });
+
+  const aiRunMutation = useMutation({
+    mutationFn: async ({ mode, batchSize }: { mode: string; batchSize: number }) => {
+      const res = await apiRequest("POST", "/api/admin/ai-agent/run", { mode, batchSize });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "AI Agent Started", description: data.message });
+      refetchAiStatus();
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to start AI agent", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const aiCancelMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/ai-agent/cancel");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Cancel requested" });
+      refetchAiStatus();
+    },
+  });
+
+  const aiApplyMutation = useMutation({
+    mutationFn: async (resultId: string) => {
+      const res = await apiRequest("POST", `/api/admin/ai-agent/apply/${resultId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Finding applied" });
+      refetchAiResults();
+      refetchAiSummary();
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to apply", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const aiDismissMutation = useMutation({
+    mutationFn: async (resultId: string) => {
+      const res = await apiRequest("POST", `/api/admin/ai-agent/dismiss/${resultId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchAiResults();
+      refetchAiSummary();
+    },
+  });
 
   const batchReprocessMutation = useMutation({
     mutationFn: async () => {
@@ -3167,6 +3239,199 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="shadow-sm border-blue-200 dark:border-blue-800">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base font-semibold">
+                  AI Data Agent
+                </CardTitle>
+                <Badge variant="outline" className="text-[10px] font-normal">Claude Haiku</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                {aiStatus?.running ? (
+                  <Button size="sm" variant="outline" onClick={() => aiCancelMutation.mutate()} data-testid="button-ai-cancel">
+                    <Ban className="w-3 h-3" /> Cancel
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => aiRunMutation.mutate({ mode: aiMode, batchSize: aiBatchSize })}
+                    disabled={aiRunMutation.isPending}
+                    data-testid="button-ai-run"
+                  >
+                    {aiRunMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Run AI Agent
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Uses AI to audit owner data, discover decision-makers via web search, and find connections between entities. Costs ~$0.001/lead.
+              </p>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs">Mode:</Label>
+                  <select
+                    value={aiMode}
+                    onChange={(e) => setAiMode(e.target.value as any)}
+                    className="text-xs border rounded px-2 py-1 bg-background"
+                    data-testid="select-ai-mode"
+                  >
+                    <option value="audit">Data Audit</option>
+                    <option value="search">Web Search</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs">Batch:</Label>
+                  <select
+                    value={aiBatchSize}
+                    onChange={(e) => setAiBatchSize(parseInt(e.target.value))}
+                    className="text-xs border rounded px-2 py-1 bg-background"
+                    data-testid="select-ai-batch"
+                  >
+                    <option value="10">10 leads</option>
+                    <option value="25">25 leads</option>
+                    <option value="50">50 leads</option>
+                    <option value="100">100 leads</option>
+                    <option value="250">250 leads</option>
+                  </select>
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  Est. cost: ~${(aiBatchSize * 0.001).toFixed(3)}
+                </span>
+              </div>
+
+              {aiStatus?.running && (
+                <div className="rounded-lg border p-3 space-y-2 bg-blue-50 dark:bg-blue-950/30">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                      Running ({aiStatus.mode})
+                    </span>
+                    <span>{aiStatus.processed}/{aiStatus.total} leads</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-1.5">
+                    <div
+                      className="bg-blue-500 h-1.5 rounded-full transition-all"
+                      style={{ width: `${aiStatus.total > 0 ? (aiStatus.processed / aiStatus.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+                    <span>{aiStatus.findingsCount} findings</span>
+                    <span>{aiStatus.tokensUsed.toLocaleString()} tokens</span>
+                    <span>~${aiStatus.estimatedCost.toFixed(4)}</span>
+                    {aiStatus.errors > 0 && <span className="text-destructive">{aiStatus.errors} errors</span>}
+                  </div>
+                </div>
+              )}
+
+              {aiSummary && aiSummary.total > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-lg border p-2.5 text-center">
+                    <p className="text-lg font-bold" data-testid="stat-ai-total">{aiSummary.total}</p>
+                    <p className="text-[10px] text-muted-foreground">Total Findings</p>
+                  </div>
+                  <div className="rounded-lg border p-2.5 text-center">
+                    <p className="text-lg font-bold" data-testid="stat-ai-tokens">{(aiSummary.totalTokens || 0).toLocaleString()}</p>
+                    <p className="text-[10px] text-muted-foreground">Tokens Used</p>
+                  </div>
+                  <div className="rounded-lg border p-2.5 text-center">
+                    <p className="text-lg font-bold" data-testid="stat-ai-cost">${(aiSummary.estimatedCost || 0).toFixed(4)}</p>
+                    <p className="text-[10px] text-muted-foreground">Est. Cost</p>
+                  </div>
+                  <div className="rounded-lg border p-2.5 text-center">
+                    <p className="text-lg font-bold">
+                      {aiSummary.byType?.filter((t: any) => t.status === "pending").reduce((s: number, t: any) => s + t.count, 0) || 0}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Pending Review</p>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => { setShowAiResults(!showAiResults); if (!showAiResults) refetchAiResults(); }}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="button-toggle-ai-results"
+              >
+                {showAiResults ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                Review findings ({aiSummary?.total || 0} total)
+              </button>
+
+              {showAiResults && aiResults?.results && (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {aiResults.results.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-4 text-center">No pending findings. Run the AI agent to generate insights.</p>
+                  ) : (
+                    aiResults.results.map((r: any) => (
+                      <div key={r.id} className="rounded-lg border p-3 space-y-2" data-testid={`ai-result-${r.id}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={r.audit_type === "owner_analysis" ? "default" : r.audit_type === "web_search" ? "secondary" : "outline"} className="text-[10px]">
+                              {r.audit_type === "owner_analysis" ? "Owner Analysis" : r.audit_type === "web_search" ? "Web Search" : r.audit_type === "connection_discovery" ? "Connection" : r.audit_type}
+                            </Badge>
+                            <span className="text-xs font-medium">{r.owner_name}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-muted-foreground">{Math.round((r.confidence || 0) * 100)}%</span>
+                            {r.status === "pending" && (
+                              <>
+                                <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => aiApplyMutation.mutate(r.id)} disabled={aiApplyMutation.isPending}>
+                                  <ThumbsUp className="w-3 h-3 text-emerald-500" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-6 px-1.5" onClick={() => aiDismissMutation.mutate(r.id)}>
+                                  <ThumbsDown className="w-3 h-3 text-muted-foreground" />
+                                </Button>
+                              </>
+                            )}
+                            {r.status === "applied" && <Badge variant="outline" className="text-[10px] text-emerald-600">Applied</Badge>}
+                            {r.status === "dismissed" && <Badge variant="outline" className="text-[10px] text-muted-foreground">Dismissed</Badge>}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{r.address}, {r.city}</p>
+                        {r.audit_type === "owner_analysis" && r.findings && (
+                          <div className="text-xs space-y-0.5">
+                            <p><span className="font-medium">Entity:</span> {(r.findings as any).entityType} {(r.findings as any).isHoldingCompany ? "(Holding)" : ""} {(r.findings as any).isManagementCompany ? "(Mgmt)" : ""}</p>
+                            <p><span className="font-medium">Business:</span> {(r.findings as any).likelyBusinessType}</p>
+                            <p><span className="font-medium">DM Hint:</span> {(r.findings as any).decisionMakerHint}</p>
+                          </div>
+                        )}
+                        {r.audit_type === "web_search" && r.findings && (
+                          <div className="text-xs space-y-0.5">
+                            {(r.findings as any).foundContacts?.length > 0 ? (
+                              (r.findings as any).foundContacts.map((c: any, i: number) => (
+                                <p key={i}>
+                                  <span className="font-medium">{c.name || "Unknown"}</span>
+                                  {c.title && <span className="text-muted-foreground"> — {c.title}</span>}
+                                  {c.phone && <span className="text-emerald-600 dark:text-emerald-400"> {c.phone}</span>}
+                                  {c.email && <span className="text-blue-600 dark:text-blue-400"> {c.email}</span>}
+                                </p>
+                              ))
+                            ) : (
+                              <p className="text-muted-foreground">No contacts found</p>
+                            )}
+                            {(r.findings as any).businessInsights?.managementCompany && (
+                              <p><span className="font-medium">Mgmt Co:</span> {(r.findings as any).businessInsights.managementCompany}</p>
+                            )}
+                          </div>
+                        )}
+                        {r.audit_type === "connection_discovery" && r.findings && (
+                          <div className="text-xs space-y-0.5">
+                            <p><span className="font-medium">Type:</span> {(r.findings as any).connectionType}</p>
+                            <p><span className="font-medium">Portfolio:</span> {(r.findings as any).portfolioSize} properties</p>
+                            <p><span className="font-medium">Strategy:</span> {(r.findings as any).centralContactStrategy}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">

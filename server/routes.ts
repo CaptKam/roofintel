@@ -3756,6 +3756,251 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     res.json({ message: "Cancellation requested" });
   });
 
+  // ============================================================
+  // AI Data Quality Agent
+  // ============================================================
+
+  app.post("/api/admin/ai-agent/run", async (req, res) => {
+    try {
+      const { runDataAudit, getAuditProgress, resetAuditProgress } = await import("./data-audit-agent");
+      const { runAiWebSearch } = await import("./ai-web-search-agent");
+      const progress = getAuditProgress();
+      if (progress.running) {
+        return res.status(409).json({ message: "AI agent already running", status: progress });
+      }
+      resetAuditProgress();
+      const batchSize = Math.min(Math.max(parseInt(req.body?.batchSize) || 25, 1), 500);
+      const mode = (req.body?.mode || "audit") as "audit" | "search" | "both";
+
+      res.json({ message: `AI agent started in ${mode} mode for ${batchSize} leads`, batchSize, mode });
+
+      (async () => {
+        try {
+          if (mode === "audit" || mode === "both") {
+            await runDataAudit(batchSize);
+          }
+          if (mode === "search" || mode === "both") {
+            if (mode === "both") resetAuditProgress();
+            await runAiWebSearch(batchSize);
+          }
+        } catch (err: any) {
+          console.error("[ai-agent] Error:", err.message);
+        }
+      })();
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start AI agent", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/ai-agent/status", async (_req, res) => {
+    const { getAuditProgress } = await import("./data-audit-agent");
+    res.json(getAuditProgress());
+  });
+
+  app.post("/api/admin/ai-agent/cancel", async (_req, res) => {
+    const { auditProgress } = await import("./data-audit-agent");
+    auditProgress.running = false;
+    res.json({ message: "Cancel requested" });
+  });
+
+  app.get("/api/admin/ai-agent/results", async (req, res) => {
+    try {
+      const type = req.query.type as string | undefined;
+      const status = req.query.status as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      let query = `
+        SELECT a.*, l.owner_name, l.address, l.city, l.total_value, l.contact_name, l.contact_phone
+        FROM ai_audit_results a
+        JOIN leads l ON a.lead_id = l.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      let paramIdx = 1;
+
+      if (type) {
+        query += ` AND a.audit_type = $${paramIdx++}`;
+        params.push(type);
+      }
+      if (status) {
+        query += ` AND a.status = $${paramIdx++}`;
+        params.push(status);
+      }
+      query += ` ORDER BY a.confidence DESC, a.created_at DESC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
+      params.push(limit, offset);
+
+      const results = await db.execute(sql.raw(query.replace(/\$(\d+)/g, (_, n) => {
+        const val = params[parseInt(n) - 1];
+        if (typeof val === "string") return `'${val.replace(/'/g, "''")}'`;
+        return String(val);
+      })));
+
+      const countQuery = `
+        SELECT COUNT(*)::int as total FROM ai_audit_results
+        WHERE 1=1
+        ${type ? `AND audit_type = '${type}'` : ""}
+        ${status ? `AND status = '${status}'` : ""}
+      `;
+      const countResult = await db.execute(sql.raw(countQuery));
+
+      res.json({
+        results: (results as any).rows,
+        total: (countResult as any).rows[0]?.total || 0,
+        limit,
+        offset,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch results", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/ai-agent/apply/:resultId", async (req, res) => {
+    try {
+      const { id: resultId } = req.params;
+
+      const rows = await db.execute(sql`
+        SELECT * FROM ai_audit_results WHERE id = ${resultId}
+      `);
+      const result = (rows as any).rows[0];
+      if (!result) {
+        return res.status(404).json({ message: "Result not found" });
+      }
+
+      const findings = result.findings as any;
+
+      if (result.audit_type === "web_search" && findings.foundContacts?.length > 0) {
+        const bestContact = findings.foundContacts.reduce((best: any, c: any) =>
+          (c.confidence > (best?.confidence || 0)) ? c : best, null);
+
+        if (bestContact) {
+          const updates: any = {};
+          if (bestContact.name && isPersonName(bestContact.name)) {
+            updates.contactName = bestContact.name;
+          }
+          if (bestContact.phone) {
+            const normalizedPhone = normalizePhoneE164(bestContact.phone);
+            if (normalizedPhone) updates.contactPhone = normalizedPhone;
+          }
+          if (bestContact.email) {
+            const emailCheck = validateEmailSyntax(bestContact.email);
+            if (emailCheck.valid) updates.contactEmail = bestContact.email;
+          }
+          if (bestContact.title) {
+            updates.contactTitle = bestContact.title;
+          }
+          if (Object.keys(updates).length > 0) {
+            await storage.updateLead(result.lead_id, updates);
+          }
+
+          if (bestContact.name || bestContact.phone || bestContact.email) {
+            const evidenceInputs: EvidenceInput[] = [];
+            if (bestContact.name && isPersonName(bestContact.name)) {
+              evidenceInputs.push({
+                leadId: result.lead_id,
+                evidenceType: "PERSON",
+                value: bestContact.name,
+                source: "ai_web_research",
+                trustScore: 50,
+              });
+            }
+            if (bestContact.phone) {
+              const validPhone = normalizePhoneE164(bestContact.phone);
+              if (validPhone) {
+                evidenceInputs.push({
+                  leadId: result.lead_id,
+                  evidenceType: "PHONE",
+                  value: validPhone,
+                  source: "ai_web_research",
+                  trustScore: 50,
+                });
+              }
+            }
+            if (bestContact.email) {
+              const emailValid = validateEmailSyntax(bestContact.email);
+              if (emailValid.valid) {
+                evidenceInputs.push({
+                  leadId: result.lead_id,
+                  evidenceType: "EMAIL",
+                  value: bestContact.email,
+                  source: "ai_web_research",
+                  trustScore: 50,
+                });
+              }
+            }
+            if (evidenceInputs.length > 0) {
+              await recordBatchEvidence(evidenceInputs);
+            }
+          }
+        }
+      }
+
+      if (result.audit_type === "owner_analysis" && findings.entityType) {
+        const updates: any = {};
+        if (findings.isManagementCompany && !findings.isActualUser) {
+          updates.ownerType = "management_company";
+        }
+        if (findings.isHoldingCompany) {
+          updates.ownerType = "holding_company";
+        }
+        if (findings.likelyBusinessType) {
+          updates.businessType = findings.likelyBusinessType;
+        }
+        if (Object.keys(updates).length > 0) {
+          await storage.updateLead(result.lead_id, updates);
+        }
+      }
+
+      await db.execute(sql`
+        UPDATE ai_audit_results SET status = 'applied', applied_at = CURRENT_TIMESTAMP
+        WHERE id = ${resultId}
+      `);
+
+      res.json({ message: "Finding applied successfully", resultId });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to apply finding", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/ai-agent/dismiss/:resultId", async (req, res) => {
+    try {
+      await db.execute(sql`
+        UPDATE ai_audit_results SET status = 'dismissed'
+        WHERE id = ${req.params.resultId}
+      `);
+      res.json({ message: "Finding dismissed" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to dismiss", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/ai-agent/summary", async (_req, res) => {
+    try {
+      const summaryRows = await db.execute(sql`
+        SELECT audit_type, status, COUNT(*)::int as count,
+               ROUND(AVG(confidence)::numeric, 2) as avg_confidence,
+               SUM(tokens_used)::int as total_tokens
+        FROM ai_audit_results
+        GROUP BY audit_type, status
+        ORDER BY audit_type, status
+      `);
+      const totalRows = await db.execute(sql`
+        SELECT COUNT(*)::int as total,
+               SUM(tokens_used)::int as total_tokens
+        FROM ai_audit_results
+      `);
+
+      res.json({
+        byType: (summaryRows as any).rows,
+        total: (totalRows as any).rows[0]?.total || 0,
+        totalTokens: (totalRows as any).rows[0]?.total_tokens || 0,
+        estimatedCost: ((totalRows as any).rows[0]?.total_tokens || 0) * 0.0000008,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get summary", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);
