@@ -199,7 +199,17 @@ export async function runDataAudit(batchSize: number = 50): Promise<void> {
       LEFT JOIN ai_audit_results a ON l.id = a.lead_id AND a.audit_type = 'owner_analysis'
       WHERE l.owner_name IS NOT NULL
         AND a.id IS NULL
-      ORDER BY l.total_value DESC NULLS LAST
+      ORDER BY
+        CASE
+          WHEN l.managing_member IS NOT NULL AND l.managing_member != '' THEN 0
+          WHEN l.business_website IS NOT NULL AND l.business_website != '' THEN 1
+          WHEN l.business_name IS NOT NULL AND l.business_name != '' THEN 2
+          WHEN l.ownership_structure = 'small_private' THEN 3
+          WHEN l.ownership_structure = 'investment_firm' THEN 4
+          WHEN l.ownership_structure = 'third_party_managed' THEN 5
+          ELSE 6
+        END,
+        l.improvement_value DESC NULLS LAST
       LIMIT ${batchSize}
     `);
 
