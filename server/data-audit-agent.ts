@@ -25,7 +25,7 @@ interface EntityResolutionResult {
   durationMs: number;
 }
 
-export type AgentMode = "audit" | "search" | "both" | "contractor_scrub" | "website_extract" | "portfolio" | "stale_data";
+export type AgentMode = "audit" | "search" | "both" | "contractor_scrub" | "website_extract" | "portfolio" | "stale_data" | "permit_audit" | "all";
 
 interface AuditProgress {
   running: boolean;
@@ -963,6 +963,221 @@ export async function runStaleDataDetection(batchSize: number = 100): Promise<vo
     console.log(`[stale-data] Complete: ${auditProgress.findingsCount} stale data findings`);
   } catch (error: any) {
     console.error("[stale-data] Fatal error:", error.message);
+    auditProgress.running = false;
+    auditProgress.completedAt = new Date().toISOString();
+    auditProgress.errors++;
+  }
+}
+
+function normalizePermitAddress(addr: string): string {
+  return addr.toUpperCase()
+    .replace(/[.,#]/g, '')
+    .replace(/\s*(STE|SUITE|UNIT|APT|BLDG|BUILDING|FLOOR|FL|RM|ROOM)\s*:?\s*\S+/gi, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\bSTREET\b/g, 'ST')
+    .replace(/\bAVENUE\b/g, 'AVE')
+    .replace(/\bBOULEVARD\b/g, 'BLVD')
+    .replace(/\bDRIVE\b/g, 'DR')
+    .replace(/\bLANE\b/g, 'LN')
+    .replace(/\bROAD\b/g, 'RD')
+    .replace(/\bPARKWAY\b/g, 'PKWY')
+    .replace(/\bCOURT\b/g, 'CT')
+    .replace(/\bCIRCLE\b/g, 'CIR')
+    .replace(/\bPLACE\b/g, 'PL')
+    .replace(/\bHIGHWAY\b/g, 'HWY')
+    .replace(/\bEXPRESSWAY\b/g, 'EXPY')
+    .replace(/\bFREEWAY\b/g, 'FWY')
+    .replace(/\bCROSSING\b/g, 'XING')
+    .replace(/\bTRAIL\b/g, 'TRL')
+    .replace(/\bTERRACE\b/g, 'TER')
+    .replace(/\bWAY\b/g, 'WAY')
+    .replace(/\bNORTH\b/g, 'N')
+    .replace(/\bSOUTH\b/g, 'S')
+    .replace(/\bEAST\b/g, 'E')
+    .replace(/\bWEST\b/g, 'W')
+    .replace(/\s*(DALLAS|FORT WORTH|TX|TEXAS|,)\s*\d{5}(-\d{4})?$/gi, '')
+    .trim();
+}
+
+const ROOFING_KEYWORDS = ['ROOF', 'REROOFING', 'RE-ROOF', 'SHINGLE', 'TPO', 'EPDM', 'MEMBRANE', 'BUILT-UP ROOF', 'BUR'];
+
+function isRoofingPermit(permit: any): boolean {
+  const desc = (permit.work_description || '').toUpperCase();
+  const type = (permit.permit_type || '').toUpperCase();
+  return ROOFING_KEYWORDS.some(kw => desc.includes(kw) || type.includes(kw));
+}
+
+export async function runPermitAudit(batchSize: number = 500): Promise<void> {
+  if (auditProgress.running) throw new Error("Agent already running");
+
+  auditProgress = {
+    running: true, mode: "permit_audit", processed: 0, total: 0,
+    tokensUsed: 0, estimatedCost: 0, findingsCount: 0, errors: 0,
+    startedAt: new Date().toISOString(), completedAt: null, entityResolution: null,
+  };
+
+  try {
+    console.log(`[permit-audit] Starting permit data integrity check...`);
+
+    const allPermits = (await db.execute(sql`
+      SELECT id, lead_id, address, city, permit_type, work_description,
+             contractor, contractor_phone, issued_date, estimated_value, owner, applicant_name
+      FROM building_permits
+      ORDER BY issued_date DESC
+    `)) as any;
+    const permits = allPermits.rows;
+
+    const allLeads = (await db.execute(sql`
+      SELECT id, address, city, permit_count, last_permit_date,
+             last_roofing_permit_date, last_roofing_contractor, managing_member
+      FROM leads
+    `)) as any;
+    const leadRows = allLeads.rows;
+
+    const leadsByNormAddr = new Map<string, any>();
+    for (const lead of leadRows) {
+      const norm = normalizePermitAddress(lead.address || '');
+      if (norm) leadsByNormAddr.set(norm, lead);
+    }
+
+    auditProgress.total = permits.length;
+    console.log(`[permit-audit] Checking ${permits.length} permits against ${leadRows.length} leads...`);
+
+    let newMatches = 0;
+    let alreadyMatched = 0;
+    let unmatched = 0;
+    let roofingFound = 0;
+    let permitCountFixes = 0;
+    let roofingFieldFixes = 0;
+
+    const leadPermitCounts = new Map<string, { total: number; lastDate: string | null; roofingDate: string | null; roofingContractor: string | null; roofingType: string | null }>();
+
+    for (const permit of permits) {
+      if (!auditProgress.running) break;
+
+      const normAddr = normalizePermitAddress(permit.address || '');
+      const matchedLead = leadsByNormAddr.get(normAddr);
+
+      if (matchedLead) {
+        if (!permit.lead_id) {
+          await db.execute(sql`
+            UPDATE building_permits SET lead_id = ${matchedLead.id} WHERE id = ${permit.id}
+          `);
+          newMatches++;
+        } else {
+          alreadyMatched++;
+        }
+
+        const stats = leadPermitCounts.get(matchedLead.id) || { total: 0, lastDate: null, roofingDate: null, roofingContractor: null, roofingType: null };
+        stats.total++;
+        if (permit.issued_date && (!stats.lastDate || permit.issued_date > stats.lastDate)) {
+          stats.lastDate = permit.issued_date;
+        }
+        if (isRoofingPermit(permit)) {
+          roofingFound++;
+          if (permit.issued_date && (!stats.roofingDate || permit.issued_date > stats.roofingDate)) {
+            stats.roofingDate = permit.issued_date;
+            stats.roofingContractor = permit.contractor || null;
+            stats.roofingType = permit.permit_type || null;
+          }
+        }
+        leadPermitCounts.set(matchedLead.id, stats);
+      } else {
+        unmatched++;
+      }
+
+      auditProgress.processed++;
+      if (auditProgress.processed % 5000 === 0) {
+        console.log(`[permit-audit] Processed ${auditProgress.processed}/${permits.length} permits, ${newMatches} new matches`);
+      }
+    }
+
+    console.log(`[permit-audit] Matching done: ${newMatches} new matches, ${alreadyMatched} already matched, ${unmatched} unmatched`);
+    console.log(`[permit-audit] Found ${roofingFound} roofing permits. Updating lead records...`);
+
+    let leadsUpdated = 0;
+    for (const [leadId, stats] of Array.from(leadPermitCounts.entries())) {
+      if (!auditProgress.running) break;
+      const lead = leadRows.find((l: any) => l.id === leadId);
+      if (!lead) continue;
+
+      const updates: string[] = [];
+      const needsPermitCountFix = lead.permit_count !== stats.total;
+      const needsDateFix = lead.last_permit_date !== stats.lastDate && stats.lastDate;
+      const needsRoofingFix = stats.roofingDate && lead.last_roofing_permit_date !== stats.roofingDate;
+
+      if (needsPermitCountFix || needsDateFix || needsRoofingFix) {
+        const setClause: string[] = [];
+
+        if (needsPermitCountFix) {
+          setClause.push(`permit_count = ${stats.total}`);
+          updates.push(`permitCount: ${lead.permit_count || 0} → ${stats.total}`);
+          permitCountFixes++;
+        }
+        if (needsDateFix && stats.lastDate) {
+          setClause.push(`last_permit_date = '${stats.lastDate}'`);
+          updates.push(`lastPermitDate: ${lead.last_permit_date || 'null'} → ${stats.lastDate}`);
+        }
+        if (needsRoofingFix && stats.roofingDate) {
+          setClause.push(`last_roofing_permit_date = '${stats.roofingDate}'`);
+          if (stats.roofingContractor) setClause.push(`last_roofing_contractor = '${stats.roofingContractor.replace(/'/g, "''")}'`);
+          if (stats.roofingType) setClause.push(`last_roofing_permit_type = '${stats.roofingType.replace(/'/g, "''")}'`);
+          updates.push(`roofingPermit: ${stats.roofingDate} by ${stats.roofingContractor || 'unknown'}`);
+          roofingFieldFixes++;
+        }
+
+        if (setClause.length > 0) {
+          await db.execute(sql.raw(`UPDATE leads SET ${setClause.join(', ')} WHERE id = '${leadId}'`));
+          leadsUpdated++;
+        }
+
+        await db.insert(aiAuditResults).values({
+          leadId,
+          auditType: "permit_audit",
+          findings: {
+            subType: "permit_data_fix",
+            corrections: updates,
+            permitCount: stats.total,
+            lastPermitDate: stats.lastDate,
+            roofingPermitDate: stats.roofingDate,
+            roofingContractor: stats.roofingContractor,
+            autoApplied: true,
+          } as any,
+          confidence: 1.0,
+          tokensUsed: 0,
+          status: "applied",
+        });
+        auditProgress.findingsCount++;
+      }
+    }
+
+    if (newMatches > 0) {
+      await db.insert(aiAuditResults).values({
+        leadId: leadRows[0]?.id || 'system',
+        auditType: "permit_audit",
+        findings: {
+          subType: "matching_summary",
+          newMatches,
+          alreadyMatched,
+          unmatched,
+          roofingPermitsFound: roofingFound,
+          leadsUpdated,
+          permitCountFixes,
+          roofingFieldFixes,
+          summary: `Re-matched ${newMatches} previously unmatched permits to leads. Updated ${leadsUpdated} leads with corrected permit data. Found ${roofingFound} roofing permits.`,
+        } as any,
+        confidence: 1.0,
+        tokensUsed: 0,
+        status: "applied",
+      });
+      auditProgress.findingsCount++;
+    }
+
+    auditProgress.running = false;
+    auditProgress.completedAt = new Date().toISOString();
+    console.log(`[permit-audit] Complete: ${newMatches} new matches, ${leadsUpdated} leads updated, ${roofingFound} roofing permits found, ${permitCountFixes} count fixes, ${roofingFieldFixes} roofing field fixes`);
+  } catch (error: any) {
+    console.error("[permit-audit] Fatal error:", error.message);
     auditProgress.running = false;
     auditProgress.completedAt = new Date().toISOString();
     auditProgress.errors++;

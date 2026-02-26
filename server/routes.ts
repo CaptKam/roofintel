@@ -3762,19 +3762,19 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
   app.post("/api/admin/ai-agent/run", async (req, res) => {
     try {
-      const { runDataAudit, getAuditProgress, resetAuditProgress, runContractorScrub, runWebsiteExtract, runPortfolioDetection, runStaleDataDetection } = await import("./data-audit-agent");
+      const { runDataAudit, getAuditProgress, resetAuditProgress, runContractorScrub, runWebsiteExtract, runPortfolioDetection, runStaleDataDetection, runPermitAudit } = await import("./data-audit-agent");
       const { runAiWebSearch } = await import("./ai-web-search-agent");
       const progress = getAuditProgress();
       if (progress.running) {
         return res.status(409).json({ message: "AI agent already running", status: progress });
       }
       resetAuditProgress();
-      const batchSize = Math.min(Math.max(parseInt(req.body?.batchSize) || 25, 1), 500);
+      const batchSize = Math.min(Math.max(parseInt(req.body?.batchSize) || 25, 1), 5000);
       const mode = (req.body?.mode || "audit") as string;
 
       res.json({ message: `AI agent started in ${mode} mode for ${batchSize} leads`, batchSize, mode });
 
-      const allModes = ["audit", "search", "contractor_scrub", "website_extract", "portfolio", "stale_data"];
+      const allModes = ["audit", "search", "contractor_scrub", "website_extract", "portfolio", "stale_data", "permit_audit"];
       const modesToRun = mode === "all" ? allModes : mode === "both" ? ["audit", "search"] : [mode];
 
       (async () => {
@@ -3792,6 +3792,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             else if (currentMode === "website_extract") await runWebsiteExtract(batchSize);
             else if (currentMode === "portfolio") await runPortfolioDetection(batchSize);
             else if (currentMode === "stale_data") await runStaleDataDetection(batchSize);
+            else if (currentMode === "permit_audit") await runPermitAudit(batchSize);
 
             console.log(`[ai-agent] Completed ${currentMode} (${i + 1}/${modesToRun.length})`);
           }
