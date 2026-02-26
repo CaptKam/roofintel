@@ -68,7 +68,14 @@ interface OwnerAnalysis {
   isActualUser: boolean;
   likelyBusinessType: string;
   decisionMakerHint: string;
+  actionableNextStep: string;
+  personToContact: string | null;
+  personRole: string | null;
   searchSuggestions: string[];
+  dataQualityNotes: {
+    strengths: string[];
+    concerns: string[];
+  };
   confidence: number;
 }
 
@@ -79,27 +86,50 @@ export async function auditOwnerName(lead: any): Promise<{
   const ownerName = lead.ownerName || lead.owner_name;
   if (!ownerName) return null;
 
-  const prompt = `Analyze this commercial property owner name and property data:
+  const managingMember = lead.managingMember || lead.managing_member || "";
+  const businessName = lead.businessName || lead.business_name || "";
+  const contactName = lead.contactName || lead.contact_name || "";
+  const contactPhone = lead.contactPhone || lead.contact_phone || "";
+  const contactEmail = lead.contactEmail || lead.contact_email || "";
+  const ownerPhone = lead.ownerPhone || lead.owner_phone || "";
+  const ownerEmail = lead.ownerEmail || lead.owner_email || "";
+  const website = lead.businessWebsite || lead.business_website || "";
 
-Owner Name: "${ownerName}"
-Property Address: ${lead.address || "N/A"}, ${lead.city || "N/A"}, TX
-Property Type/Zoning: ${lead.zoning || "N/A"}
-Improvement Value: $${(lead.improvementValue || lead.improvement_value || 0).toLocaleString()}
-Total Value: $${(lead.totalValue || lead.total_value || 0).toLocaleString()}
-Sqft: ${(lead.sqft || 0).toLocaleString()}
-${lead.ownershipStructure || lead.ownership_structure ? `Current Classification: ${lead.ownershipStructure || lead.ownership_structure}` : ""}
-${lead.managingMember || lead.managing_member ? `Managing Member: ${lead.managingMember || lead.managing_member}` : ""}
-${lead.businessName || lead.business_name ? `Business Name: ${lead.businessName || lead.business_name}` : ""}
+  const prompt = `You are helping a roofing contractor find the RIGHT PERSON to contact about roof work at this commercial property. Focus on ACTIONABLE intelligence — not just classifying the entity.
+
+Property Data:
+- Owner Name: "${ownerName}"
+- Address: ${lead.address || "N/A"}, ${lead.city || "N/A"}, TX
+- Zoning: ${lead.zoning || "N/A"}
+- Sqft: ${(lead.sqft || 0).toLocaleString()}
+- Value: $${(lead.totalValue || lead.total_value || 0).toLocaleString()}
+${managingMember ? `- Managing Member (from TX SOS): ${managingMember}` : ""}
+${businessName ? `- Business Name: ${businessName}` : ""}
+${contactName ? `- Current Contact: ${contactName}` : ""}
+${contactPhone ? `- Current Phone: ${contactPhone}` : ""}
+${contactEmail ? `- Current Email: ${contactEmail}` : ""}
+${ownerPhone ? `- Owner Phone: ${ownerPhone}` : ""}
+${ownerEmail ? `- Owner Email: ${ownerEmail}` : ""}
+${website ? `- Website: ${website}` : ""}
+
+YOUR MAIN JOB: If we have a managing member name or business name, tell me if that person is likely the decision-maker for roofing. If we have partial data, tell me exactly what to search for next. Don't just say "it's a holding company" — tell me WHO to call.
 
 Return JSON:
 {
-  "entityType": "one of: holding_company, management_company, individual_investor, corporate_tenant, government, religious_org, educational, healthcare, retail_chain, real_estate_fund, other",
+  "entityType": "holding_company / management_company / individual_investor / corporate_tenant / government / religious_org / educational / healthcare / retail_chain / real_estate_fund / other",
   "isHoldingCompany": true/false,
   "isManagementCompany": true/false,
   "isActualUser": true/false,
-  "likelyBusinessType": "brief description of what this entity likely does",
-  "decisionMakerHint": "who would make roofing decisions for this type of entity (e.g., 'facility manager', 'property management company', 'owner directly')",
-  "searchSuggestions": ["2-4 specific search queries to find the decision-maker"],
+  "likelyBusinessType": "what this entity does (1 sentence)",
+  "personToContact": "the specific person name from the data who should be contacted, or null if unknown",
+  "personRole": "their likely role (e.g., 'Property Owner', 'Managing Member / likely decision-maker', 'Facility Manager') or null",
+  "decisionMakerHint": "specific guidance on who to contact and how to reach them",
+  "actionableNextStep": "the ONE most valuable thing to do next to get a roofing conversation started (be specific, e.g., 'Call John Smith at the number on file — he is the managing member and likely makes maintenance decisions' or 'Search Google for [specific query] to find the property management company')",
+  "searchSuggestions": ["2-3 very specific Google search queries to find the decision-maker"],
+  "dataQualityNotes": {
+    "strengths": ["what data we already have that's useful"],
+    "concerns": ["any data issues or gaps"]
+  },
   "confidence": 0.0-1.0
 }`;
 

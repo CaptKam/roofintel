@@ -3393,10 +3393,25 @@ export default function Admin() {
                         </div>
                         <p className="text-[11px] text-muted-foreground">{r.address}, {r.city}</p>
                         {r.audit_type === "owner_analysis" && r.findings && (
-                          <div className="text-xs space-y-0.5">
-                            <p><span className="font-medium">Entity:</span> {(r.findings as any).entityType} {(r.findings as any).isHoldingCompany ? "(Holding)" : ""} {(r.findings as any).isManagementCompany ? "(Mgmt)" : ""}</p>
-                            <p><span className="font-medium">Business:</span> {(r.findings as any).likelyBusinessType}</p>
-                            <p><span className="font-medium">DM Hint:</span> {(r.findings as any).decisionMakerHint}</p>
+                          <div className="text-xs space-y-1">
+                            {(r.findings as any).personToContact && (
+                              <p className="text-emerald-700 dark:text-emerald-400 font-medium">
+                                Contact: {(r.findings as any).personToContact}
+                                {(r.findings as any).personRole && <span className="font-normal text-muted-foreground"> — {(r.findings as any).personRole}</span>}
+                              </p>
+                            )}
+                            <p className="font-medium text-blue-700 dark:text-blue-400">Next Step: {(r.findings as any).actionableNextStep || (r.findings as any).decisionMakerHint}</p>
+                            <p className="text-muted-foreground">{(r.findings as any).likelyBusinessType}</p>
+                            {(r.findings as any).searchSuggestions?.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {(r.findings as any).searchSuggestions.slice(0, 2).map((q: string, i: number) => (
+                                  <a key={i} href={`https://www.google.com/search?q=${encodeURIComponent(q)}`} target="_blank" rel="noopener noreferrer"
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-blue-600 dark:text-blue-400 underline-offset-2 hover:underline">
+                                    {q.length > 50 ? q.substring(0, 50) + "..." : q}
+                                  </a>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                         {r.audit_type === "web_search" && r.findings && (
