@@ -3003,6 +3003,40 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  // ============================================================
+  // Run All Pipeline Orchestrator
+  // ============================================================
+
+  app.post("/api/pipeline/run-all", async (req, res) => {
+    try {
+      const { runFullPipeline: runPipeline } = await import("./pipeline-orchestrator");
+      const { skipPhases } = req.body || {};
+      await runPipeline({ skipPhases: skipPhases || [] });
+      res.json({ message: "Pipeline started", started: true });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/pipeline/run-all/status", async (_req, res) => {
+    try {
+      const { getPipelineStatus } = await import("./pipeline-orchestrator");
+      res.json(getPipelineStatus());
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/pipeline/cancel", async (_req, res) => {
+    try {
+      const { cancelPipeline } = await import("./pipeline-orchestrator");
+      cancelPipeline();
+      res.json({ message: "Pipeline cancellation requested" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

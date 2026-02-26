@@ -489,48 +489,31 @@ export async function runBatchFreeEnrichment(): Promise<void> {
     startedAt: new Date().toISOString(),
   };
 
-  console.log(`[Batch Free Enrichment] Starting: ${eligible.length} unenriched leads`);
+  console.log(`[Batch Free Enrichment] Starting full pipeline for ${eligible.length} unenriched leads`);
+  console.log(`[Batch Free Enrichment] Pipeline: Owner Intelligence → Management Attribution → Role Inference → Confidence Scoring → Phone Enrichment`);
 
   (async () => {
     for (const lead of eligible) {
       try {
         batchFreeStatus.currentLead = `${lead.address} (${lead.ownerName})`;
 
-        const { runOwnerIntelligence } = await import("./owner-intelligence");
-        const result = await runOwnerIntelligence(lead, { skipPaidApis: true });
+        const progress = initProgress(lead.id);
+        let current: Lead = lead;
 
-        const updates: any = {
-          ownerIntelligence: result.dossier,
-          intelligenceScore: result.score,
-          intelligenceSources: result.sources,
-          intelligenceAt: new Date(),
+        current = await runOwnerIntelligenceStep(current, progress, { skipPaidApis: true });
+
+        current = await runAttributionStep(current, progress);
+
+        current = await runRoleInferenceStep(current, progress);
+
+        current = await runConfidenceScoringStep(current, progress);
+
+        current = await runPhoneEnrichmentStep(current, progress, { skipPaidApis: true });
+
+        await db.update(leads).set({
           lastEnrichedAt: new Date(),
           enrichmentStatus: "complete",
-        };
-        if (result.managingMember && !lead.contactName) updates.contactName = result.managingMember;
-        if (result.managingMemberTitle) updates.contactRole = result.managingMemberTitle;
-        if (result.managingMemberPhone && !lead.ownerPhone) updates.ownerPhone = result.managingMemberPhone;
-        if (result.managingMemberEmail && !lead.ownerEmail) updates.ownerEmail = result.managingMemberEmail;
-        if (result.llcChain && result.llcChain.length > 0) updates.llcChain = result.llcChain;
-
-        await db.update(leads).set(updates).where(eq(leads.id, lead.id));
-
-        if (!lead.ownerPhone && !result.managingMemberPhone) {
-          const { enrichSingleLeadPhone } = await import("./phone-enrichment");
-          const freshLead = await fetchLead(lead.id);
-          if (freshLead) {
-            const phoneResult = await enrichSingleLeadPhone(freshLead, { freeOnly: true });
-            if (phoneResult) {
-              await db.update(leads).set({
-                ownerPhone: phoneResult.phone,
-                phoneSource: phoneResult.source,
-                phoneEnrichedAt: new Date(),
-              } as any).where(eq(leads.id, lead.id));
-            } else {
-              await db.update(leads).set({ phoneEnrichedAt: new Date() } as any).where(eq(leads.id, lead.id));
-            }
-          }
-        }
+        } as any).where(eq(leads.id, lead.id));
 
         batchFreeStatus.enriched++;
       } catch (err: any) {

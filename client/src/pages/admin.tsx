@@ -564,6 +564,263 @@ function CreditMeter({ label, description, used, limit, icon, testId }: {
   );
 }
 
+interface PipelineStep {
+  id: string;
+  name: string;
+  status: "pending" | "running" | "complete" | "skipped" | "error";
+  detail?: string;
+}
+
+interface PipelinePhase {
+  id: string;
+  name: string;
+  status: "pending" | "running" | "complete" | "skipped" | "error";
+  steps: PipelineStep[];
+}
+
+interface PipelineStatusData {
+  running: boolean;
+  cancelled: boolean;
+  phases: PipelinePhase[];
+  currentPhase?: string;
+  currentStep?: string;
+  startedAt?: string;
+  completedAt?: string;
+  skipPhases?: string[];
+}
+
+function RunAllPipelineCard() {
+  const { toast } = useToast();
+  const [skipPhases, setSkipPhases] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState(false);
+
+  const { data: status, isLoading } = useQuery<PipelineStatusData>({
+    queryKey: ["/api/pipeline/run-all/status"],
+    refetchInterval: (query) => {
+      const data = query.state.data as PipelineStatusData | undefined;
+      return data?.running ? 2000 : 10000;
+    },
+  });
+
+  const startMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/pipeline/run-all", { skipPhases });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Pipeline started", description: "Running all phases in order..." });
+      queryClient.invalidateQueries({ queryKey: ["/api/pipeline/run-all/status"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to start pipeline", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/pipeline/cancel");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Pipeline cancellation requested" });
+      queryClient.invalidateQueries({ queryKey: ["/api/pipeline/run-all/status"] });
+    },
+  });
+
+  const toggleSkip = (phaseId: string) => {
+    setSkipPhases(prev => prev.includes(phaseId) ? prev.filter(p => p !== phaseId) : [...prev, phaseId]);
+  };
+
+  const defaultPhases: PipelinePhase[] = [
+    { id: "import", name: "Phase 1: Import Properties", status: "pending", steps: [{ id: "dcad", name: "Import DCAD Properties", status: "pending" }] },
+    { id: "building-intel", name: "Phase 2: Building Intelligence", status: "pending", steps: [{ id: "stories", name: "Estimate Stories", status: "pending" }, { id: "roof-types", name: "Estimate Roof Types", status: "pending" }, { id: "holding-companies", name: "Flag Holding Companies", status: "pending" }, { id: "fix-locations", name: "Fix Missing Locations", status: "pending" }] },
+    { id: "storm", name: "Phase 3: Storm Data", status: "pending", steps: [{ id: "noaa-current", name: "Import NOAA Hail Data", status: "pending" }, { id: "hail-correlate", name: "Match Hail to Leads", status: "pending" }] },
+    { id: "intelligence-data", name: "Phase 4: Intelligence Data", status: "pending", steps: [{ id: "import-311", name: "Import 311 Requests", status: "pending" }, { id: "import-code", name: "Import Code Violations", status: "pending" }, { id: "match-violations", name: "Match Violations", status: "pending" }, { id: "import-dallas-permits", name: "Import Dallas Permits", status: "pending" }, { id: "import-fw-permits", name: "Import Fort Worth Permits", status: "pending" }, { id: "match-permits", name: "Match Permits", status: "pending" }, { id: "sync-contractors", name: "Sync Contractors", status: "pending" }, { id: "flood", name: "Flood Zone Enrichment", status: "pending" }] },
+    { id: "roofing-permits", name: "Phase 5: Roofing Permits", status: "pending", steps: [{ id: "import-roofing", name: "Import Roofing Permits", status: "pending" }, { id: "scan-roofing", name: "Scan & Match Roofing", status: "pending" }] },
+    { id: "enrichment", name: "Phase 6: Contact Enrichment", status: "pending", steps: [{ id: "batch-free", name: "Batch Free Enrichment (Full Pipeline)", status: "pending" }] },
+    { id: "post-enrichment", name: "Phase 7: Post-Enrichment Analysis", status: "pending", steps: [{ id: "classify-ownership", name: "Classify Ownership", status: "pending" }, { id: "scan-management", name: "Management Attribution", status: "pending" }, { id: "scan-addresses", name: "Reverse Address Enrichment", status: "pending" }, { id: "infer-roles", name: "Role Inference", status: "pending" }, { id: "score-confidence", name: "Confidence Scoring", status: "pending" }] },
+    { id: "network", name: "Phase 8: Network & Deduplication", status: "pending", steps: [{ id: "analyze-network", name: "Analyze Ownership Network", status: "pending" }, { id: "scan-duplicates", name: "Scan for Duplicates", status: "pending" }] },
+    { id: "scoring", name: "Phase 9: Final Scoring", status: "pending", steps: [{ id: "recalc-scores", name: "Recalculate All Lead Scores", status: "pending" }] },
+  ];
+  const phases = (status?.phases && status.phases.length > 0) ? status.phases : defaultPhases;
+  const completedPhases = phases.filter(p => p.status === "complete").length;
+  const totalPhases = phases.length;
+  const progressPct = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0;
+  const isRunning = status?.running || false;
+
+  const totalSteps = phases.reduce((sum, p) => sum + p.steps.length, 0);
+  const completedSteps = phases.reduce((sum, p) => sum + p.steps.filter(s => s.status === "complete").length, 0);
+  const errorSteps = phases.reduce((sum, p) => sum + p.steps.filter(s => s.status === "error").length, 0);
+
+  const phaseIcons: Record<string, JSX.Element> = {
+    "import": <Database className="w-4 h-4" />,
+    "building-intel": <Building2 className="w-4 h-4" />,
+    "storm": <CloudLightning className="w-4 h-4" />,
+    "intelligence-data": <FileText className="w-4 h-4" />,
+    "roofing-permits": <ShieldCheck className="w-4 h-4" />,
+    "enrichment": <UserSearch className="w-4 h-4" />,
+    "post-enrichment": <Target className="w-4 h-4" />,
+    "network": <Network className="w-4 h-4" />,
+    "scoring": <BarChart3 className="w-4 h-4" />,
+  };
+
+  const phaseStatusIcon = (s: string) => {
+    switch (s) {
+      case "complete": return <CheckCircle2 className="w-4 h-4 text-emerald-500" />;
+      case "running": return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+      case "error": return <XCircle className="w-4 h-4 text-destructive" />;
+      case "skipped": return <SkipForward className="w-4 h-4 text-muted-foreground" />;
+      default: return <Clock className="w-4 h-4 text-muted-foreground/50" />;
+    }
+  };
+
+  const elapsed = status?.startedAt ? Math.round((Date.now() - new Date(status.startedAt).getTime()) / 1000) : 0;
+  const formatElapsed = (s: number) => {
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    return `${m}m ${s % 60}s`;
+  };
+
+  return (
+    <Card className="border-2 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent" data-testid="card-run-all-pipeline">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Play className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle className="text-lg" data-testid="text-pipeline-title">Run All Pipeline</CardTitle>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Execute the full data pipeline in correct dependency order — 9 phases, {totalSteps || "~30"} steps
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isRunning && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+                data-testid="button-cancel-pipeline"
+              >
+                {cancelMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
+                Cancel
+              </Button>
+            )}
+            <Button
+              size="sm"
+              onClick={() => startMutation.mutate()}
+              disabled={isRunning || startMutation.isPending}
+              data-testid="button-start-pipeline"
+            >
+              {startMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-1" />
+              ) : (
+                <Play className="w-4 h-4 mr-1" />
+              )}
+              {isRunning ? "Running..." : "Start Pipeline"}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isRunning && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                Phase {completedPhases}/{totalPhases} • Step {completedSteps}/{totalSteps}
+                {errorSteps > 0 && <span className="text-destructive ml-2">({errorSteps} errors)</span>}
+              </span>
+              <span className="text-muted-foreground tabular-nums">{formatElapsed(elapsed)}</span>
+            </div>
+            <div className="h-3 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${progressPct}%` }}
+                data-testid="progress-pipeline"
+              />
+            </div>
+            {status?.currentPhase && (
+              <p className="text-sm font-medium text-primary" data-testid="text-current-phase">
+                <Loader2 className="w-3.5 h-3.5 inline animate-spin mr-1.5" />
+                {status.currentPhase}{status.currentStep ? ` — ${status.currentStep}` : ""}
+              </p>
+            )}
+          </div>
+        )}
+
+        {status?.completedAt && !isRunning && (
+          <div className="flex items-center gap-2 text-sm">
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <span className="text-muted-foreground">
+              Last run completed {new Date(status.completedAt).toLocaleString()} — {completedPhases} phases done, {completedSteps} steps completed
+              {errorSteps > 0 && <span className="text-destructive"> ({errorSteps} errors)</span>}
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded(!expanded)}
+            className="text-xs text-muted-foreground"
+            data-testid="button-toggle-phases"
+          >
+            {expanded ? "Hide phases" : "Show phases"} ({totalPhases})
+          </Button>
+        </div>
+
+        {expanded && (
+          <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+            {phases.map((phase) => (
+              <div key={phase.id} className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {!isRunning && (
+                      <input
+                        type="checkbox"
+                        checked={!skipPhases.includes(phase.id)}
+                        onChange={() => toggleSkip(phase.id)}
+                        className="rounded border-muted-foreground/30"
+                        data-testid={`checkbox-phase-${phase.id}`}
+                      />
+                    )}
+                    {phaseIcons[phase.id] || <Activity className="w-4 h-4" />}
+                    <span className={`text-sm font-medium ${skipPhases.includes(phase.id) && !isRunning ? "text-muted-foreground line-through" : ""}`}>
+                      {phase.name}
+                    </span>
+                  </div>
+                  {phaseStatusIcon(phase.status)}
+                </div>
+                {(phase.status === "running" || phase.status === "complete" || phase.status === "error") && (
+                  <div className="ml-8 space-y-0.5">
+                    {phase.steps.map((step) => (
+                      <div key={step.id} className="flex items-center gap-2 text-xs">
+                        {phaseStatusIcon(step.status)}
+                        <span className={step.status === "error" ? "text-destructive" : "text-muted-foreground"}>
+                          {step.name}
+                        </span>
+                        {step.detail && (
+                          <span className="text-muted-foreground/60 truncate max-w-[300px]">
+                            — {step.detail}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Admin() {
   const { toast } = useToast();
   const [dcadMinValue, setDcadMinValue] = useState("100000");
@@ -1241,6 +1498,49 @@ export default function Admin() {
     },
   });
 
+  const classifyOwnershipMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/decision-makers/classify");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Ownership Classification Complete", description: `Classified ${data.classified} leads, ${data.withDecisionMakers} with decision makers` });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Classification failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const fixLocationsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/data/fix-locations");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Location Fix Started", description: "Geocoding leads with missing coordinates in background" });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Location fix failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
+  const syncContractorsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/permits/sync-contractors");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Contractor Sync Complete", description: `Synced contractor data from ${data.synced || 0} permits to leads` });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/permits/status"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Contractor sync failed", description: err?.message, variant: "destructive" });
+    },
+  });
+
   const complianceOverviewQuery = useQuery<any>({
     queryKey: ["/api/compliance/overview", dfwMarket?.id],
     queryFn: async () => {
@@ -1309,6 +1609,7 @@ export default function Admin() {
         </p>
       </div>
 
+      <RunAllPipelineCard />
       <EnrichmentCreditsCard />
       <BatchFreeEnrichmentCard />
 
@@ -1518,6 +1819,20 @@ export default function Admin() {
                       <ShieldAlert className="w-3 h-3" />
                     )}
                     Flag Holding Companies
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => fixLocationsMutation.mutate()}
+                    disabled={fixLocationsMutation.isPending}
+                    data-testid="button-fix-locations"
+                  >
+                    {fixLocationsMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <MapPin className="w-3 h-3" />
+                    )}
+                    Fix Missing Locations
                   </Button>
                 </div>
               </CardContent>
@@ -2138,6 +2453,20 @@ export default function Admin() {
                     )}
                     Match to Leads
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => syncContractorsMutation.mutate()}
+                    disabled={syncContractorsMutation.isPending || !marketId}
+                    data-testid="button-sync-contractors"
+                  >
+                    {syncContractorsMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Users className="w-3 h-3" />
+                    )}
+                    Sync Contractors to Leads
+                  </Button>
                 </div>
                 {lastResults.importDallasPermits && (
                   <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
@@ -2262,7 +2591,24 @@ export default function Admin() {
                     )}
                     Run All Leads
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => classifyOwnershipMutation.mutate()}
+                    disabled={classifyOwnershipMutation.isPending}
+                    data-testid="button-classify-ownership"
+                  >
+                    {classifyOwnershipMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="w-3 h-3" />
+                    )}
+                    Classify Ownership
+                  </Button>
                 </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Classify Ownership buckets leads into 4 structures (Small Private, Investment Firm, REIT, Third-Party Managed) and assigns Primary/Secondary/Operational decision makers.
+                </p>
               </CardContent>
             </Card>
 
