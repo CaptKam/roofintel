@@ -224,7 +224,8 @@ export async function runDataAudit(batchSize: number = 50): Promise<void> {
              l.improvement_value, l.total_value, l.sqft,
              l.ownership_structure, l.managing_member, l.business_name,
              l.contact_name, l.contact_phone, l.contact_email,
-             l.owner_phone, l.owner_email
+             l.owner_phone, l.owner_email, l.business_website,
+             l.last_enriched_at, l.enrichment_status
       FROM leads l
       LEFT JOIN ai_audit_results a ON l.id = a.lead_id AND a.audit_type = 'owner_analysis'
       WHERE l.owner_name IS NOT NULL
@@ -292,6 +293,17 @@ export async function runDataAudit(batchSize: number = 50): Promise<void> {
             });
             auditProgress.tokensUsed += conflictResult.tokens;
             auditProgress.findingsCount++;
+          }
+        }
+
+        const needsEnrichment = !lead.last_enriched_at || lead.enrichment_status !== "complete";
+        if (needsEnrichment) {
+          try {
+            const { enrichLead } = await import("./lead-enrichment-orchestrator");
+            console.log(`[data-audit] Triggering free enrichment for lead ${lead.id} (${lead.owner_name})`);
+            enrichLead(lead.id, { skipPaidApis: true });
+          } catch (enrichErr: any) {
+            console.error(`[data-audit] Enrichment error for ${lead.id}:`, enrichErr.message);
           }
         }
       } catch (error: any) {

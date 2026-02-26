@@ -50,6 +50,13 @@ RoofIntel utilizes a modern web architecture with a strong emphasis on separatio
 - **Lead Scoring (v3)**: Advanced algorithm (0-100) incorporating roof age, hail exposure, storm recency, roof area, contactability, owner type, property value, distress signals, flood risk, and property condition.
 - **Pipeline Orchestrator**: Manages a 9-phase automated data processing pipeline with configurable lead filtering, progress tracking, and dependency-ordered execution.
 - **Batch Reprocess**: Admin endpoint `POST /api/admin/batch-reprocess` that runs ownership classification, management attribution, role inference, and confidence re-scoring for all leads in 500-lead chunks with progress tracking.
+- **AI Data Agent** (`server/data-audit-agent.ts`, `server/ai-web-search-agent.ts`): Claude Haiku-powered intelligence agent with two modes:
+  - **Audit Mode**: Analyzes owner names to identify entity types, specific people to contact, actionable next steps, and data quality issues. Prioritizes leads with managing members, websites, and business names over raw property value.
+  - **Web Search Mode**: Generates 5-7 investigation queries per lead using 10 strategies (LinkedIn via Google, management company hunting, BBB/directory lookup, LoopNet breadcrumbs, reverse LLC lookup, corporate facility roles, news/press, Google Maps reviews, tenant hunting, person lookup). Scrapes known websites (/contact, /about, /team pages). Deduplicates contacts, validates all phones (E.164) and emails before storage.
+  - Auto-triggers free enrichment pipeline for unenriched leads during both modes.
+  - Cost: ~$0.001/lead audit, ~$0.003/lead web search. Uses Replit AI Integrations (no API key needed).
+  - Admin UI card in Intelligence tab with mode/batch selector, progress bar, cost tracker, findings review with approve/dismiss.
+  - API: `POST /api/admin/ai-agent/run`, `GET /api/admin/ai-agent/status`, `GET /api/admin/ai-agent/results`, `POST /api/admin/ai-agent/apply/:id`, `POST /api/admin/ai-agent/dismiss/:id`, `POST /api/admin/ai-agent/cancel`, `GET /api/admin/ai-agent/summary`
 - **Compliance & SEO**: Robots.txt checking, rate limiting, blocked domain lists, security headers, dynamic sitemaps, and content for E-E-A-T and legal compliance.
 
 ### Multi-Market Architecture

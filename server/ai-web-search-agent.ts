@@ -43,22 +43,44 @@ export async function generateSearchQueries(lead: any): Promise<{
   const ownerName = lead.ownerName || lead.owner_name;
   if (!ownerName) return null;
 
-  const prompt = `Generate 3-5 targeted web search queries to find the decision-maker for roofing work at this commercial property:
+  const managingMember = lead.managingMember || lead.managing_member || "";
+  const businessName = lead.businessName || lead.business_name || "";
+  const website = lead.businessWebsite || lead.business_website || "";
+  const contactName = lead.contactName || lead.contact_name || "";
 
-Owner/Entity: "${ownerName}"
-Property Address: ${lead.address || "N/A"}, ${lead.city || "N/A"}, TX
-Property Type: ${lead.zoning || "N/A"}
-${lead.businessName || lead.business_name ? `Business Name: ${lead.businessName || lead.business_name}` : ""}
-${lead.managingMember || lead.managing_member ? `Managing Member: ${lead.managingMember || lead.managing_member}` : ""}
+  const prompt = `Generate 5-7 targeted Google search queries to find the DECISION-MAKER for roofing work at this commercial property. Use these investigation tricks:
+
+Property Data:
+- Owner/Entity: "${ownerName}"
+- Address: ${lead.address || "N/A"}, ${lead.city || "N/A"}, TX
+- Zoning: ${lead.zoning || "N/A"}
+${managingMember ? `- Managing Member (from TX SOS): ${managingMember}` : ""}
+${businessName ? `- Business Name: ${businessName}` : ""}
+${website ? `- Website: ${website}` : ""}
+${contactName ? `- Existing Contact: ${contactName}` : ""}
+
+INVESTIGATION STRATEGIES (pick the best ones for this lead):
+1. LINKEDIN VIA GOOGLE: site:linkedin.com "facility manager" OR "property manager" "[company or building name]" Dallas
+2. MANAGEMENT COMPANY HUNT: "[address]" "managed by" OR "property management" OR "leasing office"
+3. PERSON LOOKUP: If we have a managing member name, search "[person name]" "[company]" phone OR email OR contact
+4. BBB/DIRECTORY: "[company name]" site:bbb.org OR site:yelp.com to find published business phone numbers
+5. LOOPNET/COSTAR BREADCRUMBS: "[address]" site:loopnet.com OR "for lease" contact — listing agents know who manages the property
+6. REVERSE LLC: "[managing member name]" Dallas property OR "real estate" to find their direct info
+7. CORPORATE FACILITY ROLES: "[company]" "director of facilities" OR "facility manager" OR "maintenance director" Dallas
+8. NEWS/PRESS: "[address]" OR "[owner name]" renovation OR construction OR roof OR "property manager"
+9. GOOGLE MAPS REVIEW MINING: "[building name or address]" reviews — sometimes mention management staff
+10. TENANT HUNT: If multi-tenant, search "[address]" tenants OR directory to understand who occupies the building
+
+RULES:
+- Use exact quotes strategically to narrow results
+- Include city/state to avoid wrong matches
+- Prioritize queries most likely to find a PHONE NUMBER or EMAIL
+- If we already have a managing member, lead with queries about that specific person
 
 Return JSON:
 {
-  "queries": [
-    "specific search query 1",
-    "specific search query 2",
-    "specific search query 3"
-  ],
-  "reasoning": "brief explanation of search strategy"
+  "queries": ["query1", "query2", "query3", "query4", "query5"],
+  "strategy": "brief explanation of which investigation approach you chose and why"
 }`;
 
   try {
@@ -84,37 +106,49 @@ export async function analyzeWebContent(
 } | null> {
   const truncated = pageContent.substring(0, 4000);
 
-  const prompt = `Analyze this web page content to find decision-makers for roofing work at a commercial property:
+  const managingMember = lead.managingMember || lead.managing_member || "";
 
-Target Property Owner: "${lead.ownerName || lead.owner_name}"
-Property Address: ${lead.address || "N/A"}, ${lead.city || "N/A"}, TX
+  const prompt = `You are investigating a commercial property to find the RIGHT PERSON a roofing contractor should call. Analyze this web page and extract every useful piece of contact information.
+
+Target Property:
+- Owner: "${lead.ownerName || lead.owner_name}"
+- Address: ${lead.address || "N/A"}, ${lead.city || "N/A"}, TX
+${managingMember ? `- Known Managing Member: ${managingMember}` : ""}
 Source URL: ${sourceUrl}
 
-Page content (truncated):
+Page content:
 ---
 ${truncated}
 ---
 
-Extract ONLY information that is explicitly present in the text above. Do NOT guess or fabricate any contact details.
+EXTRACTION PRIORITIES (in order):
+1. PHONE NUMBERS — Look for any phone number on the page. Even a main office line is valuable. Format: (XXX) XXX-XXXX
+2. PEOPLE WITH TITLES — Look for names paired with roles like: facility manager, property manager, maintenance director, building engineer, operations manager, asset manager, VP of real estate, director of construction
+3. EMAIL ADDRESSES — Any email, even info@ or leasing@ gives us a way in
+4. MANAGEMENT COMPANY — If a different company manages this property, that's who we really need
+5. LINKEDIN PROFILES — If this is a LinkedIn page, extract the person's name, title, company, and location
+6. BREADCRUMBS — Even partial info helps: "managed by XYZ" or "contact our facilities team" tells us who to look for next
+
+CRITICAL: Extract ONLY what is explicitly written on this page. NEVER fabricate or guess. If a phone number is on the page, include it. If not, return null.
 
 Return JSON:
 {
   "foundContacts": [
     {
       "name": "person name or null",
-      "title": "their title or null",
-      "phone": "phone number found or null",
-      "email": "email found or null",
+      "title": "their job title or null",
+      "phone": "phone number exactly as shown or null",
+      "email": "email exactly as shown or null",
       "source": "${sourceUrl}",
       "confidence": 0.0-1.0,
-      "reasoning": "why this person is relevant for roofing decisions"
+      "reasoning": "why this person can help with roofing decisions"
     }
   ],
   "businessInsights": {
     "businessType": "what this business does or null",
-    "website": "official website if found or null",
-    "managementCompany": "management company name if different from owner or null",
-    "relatedEntities": ["any related companies, parent orgs, etc."]
+    "website": "official company website if found or null",
+    "managementCompany": "property management company name if different from owner, or null",
+    "relatedEntities": ["parent companies, sister companies, property mgmt firms mentioned"]
   }
 }`;
 
@@ -244,7 +278,7 @@ export async function runAiWebSearch(batchSize: number = 25): Promise<void> {
              l.improvement_value, l.total_value, l.sqft,
              l.ownership_structure, l.managing_member, l.business_name,
              l.contact_name, l.contact_phone, l.contact_email,
-             l.business_website
+             l.business_website, l.last_enriched_at, l.enrichment_status
       FROM leads l
       LEFT JOIN ai_audit_results a ON l.id = a.lead_id AND a.audit_type = 'web_search'
       WHERE l.owner_name IS NOT NULL
@@ -300,40 +334,71 @@ export async function runAiWebSearch(batchSize: number = 25): Promise<void> {
           auditProgress.tokensUsed += queryResult.tokens;
         }
 
-        if (hasSerperKey && searchResult.queries.length > 0) {
-          for (const query of searchResult.queries.slice(0, 3)) {
-            const results = await fetchSerperResults(query);
-            for (const result of results.slice(0, 2)) {
-              const pageText = await fetchPageText(result.link);
-              if (pageText && pageText.length > 100) {
-                const analysis = await analyzeWebContent(lead, pageText, result.link);
-                if (analysis) {
-                  leadTokens += analysis.tokens;
-                  auditProgress.tokensUsed += analysis.tokens;
-                  for (const contact of analysis.contacts) {
-                    if (contact.name && isPersonName(contact.name)) {
-                      if (contact.phone) {
-                        const normalized = normalizePhoneE164(contact.phone);
-                        contact.phone = normalized;
-                      }
-                      if (contact.email) {
-                        const emailCheck = validateEmailSyntax(contact.email);
-                        if (!emailCheck.valid) contact.email = null;
-                      }
-                      searchResult.foundContacts.push(contact);
-                    }
-                  }
-                  if (analysis.insights) {
-                    if (analysis.insights.businessType) searchResult.businessInsights.businessType = analysis.insights.businessType;
-                    if (analysis.insights.website) searchResult.businessInsights.website = analysis.insights.website;
-                    if (analysis.insights.managementCompany) searchResult.businessInsights.managementCompany = analysis.insights.managementCompany;
-                    if (analysis.insights.relatedEntities?.length) {
-                      searchResult.businessInsights.relatedEntities.push(...analysis.insights.relatedEntities);
-                    }
-                  }
+        const processPage = async (url: string, text: string) => {
+          const analysis = await analyzeWebContent(lead, text, url);
+          if (analysis) {
+            leadTokens += analysis.tokens;
+            auditProgress.tokensUsed += analysis.tokens;
+            for (const contact of analysis.contacts) {
+              if (contact.name && isPersonName(contact.name)) {
+                if (contact.phone) {
+                  const normalized = normalizePhoneE164(contact.phone);
+                  contact.phone = normalized;
                 }
+                if (contact.email) {
+                  const emailCheck = validateEmailSyntax(contact.email);
+                  if (!emailCheck.valid) contact.email = null;
+                }
+                const isDupe = searchResult.foundContacts.some(
+                  (c) => c.name?.toLowerCase() === contact.name?.toLowerCase()
+                );
+                if (!isDupe) searchResult.foundContacts.push(contact);
               }
             }
+            if (analysis.insights) {
+              if (analysis.insights.businessType) searchResult.businessInsights.businessType = analysis.insights.businessType;
+              if (analysis.insights.website) searchResult.businessInsights.website = analysis.insights.website;
+              if (analysis.insights.managementCompany) searchResult.businessInsights.managementCompany = analysis.insights.managementCompany;
+              if (analysis.insights.relatedEntities?.length) {
+                searchResult.businessInsights.relatedEntities.push(...analysis.insights.relatedEntities);
+              }
+            }
+          }
+        };
+
+        const knownWebsite = lead.business_website || lead.businessWebsite || "";
+        if (knownWebsite) {
+          const contactPages = [
+            knownWebsite,
+            knownWebsite.replace(/\/$/, "") + "/contact",
+            knownWebsite.replace(/\/$/, "") + "/about",
+            knownWebsite.replace(/\/$/, "") + "/team",
+          ];
+          for (const url of contactPages) {
+            const pageText = await fetchPageText(url);
+            if (pageText && pageText.length > 100) {
+              await processPage(url, pageText);
+            }
+          }
+        }
+
+        if (hasSerperKey && searchResult.queries.length > 0) {
+          const seenUrls = new Set<string>();
+          for (const query of searchResult.queries.slice(0, 5)) {
+            if (!auditProgress.running) break;
+            const results = await fetchSerperResults(query);
+            for (const result of results.slice(0, 3)) {
+              const domain = new URL(result.link).hostname;
+              if (seenUrls.has(result.link)) continue;
+              seenUrls.add(result.link);
+              if (domain.includes("facebook.com") || domain.includes("twitter.com") || domain.includes("instagram.com")) continue;
+
+              const pageText = await fetchPageText(result.link);
+              if (pageText && pageText.length > 100) {
+                await processPage(result.link, pageText);
+              }
+            }
+            if (searchResult.foundContacts.length >= 3) break;
           }
         }
 
@@ -377,6 +442,17 @@ export async function runAiWebSearch(batchSize: number = 25): Promise<void> {
           status: searchResult.foundContacts.length > 0 ? "pending" : "no_results",
         });
         auditProgress.findingsCount++;
+
+        const needsEnrichment = !lead.last_enriched_at || lead.enrichment_status !== "complete";
+        if (needsEnrichment) {
+          try {
+            const { enrichLead } = await import("./lead-enrichment-orchestrator");
+            console.log(`[ai-web-search] Triggering free enrichment for lead ${lead.id} (${lead.owner_name})`);
+            await enrichLead(lead.id, { skipPaidApis: true });
+          } catch (enrichErr: any) {
+            console.error(`[ai-web-search] Enrichment error for ${lead.id}:`, enrichErr.message);
+          }
+        }
       } catch (error: any) {
         console.error(`[ai-web-search] Error processing lead ${lead.id}:`, error.message);
         auditProgress.errors++;
