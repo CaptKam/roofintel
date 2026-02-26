@@ -3774,26 +3774,26 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
       res.json({ message: `AI agent started in ${mode} mode for ${batchSize} leads`, batchSize, mode });
 
+      const allModes = ["audit", "search", "contractor_scrub", "website_extract", "portfolio", "stale_data"];
+      const modesToRun = mode === "all" ? allModes : mode === "both" ? ["audit", "search"] : [mode];
+
       (async () => {
         try {
-          if (mode === "audit" || mode === "both") {
-            await runDataAudit(batchSize);
-          }
-          if (mode === "search" || mode === "both") {
-            if (mode === "both") resetAuditProgress();
-            await runAiWebSearch(batchSize);
-          }
-          if (mode === "contractor_scrub") {
-            await runContractorScrub(batchSize);
-          }
-          if (mode === "website_extract") {
-            await runWebsiteExtract(batchSize);
-          }
-          if (mode === "portfolio") {
-            await runPortfolioDetection(batchSize);
-          }
-          if (mode === "stale_data") {
-            await runStaleDataDetection(batchSize);
+          for (let i = 0; i < modesToRun.length; i++) {
+            const currentMode = modesToRun[i];
+            if (i > 0) resetAuditProgress();
+            const { getAuditProgress: getProgress } = await import("./data-audit-agent");
+            const p = getProgress();
+            p.mode = currentMode;
+
+            if (currentMode === "audit") await runDataAudit(batchSize);
+            else if (currentMode === "search") await runAiWebSearch(batchSize);
+            else if (currentMode === "contractor_scrub") await runContractorScrub(batchSize);
+            else if (currentMode === "website_extract") await runWebsiteExtract(batchSize);
+            else if (currentMode === "portfolio") await runPortfolioDetection(batchSize);
+            else if (currentMode === "stale_data") await runStaleDataDetection(batchSize);
+
+            console.log(`[ai-agent] Completed ${currentMode} (${i + 1}/${modesToRun.length})`);
           }
         } catch (err: any) {
           console.error("[ai-agent] Error:", err.message);
