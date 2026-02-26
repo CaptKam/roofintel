@@ -54,6 +54,7 @@ RoofIntel utilizes a modern web architecture with a strong emphasis on separatio
   - **Audit Mode**: Analyzes owner names to identify entity types, specific people to contact, actionable next steps, and data quality issues. Prioritizes leads with managing members, websites, and business names over raw property value.
   - **Web Search Mode**: Generates 5-7 investigation queries per lead using 10 strategies (LinkedIn via Google, management company hunting, BBB/directory lookup, LoopNet breadcrumbs, reverse LLC lookup, corporate facility roles, news/press, Google Maps reviews, tenant hunting, person lookup). Scrapes known websites (/contact, /about, /team pages). Deduplicates contacts, validates all phones (E.164) and emails before storage.
   - Auto-triggers free enrichment pipeline for unenriched leads during both modes.
+  - **Post-batch Entity Resolution**: After each batch completes, automatically runs entity resolution scan to detect duplicate leads (deterministic + probabilistic matching). Results shown in admin UI with cluster counts and match types.
   - Cost: ~$0.001/lead audit, ~$0.003/lead web search. Uses Replit AI Integrations (no API key needed).
   - Admin UI card in Intelligence tab with mode/batch selector, progress bar, cost tracker, findings review with approve/dismiss.
   - API: `POST /api/admin/ai-agent/run`, `GET /api/admin/ai-agent/status`, `GET /api/admin/ai-agent/results`, `POST /api/admin/ai-agent/apply/:id`, `POST /api/admin/ai-agent/dismiss/:id`, `POST /api/admin/ai-agent/cancel`, `GET /api/admin/ai-agent/summary`

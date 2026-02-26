@@ -270,6 +270,7 @@ export async function runAiWebSearch(batchSize: number = 25): Promise<void> {
     errors: 0,
     startedAt: new Date().toISOString(),
     completedAt: null,
+    entityResolution: null,
   });
 
   try {
@@ -460,6 +461,22 @@ export async function runAiWebSearch(batchSize: number = 25): Promise<void> {
 
       auditProgress.processed++;
       auditProgress.estimatedCost = estimateCost(auditProgress.tokensUsed);
+    }
+
+    try {
+      const { runEntityResolutionScan } = await import("./entity-resolution");
+      console.log(`[ai-web-search] Running entity resolution scan after search...`);
+      const entityResult = await runEntityResolutionScan();
+      auditProgress.entityResolution = {
+        clustersFound: entityResult.clustersFound,
+        totalDuplicateLeads: entityResult.totalDuplicateLeads,
+        deterministic: entityResult.byMatchType.deterministic,
+        probabilistic: entityResult.byMatchType.probabilistic,
+        durationMs: entityResult.scanDurationMs,
+      };
+      console.log(`[ai-web-search] Entity resolution: ${entityResult.clustersFound} clusters found, ${entityResult.totalDuplicateLeads} duplicate leads (${entityResult.byMatchType.deterministic} deterministic, ${entityResult.byMatchType.probabilistic} probabilistic) in ${entityResult.scanDurationMs}ms`);
+    } catch (entityErr: any) {
+      console.error(`[ai-web-search] Entity resolution error (non-fatal):`, entityErr.message);
     }
 
     auditProgress.running = false;

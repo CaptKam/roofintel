@@ -16,6 +16,14 @@ CRITICAL RULES:
 
 Respond ONLY with valid JSON.`;
 
+interface EntityResolutionResult {
+  clustersFound: number;
+  totalDuplicateLeads: number;
+  deterministic: number;
+  probabilistic: number;
+  durationMs: number;
+}
+
 interface AuditProgress {
   running: boolean;
   mode: "audit" | "search" | "both";
@@ -27,6 +35,7 @@ interface AuditProgress {
   errors: number;
   startedAt: string | null;
   completedAt: string | null;
+  entityResolution: EntityResolutionResult | null;
 }
 
 export let auditProgress: AuditProgress = {
@@ -40,6 +49,7 @@ export let auditProgress: AuditProgress = {
   errors: 0,
   startedAt: null,
   completedAt: null,
+  entityResolution: null,
 };
 
 export function getAuditProgress(): AuditProgress {
@@ -58,6 +68,7 @@ export function resetAuditProgress(): void {
     errors: 0,
     startedAt: null,
     completedAt: null,
+    entityResolution: null,
   };
 }
 
@@ -216,6 +227,7 @@ export async function runDataAudit(batchSize: number = 50): Promise<void> {
     errors: 0,
     startedAt: new Date().toISOString(),
     completedAt: null,
+    entityResolution: null,
   };
 
   try {
@@ -313,6 +325,22 @@ export async function runDataAudit(batchSize: number = 50): Promise<void> {
 
       auditProgress.processed++;
       auditProgress.estimatedCost = estimateCost(auditProgress.tokensUsed);
+    }
+
+    try {
+      const { runEntityResolutionScan } = await import("./entity-resolution");
+      console.log(`[data-audit] Running entity resolution scan after audit...`);
+      const entityResult = await runEntityResolutionScan();
+      auditProgress.entityResolution = {
+        clustersFound: entityResult.clustersFound,
+        totalDuplicateLeads: entityResult.totalDuplicateLeads,
+        deterministic: entityResult.byMatchType.deterministic,
+        probabilistic: entityResult.byMatchType.probabilistic,
+        durationMs: entityResult.scanDurationMs,
+      };
+      console.log(`[data-audit] Entity resolution: ${entityResult.clustersFound} clusters found, ${entityResult.totalDuplicateLeads} duplicate leads (${entityResult.byMatchType.deterministic} deterministic, ${entityResult.byMatchType.probabilistic} probabilistic) in ${entityResult.scanDurationMs}ms`);
+    } catch (entityErr: any) {
+      console.error(`[data-audit] Entity resolution error (non-fatal):`, entityErr.message);
     }
 
     auditProgress.running = false;

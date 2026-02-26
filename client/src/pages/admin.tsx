@@ -3329,6 +3329,22 @@ export default function Admin() {
                 </div>
               )}
 
+              {aiStatus && !aiStatus.running && aiStatus.entityResolution && (
+                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 p-2.5" data-testid="entity-resolution-result">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <GitMerge className="w-3.5 h-3.5 text-blue-600" />
+                    <span className="text-xs font-medium">Entity Resolution & Deduplication</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-[10px] text-muted-foreground">
+                    <span>{aiStatus.entityResolution.clustersFound} clusters found</span>
+                    <span>{aiStatus.entityResolution.totalDuplicateLeads} duplicate leads</span>
+                    <span>{aiStatus.entityResolution.deterministic} deterministic</span>
+                    <span>{aiStatus.entityResolution.probabilistic} probabilistic</span>
+                    <span>{(aiStatus.entityResolution.durationMs / 1000).toFixed(1)}s</span>
+                  </div>
+                </div>
+              )}
+
               {aiSummary && aiSummary.total > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="rounded-lg border p-2.5 text-center">
