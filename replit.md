@@ -1,85 +1,69 @@
 # RoofIntel - Commercial Roofing Lead Intelligence Platform
 
 ## Overview
-RoofIntel is a SaaS platform designed for roofing contractors to efficiently identify and prioritize qualified commercial and multi-family leads. It leverages public property data, roof age, and historical hail exposure to provide actionable intelligence. The platform currently focuses on the DFW (Dallas-Fort Worth) region but is built with a multi-market architecture for future expansion. Its core purpose is to streamline lead generation and qualification for roofing businesses, enhancing their market potential and operational efficiency.
+RoofIntel is a SaaS platform for roofing contractors, specializing in identifying and prioritizing qualified commercial and multi-family leads. It integrates public property data, roof age, and historical hail exposure to deliver actionable intelligence. Currently serving the DFW 4-county region (Dallas, Tarrant, Collin, Denton), the platform is designed for multi-market expansion. Its primary goal is to enhance lead generation, qualification, and market potential for roofing businesses. The core principle is to use only real, verified data from public sources and government APIs.
 
 ## User Preferences
 I prefer clear, concise explanations and direct answers. For development, I favor an iterative approach with frequent, small commits. Please ask for confirmation before implementing significant architectural changes or adding new external dependencies. When proposing solutions, prioritize scalability and maintainability.
 
 ## System Architecture
-RoofIntel employs a modern web architecture with a clear separation of concerns.
+RoofIntel utilizes a modern web architecture with a strong emphasis on separation of concerns.
 
-**UI/UX Decisions:**
-- A professional blue/slate B2B color scheme
-- Dark sidebar navigation with a light/dark mode toggle
-- Utilizes the Inter font family for readability
-- Responsive layout achieved with Shadcn/UI components
-- An interactive Leaflet map for lead visualization, including color-coded markers by lead score, popup detail cards, and overlays for live hail tracking (NEXRAD radar + NWS alerts) and Xweather predictive hail threats.
+### UI/UX Decisions
+- Professional B2B color scheme (blue/slate).
+- Dark sidebar navigation with light/dark mode toggle.
+- Inter font family for optimal readability.
+- Responsive design using Shadcn/UI components.
+- Interactive Leaflet map for lead visualization, featuring color-coded markers, detailed popups, live hail tracking (NEXRAD radar + NWS alerts), and Xweather predictive hail threats.
 
-**Technical Implementations:**
-- **Frontend**: React + TypeScript, Vite for fast development, TailwindCSS for styling, Shadcn/UI for components, Recharts for data visualization, and React-Leaflet for mapping. Wouter is used for frontend routing.
-- **Backend**: Express.js with Node.js for API services.
-- **Database**: PostgreSQL managed with Drizzle ORM.
-- **Data Management**: Multer handles CSV property data uploads. TanStack React Query manages client-side data fetching and state.
-- **Core Agents & Services**:
-    - `dcad-agent`: Automated property fetching from Dallas Central Appraisal District (DCAD) ArcGIS REST API.
-    - `hail-correlator`: Proximity-based engine to match hail events to leads and update scores.
-    - `enrichment-pipeline`: A unified 3-stage pipeline (TX Open Data Portal, Phone, Web Research) for contact enrichment with confidence scoring.
-    - `storm-monitor` & `xweather-hail`: Real-time NOAA SWDI hail radar monitoring and predictive hail threat forecasting from Xweather/Vaisala, including pre-storm SMS alerts.
-    - `owner-intelligence` & `network-agent`: Comprehensive system for identifying property owners, resolving entities, discovering ownership portfolios, and linking LLC chains.
-    - `entity-resolution`: Deterministic and probabilistic matching for lead deduplication and clustering.
-    - `management-attribution` & `role-inference`: Engines to differentiate property managers from owners and rank decision-makers.
-    - `reverse-address-enrichment`: Compares owner mailing vs property addresses, queries Google Places API to identify management companies, law firms, title companies, or corporate offices at the mailing address. Feeds discoveries into management attribution pipeline.
-    - `compliance-gate`: Manages opt-outs, consent, and DNC checks.
-    - `dm-confidence`: A 7-factor weighted formula for contact confidence scoring.
-    - `lead-enrichment-orchestrator`: On-demand single-lead enrichment that auto-triggers all agents (owner intelligence, reverse address, building tenant/manager discovery, management attribution, role inference, confidence scoring, skip trace, phone enrichment) when a lead is first viewed or manually re-enriched.
-    - `tad-agent`: Automated property fetching from Tarrant Appraisal District (TAD) ArcGIS REST API for Fort Worth area commercial properties.
-    - `collin-cad-agent`: Automated property fetching from Collin CAD ArcGIS API for Plano/Frisco/McKinney area.
-    - `denton-cad-agent`: Automated property fetching from Denton CAD FeatureServer for Denton/Lewisville/Flower Mound area.
-    - `skip-trace-agent`: Multi-source skip trace combining building permits, sales tax permits, TCEQ, WHOIS, reverse address, and email pattern discovery.
-    - `ownership-classifier`: Classifies leads into 4 ownership structure buckets (small_private, investment_firm, institutional_reit, third_party_managed) using entity patterns, LLC chain depth, mailing address type, portfolio size, and property value. Computes title relevance scores per structure and selects Primary/Secondary/Operational decision makers with fallback logic.
-    - `job-scheduler`: Background job management for tasks like NOAA sync and score recalculation.
-    - `evidence-recorder`: Batch evidence recording with source trust scoring, corroboration counting, conflict detection, and auto-resolution (15-point margin threshold). Records contact evidence from all 16 agents.
-    - `contact-validation`: E.164 phone normalization, MX-based email domain validation, phone structure validation (TX area codes, toll-free, invalid patterns), email syntax validation with disposable domain detection.
-    - `source-policy`: Compliance module with robots.txt checking, per-domain rate limiting (in-memory), blocked domain list (social media, people search sites), proper User-Agent header, and database-backed blocklist integration.
-    - `source-trust`: Trust configuration for 30+ data sources (DCAD: 95, TX Comptroller: 92, Google Places: 75, etc.) with type and category classification.
-    - `building-footprint-agent`: GIS building intelligence using OpenStreetMap Overpass API (free, no key). Finds nearest building polygon by centroid, computes roof area via Shoelace/Haversine formula, caches in `building_footprints` table.
-- **Lead Scoring (v3)**: A refined scoring algorithm (0-100) optimized for roofing contractors, incorporating roof age, hail exposure, storm recency, roof area, contactability, owner type, property value, distress signals, flood risk, and property condition.
+### Technical Implementations
+- **Frontend**: React, TypeScript, Vite, TailwindCSS, Shadcn/UI, Recharts, React-Leaflet, Wouter for routing, and react-helmet-async for SEO.
+- **Backend**: Express.js with Node.js.
+- **Database**: PostgreSQL with Drizzle ORM.
+- **Data Management**: Multer for CSV uploads, TanStack React Query for client-side data.
 
-**Feature Specifications:**
-- **Dashboard**: Provides key statistics, score distribution, and top-scoring leads.
-- **Leads Management**: Filterable and searchable leads list, detailed lead view with property, owner, hail, and contact info.
-- **Map & Storms**: Interactive map view, live hail tracker, predictive hail threat visualization, and building footprint overlay toggle (zoom 14+ for street-level roof outlines).
-- **Data Imports**: Support for NOAA hail data, DCAD properties, Tarrant CAD, Collin CAD, Denton CAD, and generic property CSVs. Full DFW 4-county coverage.
-- **Data Coverage Dashboard**: Admin tab showing real-time data completeness metrics — coverage bars for owner names, phones, emails, contacts, websites, managing members, taxpayer IDs, SOS numbers. Phone/evidence source breakdowns.
-- **Contact & Phone Enrichment**: Two-tier enrichment architecture — **free agents auto-run** (TX SOS, LLC Chain, TX Comptroller, Property Tax, Email Discovery, TREC, TDLR, HUD, BBB, Skip Trace, free phone providers) and **paid APIs are manual-only buttons** (Google Places, Serper, Hunter.io 25/mo, PDL 100/mo). `enrichLead()` defaults to `skipPaidApis=true`. Batch free enrichment processes all unenriched leads via `/api/enrichment/batch-free`.
-- **Enrichment Credits Dashboard**: Admin page shows real-time API credit usage for all paid APIs with "Manual Only" labels, progress bars, remaining counts, monthly reset countdown, and enrichment summary (free enriched count, paid API usage). Lead detail page has separate manual enrich buttons for Google Places, Serper, Hunter.io, and PDL showing remaining credits.
-- **Web Research Agent**: Scans business websites to identify decision-makers and their contact details.
-- **Relationship Network Agent**: Discovers and scores property portfolios by linking ownership connections. Network Explorer builds a relationship graph (manual build, data persists). Graph intelligence is surfaced on individual lead detail pages showing shared officers, shared registered agents, mailing address clusters, and network-derived contacts.
-- **Predictive Hail Monitoring**: Integrates Xweather for advanced hail threat forecasting and alerts.
-- **Decision-Maker Discovery (Layer 3)**: Ownership structure classification (4 buckets: Small Private Owner, Real Estate Investment Firm, Institutional/REIT, Third-Party Managed), title relevance scoring weighted by structure type, multi-contact strategy (Primary/Secondary/Operational decision makers per property), management attribution (manager vs owner separation), role inference & ranking (8 role types with authority scoring), compliance gating (opt-out/consent/DNC), decomposed confidence scoring (7-factor formula with auto-publish/review/suppress tiers), human-in-the-loop review console
-- **Reverse Address Enrichment**: Automatic mailing-vs-property address comparison with Google Places lookup to discover management companies, law firms, title companies, and corporate offices at owner mailing addresses
-- **GIS Roof Intelligence**: Satellite imagery view (Esri World Imagery, free) with building footprint polygon overlay on lead detail pages. Shows computed roof area from GIS data, roof age, material, and type. Toggle on main map shows footprints at street-level zoom (14+) with batch fetching for visible leads. Data cached in `building_footprints` table.
-- **Pipeline Orchestrator**: One-click "Run All Pipeline" on Admin page executes 9 phases in correct dependency order with live progress tracking, per-phase skip checkboxes, and cancel button. Configurable lead filters (min sqft, max stories, roof types, exclude shell companies, min property value) with "Only Unprocessed" tracking via `pipelineLastProcessedAt`/`pipelineRunId` columns — prevents re-scanning leads on subsequent runs. Preview count shows matching leads before starting. All phases pass `leadIds` to restrict processing to qualified leads only.
-- **Admin**: Centralized management for property sources, storm data, contact enrichment, and system settings.
-- **SEO & Compliance**: Per-page titles/descriptions via react-helmet-async, dynamic sitemap.xml and robots.txt (domain-aware), compression middleware, static HTML nav/footer/skip-link/main landmark for crawler visibility, noscript fallback content. Privacy policy, about, and contact pages for E-E-A-T and legal compliance. Security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, production CSP/HSTS).
+### Core Agents & Services (Key Capabilities)
+- **Property Data Agents**: Automated fetching from Dallas, Tarrant, Collin, and Denton Central Appraisal Districts (DCAD, TAD, Collin CAD, Denton CAD) ArcGIS APIs.
+- **Hail Correlation & Monitoring**: Proximity-based hail event matching, real-time NOAA SWDI hail radar monitoring, and Xweather predictive hail threat forecasting.
+- **Owner Intelligence**: Systems for identifying property owners, resolving entities, discovering ownership portfolios, and linking LLC chains.
+- **Enrichment Pipeline**: A unified 3-stage pipeline (TX Open Data Portal, Phone, Web Research) for contact enrichment with confidence scoring.
+- **Decision-Maker Discovery**: Classifies ownership structures, attributes property managers vs. owners, infers roles (8 types with authority scoring), and assigns primary/secondary/operational decision-makers. Includes compliance checks (opt-out, DNC).
+- **Reverse Address Enrichment**: Identifies management companies and corporate offices via mailing address lookups using Google Places API.
+- **GIS Roof Intelligence**: Uses OpenStreetMap Overpass API for building footprints, computes roof area, and integrates satellite imagery with roof age/material/type.
+- **Lead Scoring (v3)**: Advanced algorithm (0-100) incorporating roof age, hail exposure, storm recency, roof area, contactability, owner type, property value, distress signals, flood risk, and property condition.
+- **Evidence Management**: Records and corroborates contact evidence from various agents with source trust scoring.
+- **Contact Validation**: E.164 phone normalization, MX-based email validation, disposable domain detection.
+- **Pipeline Orchestrator**: Manages a 9-phase automated data processing pipeline with configurable lead filtering, progress tracking, and dependency-ordered execution.
+- **Compliance & SEO**: Robots.txt checking, rate limiting, blocked domain lists, security headers, dynamic sitemaps, and content for E-E-A-T and legal compliance.
+
+### Feature Specifications
+- **Dashboard**: Key statistics, lead distribution.
+- **Leads & Lead Detail**: Filterable list, comprehensive property intelligence, owner/contact enrichment, hail history, GIS roof data.
+- **Map & Storms**: Interactive map with live hail, predictive threats, and building footprints.
+- **Portfolios & Network Explorer**: Property portfolio discovery, relationship graph visualization.
+- **Data Management**: CSV import, data source configuration, data quality metrics.
+- **Admin**: Centralized management for property sources, storm data, enrichment, pipeline, and system settings.
+- **Exports**: Lead data export to CSV.
 
 ## External Dependencies
-- **PostgreSQL**: Primary database for all application data.
-- **NOAA (National Oceanic and Atmospheric Administration)**: Source for historical hail event data (public CSVs) and real-time SWDI radar data.
-- **Dallas Central Appraisal District (DCAD) ArcGIS API**: Used for automated commercial property data fetching.
-- **Xweather/Vaisala**: Provides predictive hail threat data and APIs for nowcasting and alerts.
-- **Google Places API**: Used for cascading phone number enrichment and enhanced reverse-address lookups.
-- **OpenCorporates**: Integrated for additional phone number enrichment and corporate entity data.
-- **Serper Web Search API**: Utilized as a fallback for phone number enrichment and general web research.
-- **TX Open Data Portal**: Source for contact enrichment, including taxpayer IDs and SOS file numbers for Texas entities.
-- **Texas Comptroller Public Information Request (PIR) API**: Used by the owner intelligence system for officer extraction.
-- **Socrata API**: Accessed for Dallas building permits (`e7gq-4sah` endpoint) with `parseDallasContractorBlob()` for structured extraction of name/address/city/state/zip/phone from embedded contractor text blobs.
-- **Fort Worth ArcGIS FeatureServer**: `services5.arcgis.com/...CFW_Open_Data_Development_Permits_View` — 1.5M+ permits back to 2001. Supports multi-year queries with `yearsBack` parameter, commercial/roofing filtering, extracts `Owner_Full_Name` for corroboration.
-- **Hunter.io**: Email discovery API for finding email addresses by domain (free tier: 25 searches/month). Manual-only with usage tracking.
-- **People Data Labs (PDL)**: Person and company enrichment API for finding emails, phones, titles, and LinkedIn profiles (free tier: 100 matches/month). Manual-only with usage tracking.
-- **SEC EDGAR**: Free SEC filing API (`data.sec.gov/submissions/`) for looking up REIT and institutional owner details — company name, phone, address, SIC classification, and filing history. No API key required.
-- **TX Secretary of State (via Comptroller API)**: Officer/director extraction for Texas LLCs and corporations using SOS file numbers and taxpayer IDs. Pulls registered agents, formation dates, and entity types.
-- **County Clerk Recording Data**: Deed record search for DFW counties (Dallas, Tarrant, Collin, Denton) via available public data portals. Identifies property transfers, grantors/grantees, and instrument types.
-- **EmailMX verification services**: Integrated for validating email patterns.
-- **Various public record APIs/databases**: Including TREC (Texas Real Estate Commission) license, TDLR (Texas Department of Licensing and Regulation) license, HUD multifamily database, BBB (Better Business Bureau) Direct, and WHOIS/RDAP for comprehensive owner and contact intelligence.
+- **PostgreSQL**: Primary database.
+- **NOAA (National Oceanic and Atmospheric Administration)**: Historical and real-time hail data.
+- **Dallas, Tarrant, Collin, Denton Central Appraisal Districts (CADs) ArcGIS APIs**: Commercial property data.
+- **Xweather/Vaisala**: Predictive hail threat data and alerts.
+- **Google Places API**: Phone enrichment, reverse-address lookups (manual-only).
+- **OpenCorporates**: Additional phone enrichment and corporate entity data.
+- **Serper Web Search API**: Fallback enrichment and web research (manual-only).
+- **TX Open Data Portal**: Contact enrichment (taxpayer IDs, SOS numbers).
+- **Texas Comptroller Public Information Request (PIR) API**: Officer extraction.
+- **Socrata API**: Dallas building permits.
+- **Fort Worth ArcGIS FeatureServer**: Building permits.
+- **Hunter.io**: Email discovery (manual-only).
+- **People Data Labs (PDL)**: Person/company enrichment (manual-only).
+- **SEC EDGAR**: REIT and institutional owner details.
+- **TX Secretary of State (via Comptroller API)**: Entity details, registered agents.
+- **County Clerk Recording Data**: Deed record search for DFW counties.
+- **FEMA Flood Zone API**: Flood risk assessment.
+- **OpenStreetMap Overpass API**: Building footprint polygons.
+- **Esri World Imagery**: Satellite imagery.
+- **EmailMX verification services**: Email validation.
+- **Various public record APIs/databases**: Including TREC, TDLR, HUD, BBB, WHOIS/RDAP for comprehensive intelligence.
