@@ -1968,7 +1968,7 @@ export default function Admin() {
   });
 
   const { data: aiResults, refetch: refetchAiResults } = useQuery<any>({
-    queryKey: ["/api/admin/ai-agent/results", { status: "pending", limit: 20 }],
+    queryKey: ["/api/admin/ai-agent/results?limit=50"],
     enabled: showAiResults,
   });
 
