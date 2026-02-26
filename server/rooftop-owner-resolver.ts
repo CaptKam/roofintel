@@ -1,6 +1,7 @@
 import { db } from "./storage";
 import { leads, rooftopOwners } from "@shared/schema";
 import { eq, sql, desc } from "drizzle-orm";
+import { isPersonName } from "./contact-validation";
 
 function normalizeName(name: string): string {
   return name
@@ -13,12 +14,7 @@ function normalizeName(name: string): string {
 }
 
 function isLikelyPerson(name: string): boolean {
-  const normalized = normalizeName(name);
-  if (!normalized || normalized.length < 3) return false;
-  const corpIndicators = /\b(LLC|INC|CORP|LTD|LP|LLP|PLLC|TRUST|ESTATE|COMPANY|FUND|BANK|CHURCH|SCHOOL|ACADEMY|CENTER|CENTRE|DISTRICT|CITY OF|STATE OF|COUNTY OF|DEPARTMENT|ASSOCIATION|FOUNDATION|UNIVERSITY|COLLEGE|HOSPITAL|MEDICAL|CLINIC|MINISTRY|TEMPLE|MOSQUE|SYNAGOGUE)\b/i;
-  if (corpIndicators.test(name)) return false;
-  const parts = normalized.split(" ").filter(p => p.length > 1);
-  return parts.length >= 2 && parts.length <= 5;
+  return isPersonName(name);
 }
 
 interface ExtractedPerson {

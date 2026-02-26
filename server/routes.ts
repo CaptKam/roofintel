@@ -22,7 +22,7 @@ import { runStormMonitorCycle, startStormMonitor, stopStormMonitor, getStormMoni
 import { runXweatherCycle, startXweatherMonitor, stopXweatherMonitor, getXweatherStatus, getActiveThreats } from "./xweather-hail";
 import { runOwnerIntelligenceBatch, runOwnerIntelligence, getIntelligenceStatus } from "./owner-intelligence";
 import { recordBatchEvidence, getEvidenceForLead, getConflictsForLead, resolveConflict, backfillEvidenceVerification, type EvidenceInput } from "./evidence-recorder";
-import { validateAllEvidenceForLead, normalizePhoneE164, isValidPhoneStructure, validateEmailSyntax, cleanupPollutedContactNames } from "./contact-validation";
+import { validateAllEvidenceForLead, normalizePhoneE164, isValidPhoneStructure, validateEmailSyntax, cleanupPollutedContactNames, isPersonName } from "./contact-validation";
 import { getRateLimitStatus, isDomainBlocked } from "./config/sourcePolicy";
 import { lookupPhone, verifyAllPhonesForLead, isTwilioConfigured } from "./twilio-lookup";
 import { markWrongNumber, markConfirmedGood, suppressContact, unsuppressContact } from "./contact-feedback";
@@ -189,8 +189,8 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           SELECT
             id, address, city, lead_score, roof_last_replaced, hail_events,
             last_hail_date, claim_window_open, owner_name,
-            COALESCE(managing_member, contact_name) AS contact_name,
-            COALESCE(owner_phone, contact_phone, managing_member_phone) AS contact_phone,
+            COALESCE(contact_name, management_contact) AS contact_name,
+            COALESCE(owner_phone, contact_phone, management_phone, managing_member_phone) AS contact_phone,
             total_value
           FROM leads
           WHERE lead_score >= 50
@@ -269,7 +269,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           lastHailDate: r.last_hail_date || null,
           claimWindowOpen: r.claim_window_open || false,
           ownerName: r.owner_name,
-          contactName: r.contact_name || null,
+          contactName: (r.contact_name && isPersonName(r.contact_name)) ? r.contact_name : null,
           contactPhone: r.contact_phone || null,
           totalValue: r.total_value || null,
           reason: reasons.length > 0 ? reasons.join(" + ") : "High score",
@@ -297,6 +297,8 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             for (const c of contractors) {
               const name = (c.name || c.contractor || "").trim();
               if (!isValidContractorName(name)) continue;
+              const workDesc = (c.workDescription || c.work_description || c.permitType || "").toUpperCase();
+              if (!workDesc.includes("ROOF")) continue;
               const existing = contractorMap.get(name);
               const permitDate = c.date || c.issued_date || null;
               if (existing) {

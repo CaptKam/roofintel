@@ -218,7 +218,7 @@ export async function enrichLeadFromTXSOS(leadId: string): Promise<SOSEntityResu
   const entity = result.entity;
 
   for (const officer of entity.officers) {
-    if (officer.name) {
+    if (officer.name && isPersonName(officer.name)) {
       await recordEvidence({
         leadId,
         contactType: "PERSON",
@@ -233,7 +233,7 @@ export async function enrichLeadFromTXSOS(leadId: string): Promise<SOSEntityResu
     }
   }
 
-  if (entity.registeredAgent) {
+  if (entity.registeredAgent && isPersonName(entity.registeredAgent)) {
     await recordEvidence({
       leadId,
       contactType: "PERSON",

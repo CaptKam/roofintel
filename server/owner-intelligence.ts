@@ -1514,6 +1514,7 @@ async function recordProvenanceFromDossier(leadId: string, result: IntelligenceR
     const dossier = result.dossier;
 
     for (const person of dossier.realPeople) {
+      if (!isPersonName(person.name)) continue;
       evidenceInputs.push({
         leadId,
         contactType: "PERSON",
