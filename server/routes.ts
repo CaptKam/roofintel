@@ -30,7 +30,7 @@ import { buildContactPath } from "./contact-ranking";
 import { seedPmCompanies, findPmCompany, addPmCompany, getAllPmCompanies } from "./pm-company-manager";
 import { getSkipTraceStatus } from "./skip-trace-agent";
 import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, getDallasRecordsStatus, addRecordedDocument } from "./dallas-records-agent";
-import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats } from "./permits-agent";
+import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats, cleanupContractorData } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker, savedFilters, insertSavedFilterSchema } from "@shared/schema";
@@ -1635,6 +1635,109 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to match violations to leads", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Contractors Directory
+  // ============================================================
+
+  app.get("/api/contractors", async (req, res) => {
+    try {
+      const { search, roofingOnly, sortBy, page, limit: limitParam } = req.query;
+      const pageNum = Math.max(1, parseInt(page as string) || 1);
+      const perPage = Math.min(100, Math.max(10, parseInt(limitParam as string) || 50));
+      const offset = (pageNum - 1) * perPage;
+
+      const searchTerm = search && typeof search === "string" && search.trim() ? `%${search.trim().toUpperCase()}%` : null;
+      const isRoofingOnly = roofingOnly === "true";
+
+      let orderByClause = sql.raw("permit_count DESC");
+      if (sortBy === "recent") orderByClause = sql.raw("most_recent_permit DESC");
+      if (sortBy === "name") orderByClause = sql.raw("contractor_name ASC");
+
+      const baseWhere = sql`bp.contractor IS NOT NULL AND bp.contractor != '' AND bp.contractor != ', ,   () -'`;
+      const searchFilter = searchTerm ? sql` AND UPPER(bp.contractor) LIKE ${searchTerm}` : sql``;
+      const roofFilter = isRoofingOnly ? sql` AND UPPER(bp.work_description) LIKE '%ROOF%'` : sql``;
+      const whereFragment = sql`WHERE ${baseWhere}${searchFilter}${roofFilter}`;
+
+      const countResult = await db.execute(sql`
+        SELECT COUNT(DISTINCT UPPER(TRIM(bp.contractor))) as total
+        FROM building_permits bp
+        ${whereFragment}
+      `);
+      const total = Number((countResult as any).rows?.[0]?.total || 0);
+
+      const result = await db.execute(sql`
+        SELECT
+          UPPER(TRIM(bp.contractor)) as contractor_name,
+          COUNT(*) as permit_count,
+          COUNT(CASE WHEN UPPER(bp.work_description) LIKE '%ROOF%' THEN 1 END) as roofing_permit_count,
+          MAX(bp.issued_date) as most_recent_permit,
+          MIN(bp.contractor_phone) FILTER (WHERE bp.contractor_phone IS NOT NULL AND bp.contractor_phone != '' AND bp.contractor_phone != '() -') as phone,
+          MIN(bp.contractor_email) FILTER (WHERE bp.contractor_email IS NOT NULL AND bp.contractor_email != '') as email,
+          MIN(bp.contractor_address) FILTER (WHERE bp.contractor_address IS NOT NULL AND bp.contractor_address != '') as address,
+          MIN(bp.contractor_city) FILTER (WHERE bp.contractor_city IS NOT NULL AND bp.contractor_city != '') as city,
+          MIN(bp.contractor_state) FILTER (WHERE bp.contractor_state IS NOT NULL AND bp.contractor_state != '') as state,
+          MIN(bp.contractor_zip) FILTER (WHERE bp.contractor_zip IS NOT NULL AND bp.contractor_zip != '') as zip
+        FROM building_permits bp
+        ${whereFragment}
+        GROUP BY UPPER(TRIM(bp.contractor))
+        ORDER BY ${orderByClause}
+        LIMIT ${perPage} OFFSET ${offset}
+      `);
+
+      const contractors = (result as any).rows || [];
+
+      res.json({
+        contractors,
+        pagination: {
+          page: pageNum,
+          perPage,
+          total,
+          totalPages: Math.ceil(total / perPage),
+        },
+      });
+    } catch (error: any) {
+      console.error("Contractors list error:", error);
+      res.status(500).json({ message: "Failed to load contractors", error: error.message });
+    }
+  });
+
+  app.get("/api/contractors/:name/permits", async (req, res) => {
+    try {
+      const contractorName = decodeURIComponent(req.params.name);
+      const result = await db.execute(sql`
+        SELECT
+          bp.id, bp.permit_number, bp.permit_type, bp.issued_date,
+          bp.address, bp.city, bp.zip_code,
+          bp.work_description, bp.estimated_value, bp.sqft,
+          bp.contractor_phone, bp.contractor_email,
+          bp.contractor_address, bp.contractor_city, bp.contractor_state, bp.contractor_zip,
+          bp.lead_id
+        FROM building_permits bp
+        WHERE UPPER(TRIM(bp.contractor)) = UPPER(TRIM(${contractorName}))
+        ORDER BY bp.issued_date DESC
+        LIMIT 200
+      `);
+      const permits = (result as any).rows || [];
+
+      const leadIds = [...new Set(permits.filter((p: any) => p.lead_id).map((p: any) => p.lead_id))] as string[];
+      let linkedLeads: any[] = [];
+      if (leadIds.length > 0) {
+        const idParams = leadIds.map(id => sql`${id}`);
+        const leadsResult = await db.execute(sql`
+          SELECT id, address, city, owner_name, lead_score, total_value
+          FROM leads
+          WHERE id IN (${sql.join(idParams, sql`, `)})
+        `);
+        linkedLeads = (leadsResult as any).rows || [];
+      }
+
+      res.json({ permits, linkedLeads });
+    } catch (error: any) {
+      console.error("Contractor permits error:", error);
+      res.status(500).json({ message: "Failed to load contractor permits", error: error.message });
     }
   });
 
@@ -3519,6 +3622,20 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     } catch (error) {
       console.error("Quality summary error:", error);
       res.status(500).json({ message: "Failed to compute quality summary" });
+    }
+  });
+
+  app.post("/api/admin/cleanup-contractor-data", async (_req, res) => {
+    try {
+      res.json({ message: "Contractor data cleanup started. This may take a few minutes." });
+      cleanupContractorData().then((result) => {
+        console.log("[Admin] Contractor cleanup complete:", result);
+      }).catch((err) => {
+        console.error("[Admin] Contractor cleanup failed:", err);
+      });
+    } catch (error) {
+      console.error("Contractor cleanup error:", error);
+      res.status(500).json({ message: "Failed to start contractor data cleanup" });
     }
   });
 

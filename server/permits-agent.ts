@@ -99,21 +99,43 @@ function parseDallasContractorBlob(raw: string): {
   zip: string | null;
   phone: string | null;
 } {
+  const backslashMatch = raw.match(/^(.+?)\\(.+?)(?:\/(\d{7,10}))?$/);
+  if (backslashMatch) {
+    const bsName = backslashMatch[1].trim();
+    const addressPart = backslashMatch[2].trim();
+    const rawPhone = backslashMatch[3] || null;
+    const phone = rawPhone ? `(${rawPhone.slice(0,3)}) ${rawPhone.slice(3,6)}-${rawPhone.slice(6)}` : null;
+
+    const stateZipMatch = addressPart.match(/,?\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/);
+    const state = stateZipMatch ? stateZipMatch[1] : null;
+    const zip = stateZipMatch ? stateZipMatch[2] : null;
+    let addrText = stateZipMatch ? addressPart.replace(stateZipMatch[0], "").trim() : addressPart;
+
+    const cityMatch = addrText.match(/,\s*([A-Za-z\s.]+)\s*$/);
+    const city = cityMatch ? cityMatch[1].trim() : null;
+    if (cityMatch) addrText = addrText.replace(cityMatch[0], "").trim();
+
+    const address = addrText.replace(/,\s*$/, "").trim() || null;
+
+    return { name: bsName, address, city, state, zip, phone };
+  }
+
   const phoneMatch = raw.match(/\((\d{3})\)\s*(\d{3})-(\d{4})/);
   const phone = phoneMatch ? `(${phoneMatch[1]}) ${phoneMatch[2]}-${phoneMatch[3]}` : null;
 
   let text = phone ? raw.replace(/\(\d{3}\)\s*\d{3}-\d{4}/, "").trim() : raw;
+  text = text.replace(/\(\)\s*-\s*$/, "").trim();
 
-  const stateZipMatch = text.match(/,?\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/);
-  const state = stateZipMatch ? stateZipMatch[1] : null;
+  const stateZipMatch = text.match(/,?\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/i);
+  const state = stateZipMatch ? stateZipMatch[1].toUpperCase() : null;
   const zip = stateZipMatch ? stateZipMatch[2] : null;
   if (stateZipMatch) text = text.replace(stateZipMatch[0], "").trim();
 
-  const cityMatch = text.match(/,\s*([A-Za-z\s]+)\s*$/);
+  const cityMatch = text.match(/,\s*([A-Za-z\s.]+)\s*$/);
   const city = cityMatch ? cityMatch[1].trim() : null;
   if (cityMatch) text = text.replace(cityMatch[0], "").trim();
 
-  const addressMatch = text.match(/\s+(\d+\s+[A-Za-z0-9\s.,#]+)$/);
+  const addressMatch = text.match(/\s+((?:P\.?O\.?\s*BOX\s+\d+|\d+\s*[A-Za-z0-9\s.,#:]+))$/i);
   let name = text;
   let address: string | null = null;
   if (addressMatch) {
@@ -295,16 +317,16 @@ export async function importFortWorthPermits(
 
   const cutoffDate = new Date();
   cutoffDate.setFullYear(cutoffDate.getFullYear() - yearsBack);
-  const cutoffTimestamp = cutoffDate.getTime();
+  const cutoffISO = cutoffDate.toISOString().split("T")[0] + " 00:00:00";
 
   console.log(`[Fort Worth Permits] Starting ArcGIS import for market ${marketId}, yearsBack=${yearsBack}, commercialOnly=${commercialOnly}, roofingOnly=${roofingOnly}`);
 
-  let whereClause = `File_Date >= ${cutoffTimestamp}`;
+  let whereClause = `File_Date >= timestamp '${cutoffISO}'`;
   if (roofingOnly) {
-    whereClause += ` AND (upper(B1_WORK_DESC) LIKE '%ROOF%' OR upper(Permit_Type) LIKE '%ROOF%')`;
+    whereClause += ` AND (B1_WORK_DESC LIKE '%ROOF%' OR B1_WORK_DESC LIKE '%Roof%' OR B1_WORK_DESC LIKE '%roof%' OR Permit_Type LIKE '%Roof%')`;
   }
   if (commercialOnly) {
-    whereClause += ` AND (upper(Use_Type) LIKE '%COMMERCIAL%' OR upper(Use_Type) LIKE '%INDUSTRIAL%' OR upper(Use_Type) LIKE '%MULTI%' OR upper(Specific_Use) LIKE '%OFFICE%' OR upper(Specific_Use) LIKE '%WAREHOUSE%' OR upper(Specific_Use) LIKE '%RETAIL%' OR upper(Specific_Use) LIKE '%HOTEL%' OR upper(Specific_Use) LIKE '%CHURCH%' OR upper(Specific_Use) LIKE '%HOSPITAL%' OR upper(Specific_Use) LIKE '%RESTAURANT%')`;
+    whereClause += ` AND (Permit_Type LIKE '%Commercial%' OR Permit_Type LIKE '%commercial%' OR Permit_Category LIKE '%Commercial%' OR Use_Type LIKE '%Commercial%' OR Use_Type LIKE '%COMMERCIAL%' OR Use_Type LIKE '%Industrial%' OR Use_Type LIKE '%Multi%' OR Specific_Use LIKE '%Office%' OR Specific_Use LIKE '%Warehouse%' OR Specific_Use LIKE '%Retail%' OR Specific_Use LIKE '%Hotel%' OR Specific_Use LIKE '%Church%' OR Specific_Use LIKE '%Hospital%' OR Specific_Use LIKE '%Restaurant%')`;
   }
 
   while (hasMore) {
@@ -773,6 +795,144 @@ export async function getRoofingPermitStats(): Promise<{
   }));
 
   return { totalRoofingPermits, matchedToLeads, byYear, topContractors };
+}
+
+function isGarbageContractorValue(value: string): boolean {
+  if (!value || value.trim().length === 0) return true;
+  const cleaned = value.replace(/[,\s().\\-]/g, '');
+  if (cleaned.length === 0) return true;
+  if (cleaned.length < 3) return true;
+  const upper = value.trim().toUpperCase();
+  if (["N/A", "NONE", "UNKNOWN", "TBD", "NA", ".", "-", "--"].includes(upper)) return true;
+  return false;
+}
+
+function extractEmailFromBlob(blob: string): string | null {
+  const emailMatch = blob.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return emailMatch ? emailMatch[0].toLowerCase() : null;
+}
+
+export async function cleanupContractorData(): Promise<{
+  totalProcessed: number;
+  cleaned: number;
+  nulled: number;
+  phonesPopulated: number;
+  addressesPopulated: number;
+  emailsExtracted: number;
+  errors: string[];
+}> {
+  let totalProcessed = 0;
+  let cleaned = 0;
+  let nulled = 0;
+  let phonesPopulated = 0;
+  let addressesPopulated = 0;
+  let emailsExtracted = 0;
+  const errors: string[] = [];
+
+  console.log(`[Contractor Cleanup] Starting contractor data cleanup...`);
+
+  const PAGE = 1000;
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const permits = await db
+      .select({
+        id: buildingPermits.id,
+        contractor: buildingPermits.contractor,
+        contractorPhone: buildingPermits.contractorPhone,
+        contractorEmail: buildingPermits.contractorEmail,
+        contractorAddress: buildingPermits.contractorAddress,
+        contractorCity: buildingPermits.contractorCity,
+        contractorState: buildingPermits.contractorState,
+        contractorZip: buildingPermits.contractorZip,
+        metadata: buildingPermits.metadata,
+      })
+      .from(buildingPermits)
+      .where(sql`${buildingPermits.contractor} IS NOT NULL`)
+      .limit(PAGE)
+      .offset(offset);
+
+    if (permits.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    for (const permit of permits) {
+      totalProcessed++;
+      try {
+        const currentContractor = permit.contractor || "";
+
+        if (isGarbageContractorValue(currentContractor)) {
+          await db
+            .update(buildingPermits)
+            .set({
+              contractor: null,
+              contractorPhone: null,
+              contractorAddress: null,
+              contractorCity: null,
+              contractorState: null,
+              contractorZip: null,
+            })
+            .where(eq(buildingPermits.id, permit.id));
+          nulled++;
+          continue;
+        }
+
+        const rawBlob = (permit.metadata as any)?.rawContractor || currentContractor;
+
+        const parsed = parseDallasContractorBlob(rawBlob);
+        const updates: Record<string, any> = {};
+
+        if (parsed.name && !isGarbageContractorValue(parsed.name) && parsed.name !== currentContractor) {
+          updates.contractor = parsed.name;
+          cleaned++;
+        }
+
+        if (!permit.contractorPhone && parsed.phone) {
+          updates.contractorPhone = parsed.phone;
+          phonesPopulated++;
+        }
+        if (!permit.contractorAddress && parsed.address) {
+          updates.contractorAddress = parsed.address;
+          addressesPopulated++;
+        }
+        if (!permit.contractorCity && parsed.city) {
+          updates.contractorCity = parsed.city;
+        }
+        if (!permit.contractorState && parsed.state) {
+          updates.contractorState = parsed.state;
+        }
+        if (!permit.contractorZip && parsed.zip) {
+          updates.contractorZip = parsed.zip;
+        }
+
+        const email = extractEmailFromBlob(rawBlob);
+        if (email && !permit.contractorEmail) {
+          updates.contractorEmail = email;
+          emailsExtracted++;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await db
+            .update(buildingPermits)
+            .set(updates)
+            .where(eq(buildingPermits.id, permit.id));
+        }
+      } catch (err: any) {
+        errors.push(`Error processing permit ${permit.id}: ${err.message}`);
+      }
+    }
+
+    if (permits.length < PAGE) {
+      hasMore = false;
+    } else {
+      offset += PAGE;
+    }
+  }
+
+  console.log(`[Contractor Cleanup] Complete: processed=${totalProcessed}, cleaned=${cleaned}, nulled=${nulled}, phones=${phonesPopulated}, addresses=${addressesPopulated}, emails=${emailsExtracted}, errors=${errors.length}`);
+  return { totalProcessed, cleaned, nulled, phonesPopulated, addressesPopulated, emailsExtracted, errors };
 }
 
 export async function getPermitStats(): Promise<{

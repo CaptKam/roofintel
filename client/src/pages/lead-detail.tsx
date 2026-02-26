@@ -1141,14 +1141,24 @@ function BuildingContacts({ intelligence }: { intelligence: any }) {
         {intelligence.buildingContacts.map((c: any, i: number) => (
           <div key={i} className={`space-y-1 ${i > 0 ? "pt-2 border-t" : ""}`}>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{c.name}</span>
+              <Link href={`/contractors?search=${encodeURIComponent(c.name || c.company || "")}`}>
+                <span className="text-sm font-medium text-primary hover:underline cursor-pointer" data-testid={`link-building-contact-${i}`}>{c.name}</span>
+              </Link>
               <Badge variant="outline" className="text-[9px]">{c.confidence}%</Badge>
             </div>
             <p className="text-[11px] text-muted-foreground">
               {c.role} {c.company ? `at ${c.company}` : ""} · via {c.source}
             </p>
-            {c.phone && <p className="text-[11px] font-mono">{c.phone}</p>}
-            {c.email && <p className="text-[11px] font-mono">{c.email}</p>}
+            {c.phone && (
+              <a href={`tel:${c.phone}`} className="text-[11px] font-mono text-primary hover:underline flex items-center gap-1 w-fit" data-testid={`link-contact-phone-${i}`}>
+                <Phone className="w-3 h-3" />{c.phone}
+              </a>
+            )}
+            {c.email && (
+              <a href={`mailto:${c.email}`} className="text-[11px] font-mono text-primary hover:underline flex items-center gap-1 w-fit" data-testid={`link-contact-email-${i}`}>
+                <Mail className="w-3 h-3" />{c.email}
+              </a>
+            )}
           </div>
         ))}
       </CardContent>

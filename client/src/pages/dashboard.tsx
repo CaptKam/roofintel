@@ -409,17 +409,20 @@ export default function Dashboard() {
             {data.competitors.length > 0 ? (
               <div className="space-y-2.5">
                 {data.competitors.map((c, i) => (
-                  <div key={i} className="flex items-center justify-between gap-3" data-testid={`competitor-${i}`}>
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
-                        <HardHat className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Link key={i} href={`/contractors?search=${encodeURIComponent(c.name)}`}>
+                    <div className="flex items-center justify-between gap-3 cursor-pointer hover:bg-muted/30 transition-colors rounded-md px-2 py-1.5 -mx-2" data-testid={`competitor-${i}`}>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-6 h-6 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                          <HardHat className="w-3.5 h-3.5 text-muted-foreground" />
+                        </div>
+                        <span className="text-sm truncate text-primary hover:underline">{c.name}</span>
                       </div>
-                      <span className="text-sm truncate">{c.name}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Badge variant="outline" className="text-[10px] tabular-nums">{c.permitCount} permits</Badge>
+                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30" />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Badge variant="outline" className="text-[10px] tabular-nums">{c.permitCount} permits</Badge>
-                    </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (

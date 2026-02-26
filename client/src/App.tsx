@@ -20,6 +20,7 @@ import NetworkExplorer from "@/pages/network-explorer";
 import Privacy from "@/pages/privacy";
 import About from "@/pages/about";
 import Contact from "@/pages/contact";
+import Contractors from "@/pages/contractors";
 
 function Router() {
   return (
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/portfolios" component={Portfolios} />
       <Route path="/network" component={NetworkExplorer} />
       <Route path="/map" component={MapStorms} />
+      <Route path="/contractors" component={Contractors} />
       <Route path="/admin" component={Admin} />
       <Route path="/privacy" component={Privacy} />
       <Route path="/about" component={About} />

@@ -66,6 +66,7 @@ RoofIntel utilizes a modern web architecture with a strong emphasis on separatio
 - **Portfolios & Network Explorer**: Property portfolio discovery, relationship graph visualization.
 - **Data Management**: CSV import, data source configuration, data quality metrics.
 - **Admin**: Centralized management for property sources, storm data, enrichment, pipeline, batch reprocessing, and system settings.
+- **Contractors Directory**: Searchable, filterable directory of 6,600+ contractors from permit records. Features expandable rows with permit history, clickable phone/email links, roofing-only filter, and linked properties. API: `GET /api/contractors` (list with search/pagination), `GET /api/contractors/:name/permits` (detail). All contractor references throughout app are clickable.
 - **Exports**: Lead data export to CSV.
 
 ## External Dependencies
