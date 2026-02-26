@@ -714,7 +714,7 @@ async function enhancedEmailLookup(lead: Lead, knownPeople: PersonRecord[], clai
 
   return {
     emails: [...verified, ...unverified.slice(0, 15)],
-    detail: `${unique.length} patterns (${verified.length} verified, MX: ${mxValid ? "valid" : "unknown"})`,
+    detail: `${unique.length} emails found (${verified.length} verified from website, MX: ${mxValid ? "valid" : "unknown"})`,
   };
 }
 

@@ -1744,7 +1744,7 @@ export function getIntelligenceStatus(): {
     { name: "TX Comptroller", available: true, description: "Queries franchise tax records for responsible parties" },
     { name: "Property Tax Records", available: true, description: "Extracts ATTN/C-O contacts from property tax mailing addresses" },
     { name: "People Search", available: !!process.env.SERPER_API_KEY, description: "Web search to find phone/email for identified people" },
-    { name: "Email Discovery", available: true, description: "Generates and verifies email patterns from business domains" },
+    { name: "Email Discovery", available: true, description: "Scrapes business websites for real published email addresses" },
     { name: "Google Business", available: !!process.env.GOOGLE_PLACES_API_KEY, description: "Google Places business profile and owner info from reviews" },
     { name: "Court Records", available: !!process.env.SERPER_API_KEY, description: "Searches public court filings and building permits" },
     { name: "TREC License", available: true, description: "Texas Real Estate Commission license lookup for brokers/agents" },
@@ -1753,7 +1753,7 @@ export function getIntelligenceStatus(): {
     { name: "BBB Direct", available: true, description: "Better Business Bureau profiles, principals, and accreditation (no API key needed)" },
     { name: "Google Places Enhanced", available: !!process.env.GOOGLE_PLACES_API_KEY, description: "Reverse address lookup for businesses at property, review mining for manager names" },
     { name: "Building Contacts", available: !!process.env.SERPER_API_KEY || !!process.env.GOOGLE_PLACES_API_KEY, description: "Finds property managers, tenants, contractors, and permit filers connected to the building" },
-    { name: "Skip Trace", available: true, description: "7-source free lookup: DFW permits, TX sales tax, OpenCorporates officers, TCEQ contacts, WHOIS, email patterns, reverse address" },
+    { name: "Skip Trace", available: true, description: "7-source free lookup: DFW permits, TX sales tax, OpenCorporates officers, TCEQ contacts, WHOIS, reverse address" },
     { name: "Master Orchestrator", available: true, description: "Chains all agents, deduplicates, scores confidence, and stores provenance claims" },
   ];
 
