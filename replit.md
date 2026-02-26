@@ -1,5 +1,15 @@
 # RoofIntel - Commercial Roofing Lead Intelligence Platform
 
+## ABSOLUTE SYSTEM RULE — DATA INTEGRITY
+**NEVER input fake or false data into this system.** No guessing emails, no fabricating contacts, no pattern-generating data, no promoting irrelevant contractors as decision-makers. Every piece of data must come from a real, verifiable source. The goal is to find honest decision-makers and real contractor contact information to create a trusting network. If data cannot be verified, it does not go in. Period.
+
+This means:
+- NO email pattern generation (no guessing info@, contact@, first.last@, etc.)
+- NO promoting permit contractors (plumbers, electricians, etc.) as property decision-makers
+- NO fabricating any contact data from templates or assumptions
+- Only store data that was actually found in a real public source or verified API response
+- If enrichment finds nothing, show nothing — never fill gaps with guesses
+
 ## Overview
 RoofIntel is a SaaS platform for roofing contractors, specializing in identifying and prioritizing qualified commercial and multi-family leads. It integrates public property data, roof age, and historical hail exposure to deliver actionable intelligence. Currently serving the DFW 4-county region (Dallas, Tarrant, Collin, Denton), the platform is designed for multi-market expansion with a config-driven architecture. Its primary goal is to enhance lead generation, qualification, and market potential for roofing businesses. The core principle is to use only real, verified data from public sources and government APIs.
 
