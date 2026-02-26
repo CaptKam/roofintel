@@ -40,6 +40,8 @@ import {
   CircleCheck,
   CircleMinus,
   CircleAlert,
+  ShieldAlert,
+  ArrowUpDown,
 } from "lucide-react";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
 import type { Lead } from "@shared/schema";
@@ -71,8 +73,10 @@ export default function Leads() {
   const [minPropertyValue, setMinPropertyValue] = useState<string>(urlParams.get("minPropertyValue") || "");
   const [ownershipStructure, setOwnershipStructure] = useState<string>(urlParams.get("ownershipStructure") || "");
   const [roofType, setRoofType] = useState<string>(urlParams.get("roofType") || "");
+  const [riskTier, setRiskTier] = useState<string>(urlParams.get("riskTier") || "");
+  const [sortBy, setSortBy] = useState<string>(urlParams.get("sortBy") || "");
   const [page, setPage] = useState(1);
-  const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true" || !!urlParams.get("minRoofAge") || !!urlParams.get("minRoofArea") || !!urlParams.get("lastHailWithin") || urlParams.get("claimWindowOpen") === "true" || !!urlParams.get("minPropertyValue") || !!urlParams.get("ownershipStructure") || !!urlParams.get("roofType"));
+  const [showFilters, setShowFilters] = useState(!!urlParams.get("minScore") || !!urlParams.get("county") || !!urlParams.get("zoning") || !!urlParams.get("status") || urlParams.get("hasPhone") === "true" || !!urlParams.get("minRoofAge") || !!urlParams.get("minRoofArea") || !!urlParams.get("lastHailWithin") || urlParams.get("claimWindowOpen") === "true" || !!urlParams.get("minPropertyValue") || !!urlParams.get("ownershipStructure") || !!urlParams.get("roofType") || !!urlParams.get("riskTier"));
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -93,6 +97,8 @@ export default function Leads() {
     const newMinPropertyValue = fresh.get("minPropertyValue") || "";
     const newOwnershipStructure = fresh.get("ownershipStructure") || "";
     const newRoofType = fresh.get("roofType") || "";
+    const newRiskTier = fresh.get("riskTier") || "";
+    const newSortBy = fresh.get("sortBy") || "";
     setMinScore(newMinScore);
     setCounty(newCounty);
     setZoning(newZoning);
@@ -105,7 +111,9 @@ export default function Leads() {
     setMinPropertyValue(newMinPropertyValue);
     setOwnershipStructure(newOwnershipStructure);
     setRoofType(newRoofType);
-    if (newMinScore || newCounty || newZoning || newStatus || newHasPhone || newMinRoofAge || newMinRoofArea || newLastHailWithin || newClaimWindowOpen || newMinPropertyValue || newOwnershipStructure || newRoofType) {
+    setRiskTier(newRiskTier);
+    setSortBy(newSortBy);
+    if (newMinScore || newCounty || newZoning || newStatus || newHasPhone || newMinRoofAge || newMinRoofArea || newLastHailWithin || newClaimWindowOpen || newMinPropertyValue || newOwnershipStructure || newRoofType || newRiskTier) {
       setShowFilters(true);
     }
     setPage(1);
@@ -113,7 +121,7 @@ export default function Leads() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure, roofType]);
+  }, [debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure, roofType, riskTier, sortBy]);
 
   const params = new URLSearchParams();
   if (debouncedSearch) params.set("search", debouncedSearch);
@@ -129,6 +137,8 @@ export default function Leads() {
   if (minPropertyValue) params.set("minPropertyValue", minPropertyValue);
   if (ownershipStructure) params.set("ownershipStructure", ownershipStructure);
   if (roofType) params.set("roofType", roofType);
+  if (riskTier) params.set("riskTier", riskTier);
+  if (sortBy) params.set("sortBy", sortBy);
   params.set("limit", String(PAGE_SIZE));
   params.set("offset", String((page - 1) * PAGE_SIZE));
 
@@ -141,14 +151,14 @@ export default function Leads() {
   const leads = data?.leads;
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const hasFilters = county || minScore || zoning || status || hasPhone || minRoofAge || minRoofArea || lastHailWithin || claimWindowOpen || minPropertyValue || ownershipStructure || roofType;
+  const hasFilters = county || minScore || zoning || status || hasPhone || minRoofAge || minRoofArea || lastHailWithin || claimWindowOpen || minPropertyValue || ownershipStructure || roofType || riskTier;
 
   const currentFilterState = {
     county, minScore, zoning, status,
     hasPhone: hasPhone || undefined,
     minRoofAge, minRoofArea, lastHailWithin,
     claimWindowOpen: claimWindowOpen || undefined,
-    minPropertyValue, ownershipStructure, roofType,
+    minPropertyValue, ownershipStructure, roofType, riskTier,
   };
 
   const applyFilterPreset = (filters: Record<string, any>) => {
@@ -164,6 +174,8 @@ export default function Leads() {
     setMinPropertyValue(filters.minPropertyValue ? String(filters.minPropertyValue) : "");
     setOwnershipStructure(filters.ownershipStructure || "");
     setRoofType(filters.roofType || "");
+    setRiskTier(filters.riskTier || "");
+    setSortBy(filters.sortBy || "");
     setShowFilters(true);
   };
 
@@ -180,6 +192,8 @@ export default function Leads() {
     setMinPropertyValue("");
     setOwnershipStructure("");
     setRoofType("");
+    setRiskTier("");
+    setSortBy("");
   };
 
   const handleExport = async () => {
@@ -466,6 +480,39 @@ export default function Leads() {
                 </div>
               </div>
             </div>
+
+            <div className="border-t pt-4">
+              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-3">Risk & Sorting</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Roof Risk Tier</label>
+                  <Select value={riskTier} onValueChange={setRiskTier}>
+                    <SelectTrigger data-testid="select-risk-tier">
+                      <SelectValue placeholder="All tiers" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All tiers</SelectItem>
+                      <SelectItem value="critical">Critical (81-100)</SelectItem>
+                      <SelectItem value="high">High (61-80)</SelectItem>
+                      <SelectItem value="moderate">Moderate (31-60)</SelectItem>
+                      <SelectItem value="low">Low (0-30)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Sort By</label>
+                  <Button
+                    variant={sortBy === "roofRiskIndex" ? "default" : "outline"}
+                    className="w-full toggle-elevate"
+                    onClick={() => setSortBy(sortBy === "roofRiskIndex" ? "" : "roofRiskIndex")}
+                    data-testid="button-sort-risk"
+                  >
+                    <ArrowUpDown className="w-4 h-4 mr-1.5" />
+                    Risk Score
+                  </Button>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -560,6 +607,24 @@ export default function Leads() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {lead.roofRiskIndex != null && lead.roofRiskIndex > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className={`no-default-hover-elevate no-default-active-elevate font-mono text-[10px] ${
+                        lead.roofRiskIndex >= 81
+                          ? "bg-red-500/15 text-red-700 dark:text-red-400"
+                          : lead.roofRiskIndex >= 61
+                          ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
+                          : lead.roofRiskIndex >= 31
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                          : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                      }`}
+                      data-testid={`badge-risk-${lead.id}`}
+                    >
+                      <ShieldAlert className="w-3 h-3 mr-0.5" />
+                      {lead.roofRiskIndex}
+                    </Badge>
+                  )}
                   {(lead as any).dataConfidence && (
                     <Badge
                       variant="secondary"

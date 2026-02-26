@@ -109,6 +109,8 @@ export const leads = pgTable("leads", {
   lastPermitDate: text("last_permit_date"),
   permitContractors: jsonb("permit_contractors"),
   distressScore: integer("distress_score").default(0),
+  roofRiskIndex: integer("roof_risk_index"),
+  roofRiskBreakdown: jsonb("roof_risk_breakdown"),
   leadScore: integer("lead_score").notNull().default(0),
   status: text("status").notNull().default("new"),
   notes: text("notes"),
@@ -734,6 +736,8 @@ export const leadFilterSchema = z.object({
   hasEmail: z.boolean().optional(),
   hasDecisionMaker: z.boolean().optional(),
   enrichmentStatus: z.string().optional(),
+  riskTier: z.string().optional(),
+  sortBy: z.string().optional(),
   limit: z.number().optional(),
   offset: z.number().optional(),
 });

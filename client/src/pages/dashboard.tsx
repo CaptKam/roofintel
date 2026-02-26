@@ -30,6 +30,7 @@ import {
   User,
   Layers,
   AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
@@ -73,6 +74,22 @@ interface CommandCenter {
   competitors: Array<{ name: string; permitCount: number; recentPermit: string | null }>;
   scoreDistribution: Array<{ range: string; count: number }>;
   topValueLeads: Array<{ id: string; address: string; totalValue: number; leadScore: number; ownerName: string }>;
+}
+
+interface RoofRiskSummary {
+  distribution: { critical: number; high: number; moderate: number; low: number };
+  total: number;
+  avgScore: number;
+  topRisk: Array<{
+    id: string;
+    address: string;
+    city: string;
+    roof_risk_index: number;
+    roof_type: string | null;
+    year_built: number;
+    tier: string | null;
+    exposure_window: string | null;
+  }>;
 }
 
 interface QualitySummary {
@@ -170,6 +187,10 @@ export default function Dashboard() {
 
   const { data: qualityData } = useQuery<QualitySummary>({
     queryKey: ["/api/data/quality-summary"],
+  });
+
+  const { data: roofRiskData } = useQuery<RoofRiskSummary>({
+    queryKey: ["/api/dashboard/roof-risk-summary"],
   });
 
   const applyDashboardFilter = (filters: Record<string, any>) => {
@@ -434,6 +455,108 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {roofRiskData && roofRiskData.total > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-base font-semibold">Roof Risk Overview</CardTitle>
+            <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate">{roofRiskData.total.toLocaleString()} scored</Badge>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                    <ShieldAlert className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold tabular-nums" data-testid="text-avg-risk-score">{roofRiskData.avgScore}</p>
+                    <p className="text-xs text-muted-foreground">Avg Risk Score</p>
+                  </div>
+                </div>
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Risk Distribution</p>
+                {[
+                  { label: "Critical", count: roofRiskData.distribution.critical, color: "bg-red-500", textColor: "text-red-700 dark:text-red-400" },
+                  { label: "High", count: roofRiskData.distribution.high, color: "bg-orange-500", textColor: "text-orange-700 dark:text-orange-400" },
+                  { label: "Moderate", count: roofRiskData.distribution.moderate, color: "bg-amber-500", textColor: "text-amber-700 dark:text-amber-400" },
+                  { label: "Low", count: roofRiskData.distribution.low, color: "bg-emerald-500", textColor: "text-emerald-700 dark:text-emerald-400" },
+                ].map((tier) => {
+                  const pct = roofRiskData.total > 0 ? Math.round((tier.count / roofRiskData.total) * 100) : 0;
+                  return (
+                    <div
+                      key={tier.label}
+                      className="flex items-center gap-3 cursor-pointer hover:bg-muted/30 transition-colors rounded-md px-2 py-1 -mx-2"
+                      onClick={() => applyDashboardFilter({ riskTier: tier.label.toLowerCase() })}
+                      data-testid={`risk-tier-${tier.label.toLowerCase()}`}
+                    >
+                      <div className={`w-2.5 h-2.5 rounded-full ${tier.color} flex-shrink-0`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`text-xs font-medium ${tier.textColor}`}>{tier.label}</span>
+                          <span className="text-xs text-muted-foreground tabular-nums">{tier.count.toLocaleString()} ({pct}%)</span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className={`h-full ${tier.color} rounded-full transition-all duration-700`} style={{ width: `${Math.max(pct, tier.count > 0 ? 2 : 0)}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="lg:col-span-2 space-y-3">
+                <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Highest Risk Properties</p>
+                <div className="divide-y divide-border">
+                  {roofRiskData.topRisk.slice(0, 5).map((prop) => {
+                    const riskColor = prop.roof_risk_index >= 81
+                      ? "bg-red-500/15 text-red-700 dark:text-red-400"
+                      : prop.roof_risk_index >= 61
+                      ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
+                      : prop.roof_risk_index >= 31
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                      : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400";
+                    return (
+                      <Link key={prop.id} href={`/leads/${prop.id}`}>
+                        <div
+                          className="flex items-center gap-3 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors rounded-md px-2 -mx-2"
+                          data-testid={`top-risk-${prop.id}`}
+                        >
+                          <Badge
+                            variant="secondary"
+                            className={`no-default-hover-elevate no-default-active-elevate font-mono text-xs min-w-[3rem] justify-center ${riskColor}`}
+                          >
+                            {prop.roof_risk_index}
+                          </Badge>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{prop.address}</p>
+                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                              <span className="text-xs text-muted-foreground">{prop.city}</span>
+                              {prop.roof_type && <span className="text-xs text-muted-foreground">{prop.roof_type}</span>}
+                              {prop.year_built && <span className="text-xs text-muted-foreground">Built {prop.year_built}</span>}
+                            </div>
+                            {prop.exposure_window && (
+                              <p className="text-[11px] text-muted-foreground mt-0.5">{prop.exposure_window}</p>
+                            )}
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground/30 flex-shrink-0" />
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+                {roofRiskData.topRisk.length > 0 && (
+                  <Link href="/leads?riskTier=critical&sortBy=roofRiskIndex">
+                    <Button variant="ghost" size="sm" className="w-full" data-testid="button-view-all-risk">
+                      View all high-risk properties
+                      <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {qualityData && (
         <Card>

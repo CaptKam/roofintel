@@ -3287,6 +3287,7 @@ export default function Admin() {
                     <option value="portfolio">Portfolio Detection</option>
                     <option value="stale_data">Stale Data</option>
                     <option value="permit_audit">Permit Audit</option>
+                    <option value="roof_risk">Roof Risk Index</option>
                     <option value="both">Audit + Search</option>
                     <option value="all">All Modes (Full Sweep)</option>
                   </select>
@@ -3311,7 +3312,7 @@ export default function Admin() {
                   </select>
                 </div>
                 <span className="text-[10px] text-muted-foreground">
-                  Est. cost: ~${(aiBatchSize * (aiMode === "stale_data" ? 0 : aiMode === "permit_audit" ? 0 : aiMode === "contractor_scrub" ? 0.0005 : aiMode === "search" ? 0.003 : aiMode === "all" ? 0.0065 : aiMode === "both" ? 0.004 : 0.001)).toFixed(3)}
+                  Est. cost: ~${(aiBatchSize * (aiMode === "stale_data" ? 0 : aiMode === "permit_audit" ? 0 : aiMode === "roof_risk" ? 0 : aiMode === "contractor_scrub" ? 0.0005 : aiMode === "search" ? 0.003 : aiMode === "all" ? 0.0065 : aiMode === "both" ? 0.004 : 0.001)).toFixed(3)}
                 </span>
               </div>
               <div className="text-[10px] text-muted-foreground italic" data-testid="ai-mode-description">
@@ -3323,8 +3324,9 @@ export default function Admin() {
                   portfolio: "Identifies owners with 3+ properties for portfolio-based outreach",
                   stale_data: "Flags shared phones, absentee owners, and old buildings with missing roof data",
                   permit_audit: "Re-checks permit-to-lead matching, fixes permit counts, identifies roofing permits — $0 cost (SQL only)",
+                  roof_risk: "Computes 5-pillar Roof Risk Index (0-100) for all leads — $0 cost (SQL-only computation)",
                   both: "Runs Data Audit then Web Search sequentially",
-                  all: "Runs all 7 modes sequentially: Audit → Search → Contractor Scrub → Website Extract → Portfolio → Stale Data → Permit Audit",
+                  all: "Runs all 8 modes sequentially: Audit → Search → Contractor Scrub → Website Extract → Portfolio → Stale Data → Permit Audit → Roof Risk",
                 }[aiMode] || ""}
               </div>
 

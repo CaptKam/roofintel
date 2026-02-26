@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { PageMeta } from "@/components/page-meta";
-import { Building2, Users, ChevronRight, TrendingUp, Search, Loader2, Network, RefreshCw, ChevronDown, AlertCircle, MapPin } from "lucide-react";
+import { Building2, Users, ChevronRight, TrendingUp, Search, Loader2, Network, RefreshCw, ChevronDown, AlertCircle, MapPin, ShieldAlert, Clock, Layers, TriangleAlert } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +43,23 @@ interface PortfolioProperty {
   roofType: string | null;
   estimatedRoofArea: number | null;
   status: string;
+  roofRiskIndex: number | null;
+}
+
+interface PortfolioRiskSummary {
+  portfolioId: string;
+  name: string;
+  propertyCount: number;
+  avgRisk: number;
+  maxRisk: number;
+  criticalCount: number;
+  highCount: number;
+  dominantRoofType: string | null;
+  dominantDecade: string;
+  eraConcentration: number;
+  avgYearBuilt: number;
+  systemicWindow: string;
+  boardLevelRisk: boolean;
 }
 
 function num(v: any): number {
@@ -211,11 +229,146 @@ export default function Portfolios() {
   );
 }
 
+function getRiskTierColor(score: number) {
+  if (score >= 81) return { bg: "bg-red-500/15", text: "text-red-700 dark:text-red-400", label: "Critical" };
+  if (score >= 61) return { bg: "bg-orange-500/15", text: "text-orange-700 dark:text-orange-400", label: "High" };
+  if (score >= 31) return { bg: "bg-amber-500/15", text: "text-amber-700 dark:text-amber-400", label: "Moderate" };
+  return { bg: "bg-emerald-500/15", text: "text-emerald-700 dark:text-emerald-400", label: "Low" };
+}
+
+function RiskScoreCircle({ score }: { score: number }) {
+  const tier = getRiskTierColor(score);
+  const circumference = 2 * Math.PI * 32;
+  const offset = circumference - (score / 100) * circumference;
+  const strokeColor = score >= 81 ? "#ef4444" : score >= 61 ? "#f97316" : score >= 31 ? "#f59e0b" : "#10b981";
+
+  return (
+    <div className="relative w-20 h-20 flex-shrink-0" data-testid="risk-score-circle">
+      <svg className="w-20 h-20 -rotate-90" viewBox="0 0 72 72">
+        <circle cx="36" cy="36" r="32" fill="none" stroke="currentColor" strokeWidth="4" className="text-muted/30" />
+        <circle cx="36" cy="36" r="32" fill="none" stroke={strokeColor} strokeWidth="4"
+          strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={`text-lg font-bold ${tier.text}`} data-testid="text-risk-score">{score}</span>
+        <span className="text-[9px] text-muted-foreground font-medium">/100</span>
+      </div>
+    </div>
+  );
+}
+
+function PortfolioRiskCard({ risk }: { risk: PortfolioRiskSummary }) {
+  const tier = getRiskTierColor(risk.avgRisk);
+  const showWarning = risk.propertyCount >= 12 && risk.eraConcentration >= 70;
+
+  return (
+    <div className="space-y-3" data-testid="portfolio-risk-card">
+      {risk.boardLevelRisk && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/8 p-3 flex items-start gap-3" data-testid="board-level-risk-alert">
+          <ShieldAlert className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-red-700 dark:text-red-400">Board-Level Risk</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Portfolio average risk score of {risk.avgRisk} across {risk.propertyCount} properties warrants executive attention.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {showWarning && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/8 p-3 flex items-start gap-3" data-testid="era-concentration-warning">
+          <TriangleAlert className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Systemic Concentration Risk</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {risk.propertyCount} buildings with {risk.eraConcentration}% same-era construction. Multiple roofs may need simultaneous replacement.
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-start gap-4">
+        <RiskScoreCircle score={Math.round(risk.avgRisk)} />
+        <div className="flex-1 min-w-0 space-y-2">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold" data-testid="text-risk-tier-label">Portfolio Risk Rating</span>
+              <Badge variant="secondary" className={`no-default-hover-elevate no-default-active-elevate text-[10px] ${tier.bg} ${tier.text}`} data-testid="badge-risk-tier">
+                {tier.label}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Weighted avg across {risk.propertyCount} properties (max: {risk.maxRisk})
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+              <div>
+                <p className="text-[10px] text-muted-foreground">Dominant Roof Type</p>
+                <p className="text-xs font-medium" data-testid="text-dominant-roof-type">{risk.dominantRoofType || "Unknown"}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+              <div>
+                <p className="text-[10px] text-muted-foreground">Era Concentration</p>
+                <p className="text-xs font-medium" data-testid="text-era-concentration">{risk.eraConcentration}% in {risk.dominantDecade}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 col-span-2">
+              <Clock className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
+              <div>
+                <p className="text-[10px] text-muted-foreground">Systemic Failure Window</p>
+                <p className="text-xs font-medium" data-testid="text-systemic-window">{risk.systemicWindow}</p>
+              </div>
+            </div>
+          </div>
+
+          {(risk.criticalCount > 0 || risk.highCount > 0) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {risk.criticalCount > 0 && (
+                <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate text-[10px] bg-red-500/15 text-red-700 dark:text-red-400" data-testid="badge-critical-count">
+                  {risk.criticalCount} Critical
+                </Badge>
+              )}
+              {risk.highCount > 0 && (
+                <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate text-[10px] bg-orange-500/15 text-orange-700 dark:text-orange-400" data-testid="badge-high-count">
+                  {risk.highCount} High Risk
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RiskBadgeInline({ score }: { score: number }) {
+  const tier = getRiskTierColor(score);
+  return (
+    <Badge variant="secondary" className={`no-default-hover-elevate no-default-active-elevate text-[10px] font-mono ${tier.bg} ${tier.text}`} data-testid="badge-risk-inline">
+      {score}
+    </Badge>
+  );
+}
+
 function OwnerRow({ owner, isExpanded, onToggle }: { owner: RooftopOwnerSummary; isExpanded: boolean; onToggle: () => void }) {
   const { data: properties, isLoading, isError } = useQuery<PortfolioProperty[]>({
     queryKey: ["/api/portfolio/owner", owner.normalizedName],
     queryFn: () => fetch(`/api/portfolio/owner/${encodeURIComponent(owner.normalizedName)}`).then(r => r.json()),
     enabled: isExpanded,
+  });
+
+  const { data: riskSummary, isLoading: riskLoading } = useQuery<PortfolioRiskSummary>({
+    queryKey: ["/api/portfolios", owner.portfolioGroupId, "risk-summary"],
+    queryFn: () => fetch(`/api/portfolios/${encodeURIComponent(owner.portfolioGroupId)}/risk-summary`).then(r => {
+      if (!r.ok) return null;
+      return r.json();
+    }),
+    enabled: isExpanded && !!owner.portfolioGroupId,
   });
 
   const count = num(owner.propertyCount);
@@ -239,13 +392,13 @@ function OwnerRow({ owner, isExpanded, onToggle }: { owner: RooftopOwnerSummary;
         data-testid={`button-expand-owner-${owner.normalizedName}`}
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold truncate" data-testid="text-owner-name">{owner.personName}</span>
             {count > 1 && (
               <span className="text-[10px] text-primary font-medium" data-testid="text-property-count">{count} properties</span>
             )}
           </div>
-          <div className="flex items-center gap-4 text-[11px] text-muted-foreground mt-0.5">
+          <div className="flex items-center gap-4 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
             <span>{formatSqft(sqft)}</span>
             <span>{formatValue(value)}</span>
             {hail > 0 && <span>{hail} hail events</span>}
@@ -296,6 +449,14 @@ function OwnerRow({ owner, isExpanded, onToggle }: { owner: RooftopOwnerSummary;
                 </div>
               )}
 
+              {riskLoading && (
+                <Skeleton className="h-28" />
+              )}
+
+              {riskSummary && (
+                <PortfolioRiskCard risk={riskSummary} />
+              )}
+
               {properties.length > 1 && summary && (
                 <div className="rounded-lg border bg-muted/20 p-3 flex items-center gap-3" data-testid="portfolio-locations">
                   <MapPin className="w-5 h-5 text-primary flex-shrink-0" />
@@ -312,7 +473,7 @@ function OwnerRow({ owner, isExpanded, onToggle }: { owner: RooftopOwnerSummary;
                     <div className="py-3 flex items-center gap-3 hover:bg-muted/30 transition-colors cursor-pointer rounded-lg px-2 -mx-2" data-testid={`link-portfolio-property-${prop.leadId}`}>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate" data-testid={`text-property-address-${prop.leadId}`}>{prop.address}</p>
-                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5 flex-wrap">
                           <span>{prop.city}, {prop.county}</span>
                           <span>{prop.sqft.toLocaleString()} sqft</span>
                           {prop.totalValue > 0 && <span>{formatValue(prop.totalValue)}</span>}
@@ -321,6 +482,9 @@ function OwnerRow({ owner, isExpanded, onToggle }: { owner: RooftopOwnerSummary;
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {prop.roofRiskIndex != null && prop.roofRiskIndex > 0 && (
+                          <RiskBadgeInline score={prop.roofRiskIndex} />
+                        )}
                         <ScoreBadge score={prop.leadScore} />
                         <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30" />
                       </div>

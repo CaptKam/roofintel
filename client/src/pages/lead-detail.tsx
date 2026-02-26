@@ -72,6 +72,207 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
 import { NetworkIntelligence } from "@/components/network-intelligence";
 import { RoofIntelligence } from "@/components/roof-intelligence";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+interface RoofRiskBreakdownPillar {
+  score: number;
+  max: number;
+  detail: string;
+}
+
+interface RoofRiskData {
+  score: number;
+  tier: "Low" | "Moderate" | "High" | "Critical";
+  exposureWindow: string;
+  breakdown: {
+    ageRisk: RoofRiskBreakdownPillar;
+    stormRisk: RoofRiskBreakdownPillar;
+    permitSilence: RoofRiskBreakdownPillar;
+    climateStress: RoofRiskBreakdownPillar;
+    portfolioConcentration: RoofRiskBreakdownPillar;
+  };
+}
+
+function getRiskColor(tier: string) {
+  switch (tier) {
+    case "Critical": return { bg: "bg-red-500", text: "text-red-700 dark:text-red-400", ring: "ring-red-500/30", bgLight: "bg-red-500/10" };
+    case "High": return { bg: "bg-orange-500", text: "text-orange-700 dark:text-orange-400", ring: "ring-orange-500/30", bgLight: "bg-orange-500/10" };
+    case "Moderate": return { bg: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", ring: "ring-amber-500/30", bgLight: "bg-amber-500/10" };
+    default: return { bg: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", ring: "ring-emerald-500/30", bgLight: "bg-emerald-500/10" };
+  }
+}
+
+function getScoreColor(score: number, max: number) {
+  const pct = max > 0 ? score / max : 0;
+  if (pct >= 0.8) return "bg-red-500";
+  if (pct >= 0.6) return "bg-orange-500";
+  if (pct >= 0.4) return "bg-amber-500";
+  return "bg-emerald-500";
+}
+
+function RoofRiskGauge({ score, tier }: { score: number; tier: string }) {
+  const colors = getRiskColor(tier);
+  const circumference = 2 * Math.PI * 54;
+  const progress = Math.min(score / 100, 1);
+  const dashOffset = circumference * (1 - progress);
+
+  return (
+    <div className="relative flex items-center justify-center" data-testid="gauge-roof-risk">
+      <svg width="140" height="140" viewBox="0 0 128 128" className="-rotate-90">
+        <circle cx="64" cy="64" r="54" fill="none" stroke="currentColor" strokeWidth="10" className="text-muted/30" />
+        <circle
+          cx="64" cy="64" r="54" fill="none"
+          strokeWidth="10"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          className={colors.bg}
+          style={{ transition: "stroke-dashoffset 0.8s ease-out" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={`text-3xl font-bold ${colors.text}`} data-testid="text-roof-risk-score">{score}</span>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">/100</span>
+      </div>
+    </div>
+  );
+}
+
+function PillarBar({ label, icon: Icon, pillar }: { label: string; icon: React.ElementType; pillar: RoofRiskBreakdownPillar }) {
+  const pct = pillar.max > 0 ? Math.round((pillar.score / pillar.max) * 100) : 0;
+  const barColor = getScoreColor(pillar.score, pillar.max);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="space-y-1.5 cursor-default" data-testid={`pillar-${label.toLowerCase().replace(/[\s\/]+/g, "-")}`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs font-medium truncate">{label}</span>
+            </div>
+            <span className="text-xs font-mono text-muted-foreground flex-shrink-0">{pillar.score}/{pillar.max}</span>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full ${barColor}`}
+              style={{ width: `${pct}%`, transition: "width 0.6s ease-out" }}
+            />
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs text-xs">
+        {pillar.detail}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function RoofRiskIndexCard({ leadId }: { leadId: string }) {
+  const { data: riskData, isLoading } = useQuery<RoofRiskData>({
+    queryKey: ["/api/leads", leadId, "roof-risk"],
+    enabled: !!leadId,
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="shadow-sm" data-testid="card-roof-risk-loading">
+        <CardContent className="p-6">
+          <div className="flex items-center gap-4">
+            <Skeleton className="w-[140px] h-[140px] rounded-full" />
+            <div className="flex-1 space-y-3">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-72" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-full" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!riskData) return null;
+
+  const colors = getRiskColor(riskData.tier);
+  const breakdown = riskData.breakdown;
+
+  const keyFactors: string[] = [];
+  const pillars = [
+    { label: "Age Risk", data: breakdown.ageRisk },
+    { label: "Storm Risk", data: breakdown.stormRisk },
+    { label: "Permit Silence", data: breakdown.permitSilence },
+    { label: "Climate/Financial", data: breakdown.climateStress },
+    { label: "Portfolio Risk", data: breakdown.portfolioConcentration },
+  ];
+  pillars
+    .filter(p => p.data.score > 0)
+    .sort((a, b) => (b.data.score / b.data.max) - (a.data.score / a.data.max))
+    .slice(0, 3)
+    .forEach(p => keyFactors.push(p.data.detail));
+
+  return (
+    <Card className={`shadow-sm ring-1 ${colors.ring}`} data-testid="card-roof-risk-index">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base font-semibold">Roof Risk Index</CardTitle>
+          </div>
+          <Badge
+            variant="secondary"
+            className={`no-default-hover-elevate no-default-active-elevate text-xs ${colors.bgLight} ${colors.text}`}
+            data-testid="badge-risk-tier"
+          >
+            {riskData.tier} Risk
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-6 pt-0">
+        <div className="flex flex-col md:flex-row gap-6">
+          <div className="flex flex-col items-center gap-2 flex-shrink-0">
+            <RoofRiskGauge score={riskData.score} tier={riskData.tier} />
+            <p className={`text-xs font-semibold ${colors.text}`} data-testid="text-risk-tier-label">
+              {riskData.tier} Risk
+            </p>
+          </div>
+
+          <div className="flex-1 min-w-0 space-y-4">
+            <div className={`p-3 rounded-md ${colors.bgLight}`} data-testid="text-exposure-window">
+              <div className="flex items-start gap-2">
+                <Clock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                <p className="text-xs leading-relaxed">{riskData.exposureWindow}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <PillarBar label="Age Risk" icon={Calendar} pillar={breakdown.ageRisk} />
+              <PillarBar label="Storm Exposure" icon={CloudLightning} pillar={breakdown.stormRisk} />
+              <PillarBar label="Permit Silence" icon={FileText} pillar={breakdown.permitSilence} />
+              <PillarBar label="Climate / Financial" icon={Droplets} pillar={breakdown.climateStress} />
+              <PillarBar label="Portfolio Concentration" icon={Layers} pillar={breakdown.portfolioConcentration} />
+            </div>
+
+            {keyFactors.length > 0 && (
+              <div className="pt-2 border-t space-y-1" data-testid="list-key-risk-factors">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Key Risk Factors</p>
+                <ul className="space-y-1">
+                  {keyFactors.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0 text-amber-500" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function HunterPDLButtons({ leadId }: { leadId: string }) {
   const { toast } = useToast();
@@ -718,6 +919,8 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
         )}
+
+        <RoofRiskIndexCard leadId={id!} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">

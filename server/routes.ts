@@ -401,6 +401,8 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
         ownershipStructure: req.query.ownershipStructure as string | undefined,
         roofType: req.query.roofType as string | undefined,
         enrichmentStatus: req.query.enrichmentStatus as string | undefined,
+        riskTier: req.query.riskTier as string | undefined,
+        sortBy: req.query.sortBy as string | undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
         offset: req.query.offset ? Number(req.query.offset) : undefined,
       };
@@ -3757,6 +3759,163 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   });
 
   // ============================================================
+  // Roof Risk Index
+  // ============================================================
+
+  app.post("/api/admin/roof-risk/compute", async (_req, res) => {
+    try {
+      const { batchComputeRoofRisk, batchProgress } = await import("./roof-risk-index");
+      if (batchProgress.running) {
+        return res.status(409).json({ message: "Roof risk computation already running", progress: batchProgress });
+      }
+      res.json({ message: "Roof risk computation started" });
+      batchComputeRoofRisk().catch(err => console.error("[roof-risk] Error:", err.message));
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start roof risk computation", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/roof-risk/status", async (_req, res) => {
+    const { batchProgress } = await import("./roof-risk-index");
+    res.json(batchProgress);
+  });
+
+  app.get("/api/leads/:id/roof-risk", async (req, res) => {
+    try {
+      const lead = await storage.getLeadById(req.params.id);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      if (lead.roofRiskBreakdown) {
+        return res.json(lead.roofRiskBreakdown);
+      }
+
+      const { calculateRoofRiskIndex } = await import("./roof-risk-index");
+
+      let portfolioInfo;
+      const portfolioRow = (await db.execute(sql`
+        SELECT p.property_count,
+          (SELECT ARRAY_AGG(l2.year_built) FROM portfolio_leads pl2 JOIN leads l2 ON l2.id = pl2.lead_id WHERE pl2.portfolio_id = p.id) as year_built_array,
+          (SELECT ARRAY_AGG(l2.roof_type) FROM portfolio_leads pl2 JOIN leads l2 ON l2.id = pl2.lead_id WHERE pl2.portfolio_id = p.id) as roof_type_array
+        FROM portfolio_leads pl
+        JOIN portfolios p ON p.id = pl.portfolio_id
+        WHERE pl.lead_id = ${req.params.id} AND p.property_count >= 3
+        LIMIT 1
+      `)) as any;
+
+      if (portfolioRow.rows[0]) {
+        portfolioInfo = {
+          propertyCount: portfolioRow.rows[0].property_count,
+          yearBuiltArray: (portfolioRow.rows[0].year_built_array || []).filter((y: any) => y != null),
+          roofTypes: (portfolioRow.rows[0].roof_type_array || []).filter((t: any) => t != null),
+        };
+      }
+
+      const result = calculateRoofRiskIndex(lead, portfolioInfo);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to compute roof risk", error: error.message });
+    }
+  });
+
+  app.get("/api/dashboard/roof-risk-summary", async (_req, res) => {
+    try {
+      const distribution = (await db.execute(sql`
+        SELECT
+          COUNT(CASE WHEN roof_risk_index >= 81 THEN 1 END) as critical,
+          COUNT(CASE WHEN roof_risk_index >= 61 AND roof_risk_index < 81 THEN 1 END) as high,
+          COUNT(CASE WHEN roof_risk_index >= 31 AND roof_risk_index < 61 THEN 1 END) as moderate,
+          COUNT(CASE WHEN roof_risk_index < 31 THEN 1 END) as low,
+          COUNT(roof_risk_index) as total,
+          ROUND(AVG(roof_risk_index)::numeric, 1) as avg_score
+        FROM leads WHERE roof_risk_index IS NOT NULL
+      `)) as any;
+
+      const topRisk = (await db.execute(sql`
+        SELECT id, address, city, roof_risk_index, roof_type, year_built,
+               (roof_risk_breakdown->>'tier') as tier,
+               (roof_risk_breakdown->>'exposureWindow') as exposure_window
+        FROM leads
+        WHERE roof_risk_index IS NOT NULL
+        ORDER BY roof_risk_index DESC
+        LIMIT 10
+      `)) as any;
+
+      const dist = distribution.rows[0] || {};
+      res.json({
+        distribution: {
+          critical: Number(dist.critical || 0),
+          high: Number(dist.high || 0),
+          moderate: Number(dist.moderate || 0),
+          low: Number(dist.low || 0),
+        },
+        total: Number(dist.total || 0),
+        avgScore: Number(dist.avg_score || 0),
+        topRisk: topRisk.rows || [],
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch roof risk summary", error: error.message });
+    }
+  });
+
+  app.get("/api/portfolios/:id/risk-summary", async (req, res) => {
+    try {
+      const portfolioId = req.params.id;
+      const result = (await db.execute(sql`
+        SELECT
+          p.id, p.name, p.property_count,
+          ROUND(AVG(l.roof_risk_index)::numeric, 1) as avg_risk,
+          MAX(l.roof_risk_index) as max_risk,
+          COUNT(CASE WHEN l.roof_risk_index >= 81 THEN 1 END) as critical_count,
+          COUNT(CASE WHEN l.roof_risk_index >= 61 AND l.roof_risk_index < 81 THEN 1 END) as high_count,
+          MODE() WITHIN GROUP (ORDER BY l.roof_type) as dominant_roof_type,
+          MODE() WITHIN GROUP (ORDER BY (l.year_built / 10) * 10) as dominant_decade,
+          ARRAY_AGG(DISTINCT l.year_built ORDER BY l.year_built) as year_built_array,
+          ROUND(AVG(l.year_built)::numeric, 0) as avg_year_built
+        FROM portfolios p
+        JOIN portfolio_leads pl ON pl.portfolio_id = p.id
+        JOIN leads l ON l.id = pl.lead_id
+        WHERE p.id = ${portfolioId}
+        GROUP BY p.id, p.name, p.property_count
+      `)) as any;
+
+      if (!result.rows[0]) return res.status(404).json({ message: "Portfolio not found" });
+      const row = result.rows[0];
+
+      const years = (row.year_built_array || []).filter((y: any) => y != null);
+      const avgYear = Number(row.avg_year_built) || 0;
+      const withinEra = years.filter((y: number) => Math.abs(y - avgYear) <= 5).length;
+      const eraConcentration = years.length > 0 ? Math.round((withinEra / years.length) * 100) : 0;
+
+      const { getRoofLifespan } = await import("./roof-risk-index");
+      const lifespan = getRoofLifespan(row.dominant_roof_type);
+      const currentYear = new Date().getFullYear();
+      const avgAge = currentYear - avgYear;
+      const yearsToWindow = Math.max(lifespan.minYears - avgAge, 0);
+      const yearsToEnd = Math.max(lifespan.maxYears - avgAge, 0);
+
+      res.json({
+        portfolioId: row.id,
+        name: row.name,
+        propertyCount: row.property_count,
+        avgRisk: Number(row.avg_risk) || 0,
+        maxRisk: Number(row.max_risk) || 0,
+        criticalCount: Number(row.critical_count) || 0,
+        highCount: Number(row.high_count) || 0,
+        dominantRoofType: row.dominant_roof_type || "Unknown",
+        dominantDecade: row.dominant_decade ? `${row.dominant_decade}s` : "Unknown era",
+        eraConcentration,
+        avgYearBuilt: avgYear,
+        systemicWindow: !avgYear ? "Insufficient data" : yearsToWindow <= 0
+          ? `Active now — ${row.property_count} properties past expected replacement window`
+          : `${yearsToWindow * 12}–${yearsToEnd * 12} months (${eraConcentration}% built in same era)`,
+        boardLevelRisk: Number(row.avg_risk) >= 70 && row.property_count >= 5,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch portfolio risk", error: error.message });
+    }
+  });
+
+  // ============================================================
   // AI Data Quality Agent
   // ============================================================
 
@@ -3774,7 +3933,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
       res.json({ message: `AI agent started in ${mode} mode for ${batchSize} leads`, batchSize, mode });
 
-      const allModes = ["audit", "search", "contractor_scrub", "website_extract", "portfolio", "stale_data", "permit_audit"];
+      const allModes = ["audit", "search", "contractor_scrub", "website_extract", "portfolio", "stale_data", "permit_audit", "roof_risk"];
       const modesToRun = mode === "all" ? allModes : mode === "both" ? ["audit", "search"] : [mode];
 
       (async () => {
@@ -3793,6 +3952,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             else if (currentMode === "portfolio") await runPortfolioDetection(batchSize);
             else if (currentMode === "stale_data") await runStaleDataDetection(batchSize);
             else if (currentMode === "permit_audit") await runPermitAudit(batchSize);
+            else if (currentMode === "roof_risk") {
+              const { batchComputeRoofRisk } = await import("./roof-risk-index");
+              await batchComputeRoofRisk();
+            }
 
             console.log(`[ai-agent] Completed ${currentMode} (${i + 1}/${modesToRun.length})`);
           }

@@ -215,6 +215,17 @@ export class DatabaseStorage implements IStorage {
         conditions.push(sql`${leads.lastEnrichedAt} IS NULL`);
       }
     }
+    if (filter?.riskTier && filter.riskTier !== "all") {
+      if (filter.riskTier === "critical") {
+        conditions.push(gte(leads.roofRiskIndex, 81));
+      } else if (filter.riskTier === "high") {
+        conditions.push(and(gte(leads.roofRiskIndex, 61), lte(leads.roofRiskIndex, 80))!);
+      } else if (filter.riskTier === "moderate") {
+        conditions.push(and(gte(leads.roofRiskIndex, 31), lte(leads.roofRiskIndex, 60))!);
+      } else if (filter.riskTier === "low") {
+        conditions.push(lte(leads.roofRiskIndex, 30));
+      }
+    }
     if (filter?.search) {
       const term = `%${filter.search}%`;
       conditions.push(
@@ -235,11 +246,12 @@ export class DatabaseStorage implements IStorage {
       .where(whereClause);
     const total = countResult[0]?.count ?? 0;
 
+    const orderColumn = filter?.sortBy === "roofRiskIndex" ? leads.roofRiskIndex : leads.leadScore;
     let query = db
       .select()
       .from(leads)
       .where(whereClause)
-      .orderBy(desc(leads.leadScore));
+      .orderBy(filter?.sortBy === "roofRiskIndex" ? sql`${leads.roofRiskIndex} DESC NULLS LAST` : desc(orderColumn));
 
     if (filter?.limit) {
       query = query.limit(filter.limit) as typeof query;

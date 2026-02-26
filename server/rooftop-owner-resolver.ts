@@ -403,6 +403,7 @@ export async function getPortfolioProperties(normalizedName: string) {
       roofType: leads.roofType,
       estimatedRoofArea: leads.estimatedRoofArea,
       status: leads.status,
+      roofRiskIndex: leads.roofRiskIndex,
     })
     .from(rooftopOwners)
     .innerJoin(leads, eq(rooftopOwners.leadId, leads.id))
