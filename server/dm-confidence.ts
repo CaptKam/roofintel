@@ -303,16 +303,20 @@ export function computeDecisionMakerConfidence(lead: Lead): ConfidenceResult {
   return { overallScore, components, tier, explanation };
 }
 
-export async function runConfidenceScoring(marketId?: string): Promise<{
+export async function runConfidenceScoring(marketId?: string, filterLeadIds?: string[]): Promise<{
   totalProcessed: number;
   autoPublish: number;
   review: number;
   suppress: number;
   avgScore: number;
 }> {
-  const allLeads = await db.select().from(leads)
+  let allLeads = await db.select().from(leads)
     .where(marketId ? eq(leads.marketId, marketId) : sql`1=1`)
     .limit(50000);
+  if (Array.isArray(filterLeadIds) && filterLeadIds.length > 0) {
+    const idSet = new Set(filterLeadIds);
+    allLeads = allLeads.filter(l => idSet.has(l.id));
+  }
 
   let autoPublish = 0;
   let review = 0;

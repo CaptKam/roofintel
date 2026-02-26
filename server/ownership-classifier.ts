@@ -432,13 +432,17 @@ export async function classifyAllLeads(): Promise<{
   };
 }
 
-export async function classifyAndAssignDecisionMakers(): Promise<{
+export async function classifyAndAssignDecisionMakers(filterLeadIds?: string[]): Promise<{
   total: number;
   classified: number;
   withDecisionMakers: number;
   byStructure: Record<string, number>;
 }> {
-  const allLeads = await db.select().from(leads).limit(50000);
+  let allLeads = await db.select().from(leads).limit(50000);
+  if (Array.isArray(filterLeadIds) && filterLeadIds.length > 0) {
+    const idSet = new Set(filterLeadIds);
+    allLeads = allLeads.filter(l => idSet.has(l.id));
+  }
   const byStructure: Record<string, number> = {};
   let classified = 0;
   let withDecisionMakers = 0;

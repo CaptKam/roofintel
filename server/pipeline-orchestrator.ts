@@ -18,6 +18,16 @@ export interface PipelinePhase {
   steps: PipelineStep[];
 }
 
+export interface PipelineFilters {
+  minSqft?: number;
+  maxStories?: number;
+  roofTypes?: string[];
+  excludeShellCompanies?: boolean;
+  minPropertyValue?: number;
+  onlyUnprocessed?: boolean;
+  forceReprocess?: boolean;
+}
+
 export interface PipelineStatus {
   running: boolean;
   cancelled: boolean;
@@ -27,6 +37,9 @@ export interface PipelineStatus {
   startedAt?: string;
   completedAt?: string;
   skipPhases: string[];
+  matchedLeads?: number;
+  pipelineRunId?: string;
+  filters?: PipelineFilters;
 }
 
 let pipelineStatus: PipelineStatus = {
@@ -199,8 +212,49 @@ async function callInternalApi(path: string, body?: any): Promise<any> {
   return res.json();
 }
 
-export async function runFullPipeline(options: { skipPhases?: string[] }): Promise<void> {
+export async function queryFilteredLeadIds(filters: PipelineFilters): Promise<{ leadIds: string[]; totalLeads: number }> {
+  const conditions: string[] = [];
+
+  if (filters.minSqft && filters.minSqft > 0) {
+    conditions.push(`sqft >= ${Number(filters.minSqft)}`);
+  }
+  if (filters.maxStories && filters.maxStories > 0) {
+    conditions.push(`COALESCE(stories, 1) <= ${Number(filters.maxStories)}`);
+  }
+  if (filters.minPropertyValue && filters.minPropertyValue > 0) {
+    conditions.push(`COALESCE(total_value, 0) >= ${Number(filters.minPropertyValue)}`);
+  }
+  if (filters.excludeShellCompanies) {
+    conditions.push(`(ownership_flag IS NULL OR ownership_flag NOT IN ('Deep Holding Structure', 'Corp Service Shield'))`);
+  }
+  if (filters.roofTypes && filters.roofTypes.length > 0 && filters.roofTypes.length < 8) {
+    const escaped = filters.roofTypes.map(r => `'${r.replace(/'/g, "''")}'`).join(",");
+    conditions.push(`(roof_type IS NULL OR roof_type IN (${escaped}))`);
+  }
+  if (filters.onlyUnprocessed && !filters.forceReprocess) {
+    conditions.push(`pipeline_last_processed_at IS NULL`);
+  }
+
+  const totalResult = await db.execute(sql.raw(`SELECT COUNT(*)::int AS count FROM leads`));
+  const totalLeads = (totalResult.rows[0] as any)?.count || 0;
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const result = await db.execute(sql.raw(`SELECT id FROM leads ${whereClause}`));
+  const leadIds = result.rows.map((r: any) => r.id as string);
+
+  return { leadIds, totalLeads };
+}
+
+export async function previewFilteredLeads(filters: PipelineFilters): Promise<{ matchedLeads: number; totalLeads: number }> {
+  const { leadIds, totalLeads } = await queryFilteredLeadIds(filters);
+  return { matchedLeads: leadIds.length, totalLeads };
+}
+
+export async function runFullPipeline(options: { skipPhases?: string[]; filters?: PipelineFilters }): Promise<void> {
   if (pipelineStatus.running) throw new Error("Pipeline already running");
+
+  const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const filters = options.filters || {};
 
   pipelineStatus = {
     running: true,
@@ -208,6 +262,8 @@ export async function runFullPipeline(options: { skipPhases?: string[] }): Promi
     phases: createPhases(),
     startedAt: new Date().toISOString(),
     skipPhases: options.skipPhases || [],
+    pipelineRunId: runId,
+    filters,
   };
 
   const marketId = await getMarketId();
@@ -217,7 +273,13 @@ export async function runFullPipeline(options: { skipPhases?: string[] }): Promi
     throw new Error("No market found. Create a market first.");
   }
 
+  const { leadIds: qualifiedLeadIds, totalLeads } = await queryFilteredLeadIds(filters);
+  pipelineStatus.matchedLeads = qualifiedLeadIds.length;
+
   console.log(`[Pipeline] Starting full pipeline for market ${marketId}`);
+  console.log(`[Pipeline] Filters: ${JSON.stringify(filters)}`);
+  console.log(`[Pipeline] Matched ${qualifiedLeadIds.length} of ${totalLeads} leads`);
+  console.log(`[Pipeline] Run ID: ${runId}`);
   console.log(`[Pipeline] Skipping phases: ${options.skipPhases?.join(", ") || "none"}`);
 
   (async () => {
@@ -250,19 +312,19 @@ export async function runFullPipeline(options: { skipPhases?: string[] }): Promi
       } else {
         updatePhaseStatus("building-intel", "running");
         await runStep("stories", async () => {
-          const result = await callInternalApi("/api/leads/estimate-stories", { marketId });
+          const result = await callInternalApi("/api/leads/estimate-stories", { marketId, leadIds: qualifiedLeadIds });
           return `Estimated stories for ${result.updated} leads`;
         });
         await runStep("roof-types", async () => {
-          const result = await callInternalApi("/api/leads/estimate-roof-type", { marketId });
+          const result = await callInternalApi("/api/leads/estimate-roof-type", { marketId, leadIds: qualifiedLeadIds });
           return `Estimated roof types for ${result.updated} leads`;
         });
         await runStep("holding-companies", async () => {
-          const result = await callInternalApi("/api/leads/flag-ownership", {});
+          const result = await callInternalApi("/api/leads/flag-ownership", { leadIds: qualifiedLeadIds });
           return `Flagged ${result.flagged} holding companies`;
         });
         await runStep("fix-locations", async () => {
-          await callInternalApi("/api/data/fix-locations", {});
+          await callInternalApi("/api/data/fix-locations", { leadIds: qualifiedLeadIds });
           return "Location fix started in background";
         });
         updatePhaseStatus("building-intel", "complete");
@@ -356,7 +418,7 @@ export async function runFullPipeline(options: { skipPhases?: string[] }): Promi
         updatePhaseStatus("enrichment", "running");
         await runStep("batch-free", async () => {
           const { runBatchFreeEnrichment, getBatchFreeStatus } = await import("./lead-enrichment-orchestrator");
-          await runBatchFreeEnrichment();
+          await runBatchFreeEnrichment(qualifiedLeadIds);
           let status = getBatchFreeStatus();
           while (status.running) {
             await new Promise(r => setTimeout(r, 5000));
@@ -377,27 +439,27 @@ export async function runFullPipeline(options: { skipPhases?: string[] }): Promi
         updatePhaseStatus("post-enrichment", "running");
         await runStep("classify-ownership", async () => {
           const { classifyAndAssignDecisionMakers } = await import("./ownership-classifier");
-          const result = await classifyAndAssignDecisionMakers();
+          const result = await classifyAndAssignDecisionMakers(qualifiedLeadIds);
           return `Classified ${result.classified} leads, ${result.withDecisionMakers} with decision makers`;
         });
         await runStep("scan-management", async () => {
           const { runManagementAttribution } = await import("./management-attribution");
-          const result = await runManagementAttribution(marketId);
+          const result = await runManagementAttribution(marketId, qualifiedLeadIds);
           return `Attributed ${result.attributed} leads`;
         });
         await runStep("scan-addresses", async () => {
           const { runReverseAddressEnrichment } = await import("./reverse-address-enrichment");
-          const result = await runReverseAddressEnrichment(marketId, 200);
+          const result = await runReverseAddressEnrichment(marketId, 200, qualifiedLeadIds);
           return `Enriched ${result.enriched} addresses`;
         });
         await runStep("infer-roles", async () => {
           const { runRoleInference } = await import("./role-inference");
-          const result = await runRoleInference(marketId);
+          const result = await runRoleInference(marketId, qualifiedLeadIds);
           return `Assigned roles to ${result.rolesAssigned} leads`;
         });
         await runStep("score-confidence", async () => {
           const { runConfidenceScoring } = await import("./dm-confidence");
-          const result = await runConfidenceScoring(marketId);
+          const result = await runConfidenceScoring(marketId, qualifiedLeadIds);
           return `Scored ${result.totalProcessed} leads`;
         });
         updatePhaseStatus("post-enrichment", "complete");
@@ -431,10 +493,20 @@ export async function runFullPipeline(options: { skipPhases?: string[] }): Promi
       } else {
         updatePhaseStatus("scoring", "running");
         await runStep("recalc-scores", async () => {
-          const result = await callInternalApi("/api/leads/recalculate-scores", { marketId });
+          const result = await callInternalApi("/api/leads/recalculate-scores", { marketId, leadIds: qualifiedLeadIds });
           return `Recalculated scores for ${result.updated} leads`;
         });
         updatePhaseStatus("scoring", "complete");
+      }
+
+      if (qualifiedLeadIds.length > 0 && !pipelineStatus.cancelled) {
+        const batchSize = 500;
+        for (let i = 0; i < qualifiedLeadIds.length; i += batchSize) {
+          const batch = qualifiedLeadIds.slice(i, i + batchSize);
+          const idList = batch.map(id => `'${id}'`).join(",");
+          await db.execute(sql.raw(`UPDATE leads SET pipeline_last_processed_at = NOW(), pipeline_run_id = '${runId}' WHERE id IN (${idList})`));
+        }
+        console.log(`[Pipeline] Stamped ${qualifiedLeadIds.length} leads with run ID ${runId}`);
       }
 
       finishPipeline();

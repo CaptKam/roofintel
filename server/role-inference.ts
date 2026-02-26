@@ -214,14 +214,18 @@ export async function inferLeadRoles(lead: Lead): Promise<RoleCandidate[]> {
   return ranked.map((c, i) => ({ ...c, }));
 }
 
-export async function runRoleInference(marketId?: string): Promise<{
+export async function runRoleInference(marketId?: string, filterLeadIds?: string[]): Promise<{
   totalProcessed: number;
   rolesAssigned: number;
   byRole: Record<string, number>;
 }> {
-  const allLeads = await db.select().from(leads)
+  let allLeads = await db.select().from(leads)
     .where(marketId ? eq(leads.marketId, marketId) : sql`1=1`)
     .limit(50000);
+  if (Array.isArray(filterLeadIds) && filterLeadIds.length > 0) {
+    const idSet = new Set(filterLeadIds);
+    allLeads = allLeads.filter(l => idSet.has(l.id));
+  }
 
   let rolesAssigned = 0;
   const byRole: Record<string, number> = {};

@@ -1648,11 +1648,15 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
   app.post("/api/leads/recalculate-scores", async (req, res) => {
     try {
-      const { marketId } = req.body;
+      const { marketId, leadIds } = req.body;
       const filter: any = {};
       if (marketId) filter.marketId = marketId;
       filter.limit = 50000;
-      const { leads: allLeads } = await storage.getLeads(filter);
+      let { leads: allLeads } = await storage.getLeads(filter);
+      if (Array.isArray(leadIds) && leadIds.length > 0) {
+        const idSet = new Set(leadIds);
+        allLeads = allLeads.filter(l => idSet.has(l.id));
+      }
       let updated = 0;
       for (const lead of allLeads) {
         const roofArea = Math.round(lead.sqft / Math.max(lead.stories || 1, 1));
@@ -1745,7 +1749,12 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
   app.post("/api/leads/flag-ownership", async (req, res) => {
     try {
-      const { leads: allLeads } = await storage.getLeads({ limit: 50000 });
+      const { leadIds } = req.body || {};
+      let { leads: allLeads } = await storage.getLeads({ limit: 50000 });
+      if (Array.isArray(leadIds) && leadIds.length > 0) {
+        const idSet = new Set(leadIds);
+        allLeads = allLeads.filter(l => idSet.has(l.id));
+      }
       let flagged = 0;
       let deepHolding = 0;
       let multiLayer = 0;
@@ -1809,9 +1818,14 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   app.post("/api/leads/estimate-stories", async (req, res) => {
     try {
       const marketId = req.body.marketId as string | undefined;
+      const leadIds = req.body.leadIds as string[] | undefined;
       const filter: any = { limit: 50000 };
       if (marketId) filter.marketId = marketId;
-      const { leads: allLeads } = await storage.getLeads(filter);
+      let { leads: allLeads } = await storage.getLeads(filter);
+      if (Array.isArray(leadIds) && leadIds.length > 0) {
+        const idSet = new Set(leadIds);
+        allLeads = allLeads.filter(l => idSet.has(l.id));
+      }
 
       let updated = 0;
       let skipped = 0;
@@ -1870,10 +1884,15 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   app.post("/api/leads/estimate-roof-type", async (req, res) => {
     try {
       const marketId = req.body.marketId as string | undefined;
+      const leadIds = req.body.leadIds as string[] | undefined;
       const overwrite = req.body.overwrite === true;
       const filter: any = { limit: 50000 };
       if (marketId) filter.marketId = marketId;
-      const { leads: allLeads } = await storage.getLeads(filter);
+      let { leads: allLeads } = await storage.getLeads(filter);
+      if (Array.isArray(leadIds) && leadIds.length > 0) {
+        const idSet = new Set(leadIds);
+        allLeads = allLeads.filter(l => idSet.has(l.id));
+      }
 
       let updatedRoof = 0;
       let updatedConstruction = 0;
@@ -3007,11 +3026,29 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   // Run All Pipeline Orchestrator
   // ============================================================
 
+  app.get("/api/pipeline/preview", async (req, res) => {
+    try {
+      const { previewFilteredLeads } = await import("./pipeline-orchestrator");
+      const filters = {
+        minSqft: Number(req.query.minSqft) || 0,
+        maxStories: Number(req.query.maxStories) || 0,
+        roofTypes: req.query.roofTypes ? String(req.query.roofTypes).split(",").filter(Boolean) : [],
+        excludeShellCompanies: req.query.excludeShellCompanies === "true",
+        minPropertyValue: Number(req.query.minPropertyValue) || 0,
+        onlyUnprocessed: req.query.onlyUnprocessed === "true",
+      };
+      const result = await previewFilteredLeads(filters);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/pipeline/run-all", async (req, res) => {
     try {
       const { runFullPipeline: runPipeline } = await import("./pipeline-orchestrator");
-      const { skipPhases } = req.body || {};
-      await runPipeline({ skipPhases: skipPhases || [] });
+      const { skipPhases, filters } = req.body || {};
+      await runPipeline({ skipPhases: skipPhases || [], filters: filters || {} });
       res.json({ message: "Pipeline started", started: true });
     } catch (error: any) {
       res.status(400).json({ message: error.message });

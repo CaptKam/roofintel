@@ -225,7 +225,7 @@ export async function attributeLeadManagement(lead: Lead): Promise<ManagementAtt
   };
 }
 
-export async function runManagementAttribution(marketId?: string): Promise<{
+export async function runManagementAttribution(marketId?: string, filterLeadIds?: string[]): Promise<{
   totalProcessed: number;
   attributed: number;
   withCompany: number;
@@ -234,9 +234,13 @@ export async function runManagementAttribution(marketId?: string): Promise<{
   const filter: any = { limit: 50000 };
   if (marketId) filter.marketId = marketId;
 
-  const allLeads = await db.select().from(leads)
+  let allLeads = await db.select().from(leads)
     .where(marketId ? eq(leads.marketId, marketId) : sql`1=1`)
     .limit(50000);
+  if (Array.isArray(filterLeadIds) && filterLeadIds.length > 0) {
+    const idSet = new Set(filterLeadIds);
+    allLeads = allLeads.filter(l => idSet.has(l.id));
+  }
 
   let attributed = 0;
   let withCompany = 0;

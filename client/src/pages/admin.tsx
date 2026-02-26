@@ -587,12 +587,38 @@ interface PipelineStatusData {
   startedAt?: string;
   completedAt?: string;
   skipPhases?: string[];
+  matchedLeads?: number;
+  pipelineRunId?: string;
 }
+
+interface PipelineFilters {
+  minSqft: number;
+  maxStories: number;
+  roofTypes: string[];
+  excludeShellCompanies: boolean;
+  minPropertyValue: number;
+  onlyUnprocessed: boolean;
+  forceReprocess: boolean;
+}
+
+const ALL_ROOF_TYPES = ["Metal", "TPO", "EPDM", "Modified Bitumen", "Built-Up (BUR)", "Flat", "Shingle", "Unknown"];
+
+const DEFAULT_FILTERS: PipelineFilters = {
+  minSqft: 10000,
+  maxStories: 1,
+  roofTypes: [...ALL_ROOF_TYPES],
+  excludeShellCompanies: true,
+  minPropertyValue: 0,
+  onlyUnprocessed: true,
+  forceReprocess: false,
+};
 
 function RunAllPipelineCard() {
   const { toast } = useToast();
   const [skipPhases, setSkipPhases] = useState<string[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [filters, setFilters] = useState<PipelineFilters>({ ...DEFAULT_FILTERS });
 
   const { data: status, isLoading } = useQuery<PipelineStatusData>({
     queryKey: ["/api/pipeline/run-all/status"],
@@ -602,13 +628,32 @@ function RunAllPipelineCard() {
     },
   });
 
+  const filterParams = new URLSearchParams({
+    minSqft: String(filters.minSqft),
+    maxStories: String(filters.maxStories),
+    roofTypes: filters.roofTypes.join(","),
+    excludeShellCompanies: String(filters.excludeShellCompanies),
+    minPropertyValue: String(filters.minPropertyValue),
+    onlyUnprocessed: String(filters.onlyUnprocessed && !filters.forceReprocess),
+  });
+
+  const { data: previewData } = useQuery<{ matchedLeads: number; totalLeads: number }>({
+    queryKey: ["/api/pipeline/preview", filterParams.toString()],
+    queryFn: async () => {
+      const res = await fetch(`/api/pipeline/preview?${filterParams.toString()}`);
+      if (!res.ok) throw new Error("Preview failed");
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
   const startMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/pipeline/run-all", { skipPhases });
+      const res = await apiRequest("POST", "/api/pipeline/run-all", { skipPhases, filters });
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Pipeline started", description: "Running all phases in order..." });
+      toast({ title: "Pipeline started", description: `Processing ${previewData?.matchedLeads || "matching"} leads...` });
       queryClient.invalidateQueries({ queryKey: ["/api/pipeline/run-all/status"] });
     },
     onError: (err: Error) => {
@@ -629,6 +674,15 @@ function RunAllPipelineCard() {
 
   const toggleSkip = (phaseId: string) => {
     setSkipPhases(prev => prev.includes(phaseId) ? prev.filter(p => p !== phaseId) : [...prev, phaseId]);
+  };
+
+  const toggleRoofType = (rt: string) => {
+    setFilters(prev => ({
+      ...prev,
+      roofTypes: prev.roofTypes.includes(rt)
+        ? prev.roofTypes.filter(r => r !== rt)
+        : [...prev.roofTypes, rt],
+    }));
   };
 
   const defaultPhases: PipelinePhase[] = [
@@ -761,7 +815,37 @@ function RunAllPipelineCard() {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
+        {previewData && !isRunning && (
+          <div className="flex items-center gap-2 text-sm" data-testid="text-matched-leads">
+            <Badge variant={previewData.matchedLeads > 0 ? "default" : "secondary"} className="tabular-nums">
+              {previewData.matchedLeads.toLocaleString()} leads
+            </Badge>
+            <span className="text-muted-foreground">
+              match current filters (of {previewData.totalLeads.toLocaleString()} total)
+            </span>
+          </div>
+        )}
+
+        {status?.matchedLeads !== undefined && isRunning && (
+          <div className="flex items-center gap-2 text-sm">
+            <Badge variant="default" className="tabular-nums">
+              {status.matchedLeads.toLocaleString()} leads
+            </Badge>
+            <span className="text-muted-foreground">being processed this run</span>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setFiltersExpanded(!filtersExpanded)}
+            className="text-xs text-muted-foreground"
+            data-testid="button-toggle-filters"
+          >
+            <Shield className="w-3.5 h-3.5 mr-1" />
+            {filtersExpanded ? "Hide filters" : "Lead filters"}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -772,6 +856,109 @@ function RunAllPipelineCard() {
             {expanded ? "Hide phases" : "Show phases"} ({totalPhases})
           </Button>
         </div>
+
+        {filtersExpanded && !isRunning && (
+          <div className="border rounded-lg p-4 bg-muted/30 space-y-4" data-testid="pipeline-filters">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Min Sqft</Label>
+                <Input
+                  type="number"
+                  value={filters.minSqft}
+                  onChange={(e) => setFilters(prev => ({ ...prev, minSqft: Number(e.target.value) || 0 }))}
+                  className="h-8 text-sm"
+                  data-testid="input-min-sqft"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Max Stories</Label>
+                <Input
+                  type="number"
+                  value={filters.maxStories}
+                  onChange={(e) => setFilters(prev => ({ ...prev, maxStories: Number(e.target.value) || 1 }))}
+                  className="h-8 text-sm"
+                  data-testid="input-max-stories"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Min Property Value ($)</Label>
+                <Input
+                  type="number"
+                  value={filters.minPropertyValue}
+                  onChange={(e) => setFilters(prev => ({ ...prev, minPropertyValue: Number(e.target.value) || 0 }))}
+                  className="h-8 text-sm"
+                  data-testid="input-min-value"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Roof Types</Label>
+              <div className="flex flex-wrap gap-2">
+                {ALL_ROOF_TYPES.map((rt) => (
+                  <label key={rt} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={filters.roofTypes.includes(rt)}
+                      onChange={() => toggleRoofType(rt)}
+                      className="rounded border-muted-foreground/30"
+                      data-testid={`checkbox-roof-${rt.toLowerCase().replace(/[^a-z]/g, '-')}`}
+                    />
+                    {rt}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              <label className="flex items-center gap-2 text-xs cursor-pointer" data-testid="label-exclude-shell">
+                <input
+                  type="checkbox"
+                  checked={filters.excludeShellCompanies}
+                  onChange={(e) => setFilters(prev => ({ ...prev, excludeShellCompanies: e.target.checked }))}
+                  className="rounded border-muted-foreground/30"
+                  data-testid="checkbox-exclude-shell"
+                />
+                <span>Exclude shell companies</span>
+                <span className="text-muted-foreground">(Deep Holding / Corp Service Shield)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer" data-testid="label-only-unprocessed">
+                <input
+                  type="checkbox"
+                  checked={filters.onlyUnprocessed}
+                  onChange={(e) => setFilters(prev => ({ ...prev, onlyUnprocessed: e.target.checked }))}
+                  className="rounded border-muted-foreground/30"
+                  data-testid="checkbox-only-unprocessed"
+                />
+                <span>Only unprocessed leads</span>
+                <span className="text-muted-foreground">(skip previously processed)</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer" data-testid="label-force-reprocess">
+                <input
+                  type="checkbox"
+                  checked={filters.forceReprocess}
+                  onChange={(e) => setFilters(prev => ({ ...prev, forceReprocess: e.target.checked }))}
+                  className="rounded border-muted-foreground/30"
+                  data-testid="checkbox-force-reprocess"
+                />
+                <span>Force reprocess all</span>
+                <span className="text-muted-foreground">(overrides "only unprocessed")</span>
+              </label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => setFilters({ ...DEFAULT_FILTERS })}
+                data-testid="button-reset-filters"
+              >
+                Reset to defaults
+              </Button>
+            </div>
+          </div>
+        )}
 
         {expanded && (
           <div className="space-y-2 border rounded-lg p-3 bg-muted/30">

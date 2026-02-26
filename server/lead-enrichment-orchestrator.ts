@@ -474,11 +474,16 @@ export function getBatchFreeStatus() {
   return { ...batchFreeStatus };
 }
 
-export async function runBatchFreeEnrichment(): Promise<void> {
+export async function runBatchFreeEnrichment(filterLeadIds?: string[]): Promise<void> {
   if (batchFreeStatus.running) throw new Error("Batch enrichment already running");
 
   const { leads: allLeads } = await (await import("./storage")).storage.getLeads();
-  const eligible = allLeads.filter(l => !l.lastEnrichedAt && l.ownerName);
+  let candidates = allLeads.filter(l => !l.lastEnrichedAt && l.ownerName);
+  if (Array.isArray(filterLeadIds) && filterLeadIds.length > 0) {
+    const idSet = new Set(filterLeadIds);
+    candidates = candidates.filter(l => idSet.has(l.id));
+  }
+  const eligible = candidates;
 
   batchFreeStatus = {
     running: true,

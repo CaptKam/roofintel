@@ -176,7 +176,7 @@ export async function enrichLeadReverseAddress(lead: Lead): Promise<ReverseAddre
   };
 }
 
-export async function runReverseAddressEnrichment(marketId?: string, batchSize = 200): Promise<{
+export async function runReverseAddressEnrichment(marketId?: string, batchSize = 200, filterLeadIds?: string[]): Promise<{
   totalProcessed: number;
   enriched: number;
   skipped: number;
@@ -188,13 +188,17 @@ export async function runReverseAddressEnrichment(marketId?: string, batchSize =
     return { totalProcessed: 0, enriched: 0, skipped: 0, byType: {} };
   }
 
-  const eligibleLeads = await db.select().from(leads)
+  let eligibleLeads = await db.select().from(leads)
     .where(
       marketId
         ? sql`${leads.marketId} = ${marketId} AND ${leads.ownerAddress} IS NOT NULL AND ${leads.reverseAddressEnrichedAt} IS NULL`
         : sql`${leads.ownerAddress} IS NOT NULL AND ${leads.reverseAddressEnrichedAt} IS NULL`
     )
     .limit(batchSize);
+  if (Array.isArray(filterLeadIds) && filterLeadIds.length > 0) {
+    const idSet = new Set(filterLeadIds);
+    eligibleLeads = eligibleLeads.filter(l => idSet.has(l.id));
+  }
 
   console.log(`[Reverse Address] Found ${eligibleLeads.length} leads with owner addresses to enrich`);
 
