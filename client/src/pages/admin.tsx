@@ -1376,7 +1376,12 @@ export default function Admin() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Story estimation complete", description: `Updated ${data.updated} leads with estimated story counts. ${data.unchanged} unchanged.` });
+      toast({
+        title: data.updated > 0 ? "Story estimation complete" : "Stories already up to date",
+        description: data.updated > 0
+          ? `Updated ${data.updated} leads with estimated story counts. ${data.unchanged} unchanged.`
+          : `All ${data.totalLeads.toLocaleString()} leads already have story estimates. No changes needed.`,
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
     },
@@ -1391,7 +1396,13 @@ export default function Admin() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      toast({ title: "Roof type estimation complete", description: `Roof types: ${data.roofTypesUpdated} updated. Construction types: ${data.constructionTypesUpdated} updated. ${data.unchanged} unchanged.` });
+      const totalUpdated = (data.roofTypesUpdated || 0) + (data.constructionTypesUpdated || 0);
+      toast({
+        title: totalUpdated > 0 ? "Roof type estimation complete" : "Roof types already up to date",
+        description: totalUpdated > 0
+          ? `Roof types: ${data.roofTypesUpdated} updated. Construction types: ${data.constructionTypesUpdated} updated. ${data.unchanged} unchanged.`
+          : `All leads already have roof/construction type estimates. No changes needed.`,
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
     },
     onError: (err: any) => {
