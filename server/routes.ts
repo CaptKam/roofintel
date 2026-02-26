@@ -2029,7 +2029,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   });
 
   // ============================================================
-  // Story Estimation Endpoint
+  // Story Estimation Endpoint (Phase 1: zoning heuristic, Phase 2: permit/GIS cross-reference)
   // ============================================================
 
   app.post("/api/leads/estimate-stories", async (req, res) => {
@@ -2044,55 +2044,143 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
         allLeads = allLeads.filter(l => idSet.has(l.id));
       }
 
-      let updated = 0;
-      let skipped = 0;
+      const leadMap = new Map(allLeads.map(l => [l.id, l]));
+
+      // Phase 1: Cross-reference roof permits and GIS footprints for real data
+      // Get roof replacement permits — these have actual roof sqft
+      const roofPermitRows = await db.execute(sql`
+        SELECT bp.lead_id, bp.sqft as permit_roof_sqft
+        FROM building_permits bp
+        WHERE bp.work_description ILIKE '%roof%'
+          AND bp.work_description NOT ILIKE '%sign%'
+          AND bp.work_description NOT ILIKE '%alarm%'
+          AND bp.work_description NOT ILIKE '%solar%'
+          AND bp.sqft >= 500
+        ORDER BY bp.issued_date DESC
+      `);
+
+      // Deduplicate: keep the largest roof permit per lead (most complete roof job)
+      const permitRoofArea = new Map<string, number>();
+      for (const row of (roofPermitRows as any).rows) {
+        const lid = row.lead_id;
+        if (!lid || !leadMap.has(lid)) continue;
+        const existing = permitRoofArea.get(lid) || 0;
+        if (row.permit_roof_sqft > existing) {
+          permitRoofArea.set(lid, row.permit_roof_sqft);
+        }
+      }
+
+      // Get GIS building footprints
+      const gisRows = await db.execute(sql`
+        SELECT lead_id, roof_area_sqft FROM building_footprints WHERE roof_area_sqft > 100
+      `);
+      const gisRoofArea = new Map<string, number>();
+      for (const row of (gisRows as any).rows) {
+        if (row.lead_id && leadMap.has(row.lead_id)) {
+          gisRoofArea.set(row.lead_id, row.roof_area_sqft);
+        }
+      }
+
+      let updatedFromPermit = 0;
+      let updatedFromGis = 0;
+      let updatedFromZoning = 0;
+      let unchanged = 0;
 
       for (const lead of allLeads) {
-        const sqft = lead.sqft || 0;
-        const zoning = (lead.zoning || "").toLowerCase();
-        const impValue = lead.improvementValue || 0;
-        const totalValue = lead.totalValue || 0;
-
-        let estimatedStories = 1;
-
-        if (zoning.includes("multi-family") || zoning.includes("multi family") || zoning.includes("apartment")) {
-          if (sqft >= 500000) estimatedStories = 4;
-          else if (sqft >= 200000) estimatedStories = 3;
-          else if (sqft >= 80000) estimatedStories = 2;
-          else estimatedStories = 2;
-        } else if (zoning.includes("commercial") || zoning.includes("office") || zoning.includes("mixed")) {
-          if (sqft >= 1000000) estimatedStories = 10;
-          else if (sqft >= 500000) estimatedStories = 6;
-          else if (sqft >= 200000) estimatedStories = 4;
-          else if (sqft >= 100000) estimatedStories = 3;
-          else if (sqft >= 50000) estimatedStories = 2;
-          else estimatedStories = 1;
-        } else if (zoning.includes("industrial") || zoning.includes("warehouse")) {
-          estimatedStories = 1;
+        const totalSqft = lead.sqft || 0;
+        if (totalSqft <= 0) {
+          unchanged++;
+          continue;
         }
 
-        if (estimatedStories !== (lead.stories || 1)) {
-          const roofArea = Math.round(sqft / estimatedStories);
+        let roofFootprint: number | null = null;
+        let source = "zoning";
+
+        // Priority 1: Roof permit sqft (most reliable — actual measured roof area)
+        if (permitRoofArea.has(lead.id)) {
+          roofFootprint = permitRoofArea.get(lead.id)!;
+          source = "permit";
+        }
+        // Priority 2: GIS building footprint from Overpass
+        else if (gisRoofArea.has(lead.id)) {
+          roofFootprint = gisRoofArea.get(lead.id)!;
+          source = "gis";
+        }
+
+        let estimatedStories: number;
+        let roofArea: number;
+
+        if (roofFootprint && roofFootprint > 0) {
+          // Calculate floors from real data: total building sqft / roof footprint
+          const calcFloors = totalSqft / roofFootprint;
+
+          if (calcFloors >= 1 && calcFloors <= 100) {
+            estimatedStories = Math.round(calcFloors);
+            if (estimatedStories < 1) estimatedStories = 1;
+            roofArea = roofFootprint;
+          } else {
+            // Data mismatch (roof area > building sqft) — fall back to zoning heuristic
+            source = "zoning";
+            estimatedStories = estimateStoriesFromZoning(lead);
+            roofArea = Math.round(totalSqft / estimatedStories);
+          }
+        } else {
+          // No real roof data — use zoning heuristic
+          estimatedStories = estimateStoriesFromZoning(lead);
+          roofArea = Math.round(totalSqft / estimatedStories);
+        }
+
+        if (estimatedStories !== (lead.stories || 1) || roofArea !== (lead.estimatedRoofArea || 0)) {
           await storage.updateLead(lead.id, {
             stories: estimatedStories,
             estimatedRoofArea: roofArea,
           } as any);
-          updated++;
+          if (source === "permit") updatedFromPermit++;
+          else if (source === "gis") updatedFromGis++;
+          else updatedFromZoning++;
         } else {
-          skipped++;
+          unchanged++;
         }
       }
 
+      const totalUpdated = updatedFromPermit + updatedFromGis + updatedFromZoning;
       res.json({
         message: "Story estimation complete",
         totalLeads: allLeads.length,
-        updated,
-        unchanged: skipped,
+        updated: totalUpdated,
+        updatedFromPermit,
+        updatedFromGis,
+        updatedFromZoning,
+        unchanged,
+        availablePermitData: permitRoofArea.size,
+        availableGisData: gisRoofArea.size,
       });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to estimate stories", error: error.message });
     }
   });
+
+  function estimateStoriesFromZoning(lead: any): number {
+    const sqft = lead.sqft || 0;
+    const zoning = (lead.zoning || "").toLowerCase();
+
+    if (zoning.includes("multi-family") || zoning.includes("multi family") || zoning.includes("apartment")) {
+      if (sqft >= 500000) return 4;
+      if (sqft >= 200000) return 3;
+      if (sqft >= 80000) return 2;
+      return 2;
+    } else if (zoning.includes("commercial") || zoning.includes("office") || zoning.includes("mixed")) {
+      if (sqft >= 1000000) return 10;
+      if (sqft >= 500000) return 6;
+      if (sqft >= 200000) return 4;
+      if (sqft >= 100000) return 3;
+      if (sqft >= 50000) return 2;
+      return 1;
+    } else if (zoning.includes("industrial") || zoning.includes("warehouse")) {
+      return 1;
+    }
+    return 1;
+  }
 
   // ============================================================
   // Roof Type & Construction Type Estimation Endpoint

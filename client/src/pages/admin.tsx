@@ -1376,11 +1376,15 @@ export default function Admin() {
       return res.json();
     },
     onSuccess: (data: any) => {
+      const parts: string[] = [];
+      if (data.updatedFromPermit > 0) parts.push(`${data.updatedFromPermit} from roof permits`);
+      if (data.updatedFromGis > 0) parts.push(`${data.updatedFromGis} from GIS footprints`);
+      if (data.updatedFromZoning > 0) parts.push(`${data.updatedFromZoning} from zoning heuristic`);
       toast({
         title: data.updated > 0 ? "Story estimation complete" : "Stories already up to date",
         description: data.updated > 0
-          ? `Updated ${data.updated} leads with estimated story counts. ${data.unchanged} unchanged.`
-          : `All ${data.totalLeads.toLocaleString()} leads already have story estimates. No changes needed.`,
+          ? `Updated ${data.updated} leads: ${parts.join(", ")}. ${data.unchanged} unchanged. Sources: ${data.availablePermitData} permit, ${data.availableGisData} GIS.`
+          : `All ${data.totalLeads.toLocaleString()} leads already have story estimates. Data sources checked: ${data.availablePermitData} permits, ${data.availableGisData} GIS footprints.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
