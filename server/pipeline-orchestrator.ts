@@ -151,6 +151,15 @@ function createPhases(): PipelinePhase[] {
         { id: "recalc-scores", name: "Recalculate All Lead Scores", status: "pending" },
       ],
     },
+    {
+      id: "roi-gate",
+      name: "Phase 10: ROI Gate",
+      status: "pending",
+      steps: [
+        { id: "roi-batch", name: "Run Enrichment ROI Decisions", status: "pending" },
+        { id: "zip-recompute", name: "Recompute ZIP Tile Scores", status: "pending" },
+      ],
+    },
   ];
 }
 
@@ -510,6 +519,26 @@ export async function runFullPipeline(options: { skipPhases?: string[]; filters?
           return `Recalculated scores for ${result.updated} leads`;
         });
         updatePhaseStatus("scoring", "complete");
+      }
+
+      if (pipelineStatus.cancelled) return finishPipeline();
+
+      if (shouldSkip("roi-gate")) {
+        updatePhaseStatus("roi-gate", "skipped");
+        pipelineStatus.phases.find(p => p.id === "roi-gate")?.steps.forEach(s => { s.status = "skipped"; s.detail = "Phase skipped by user"; });
+      } else {
+        updatePhaseStatus("roi-gate", "running");
+        await runStep("roi-batch", async () => {
+          const { runBatch } = await import("./enrichment-roi-agent");
+          const result = await runBatch(marketId || undefined, qualifiedLeadIds.length > 0 ? qualifiedLeadIds : undefined);
+          return `ROI decisions: ${result.processed} leads, projected spend $${result.totalCost}, projected EV $${result.totalEv}`;
+        });
+        await runStep("zip-recompute", async () => {
+          const { scoreAllZips } = await import("./zip-tile-scoring");
+          const tiles = await scoreAllZips(marketId || undefined);
+          return `Recomputed ${tiles.length} ZIP tiles`;
+        });
+        updatePhaseStatus("roi-gate", "complete");
       }
 
       if (qualifiedLeadIds.length > 0 && !pipelineStatus.cancelled) {

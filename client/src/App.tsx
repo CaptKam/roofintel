@@ -21,10 +21,12 @@ import Privacy from "@/pages/privacy";
 import About from "@/pages/about";
 import Contact from "@/pages/contact";
 import Contractors from "@/pages/contractors";
+import HailChaser from "@/pages/hail-chaser";
 
 function Router() {
   return (
     <Switch>
+      <Route path="/hail-chaser" component={HailChaser} />
       <Route path="/" component={Dashboard} />
       <Route path="/leads" component={Leads} />
       <Route path="/leads/:id" component={LeadDetail} />

@@ -148,6 +148,23 @@ export default function Leads() {
     queryKey: [`/api/leads?${queryString}`],
   });
 
+  const { data: roiDecisionsData } = useQuery<Array<{ leadId: string; decisionType: string; roiScore: number }>>({
+    queryKey: ["/api/admin/roi/decisions", { limit: 500 }],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/roi/decisions?limit=500");
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : data.decisions || [];
+    },
+  });
+
+  const roiDecisionMap = new Map<string, { decisionType: string; roiScore: number }>();
+  if (roiDecisionsData) {
+    for (const d of roiDecisionsData) {
+      roiDecisionMap.set(d.leadId, { decisionType: d.decisionType, roiScore: d.roiScore });
+    }
+  }
+
   const leads = data?.leads;
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -607,6 +624,27 @@ export default function Leads() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {roiDecisionMap.has(lead.id) && (() => {
+                    const roi = roiDecisionMap.get(lead.id)!;
+                    const tierColors: Record<string, string> = {
+                      premium: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
+                      tier3: "bg-red-500/15 text-red-700 dark:text-red-400",
+                      tier2: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
+                      tier1: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
+                      free_only: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
+                      skip: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
+                    };
+                    const colorClass = tierColors[roi.decisionType] || "bg-gray-500/15 text-gray-700 dark:text-gray-400";
+                    return (
+                      <Badge
+                        variant="secondary"
+                        className={`no-default-hover-elevate no-default-active-elevate text-[10px] ${colorClass}`}
+                        data-testid={`badge-roi-tier-${lead.id}`}
+                      >
+                        {roi.decisionType}
+                      </Badge>
+                    );
+                  })()}
                   {lead.roofRiskIndex != null && lead.roofRiskIndex > 0 && (
                     <Badge
                       variant="secondary"

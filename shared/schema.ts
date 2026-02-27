@@ -1024,4 +1024,75 @@ export type InsertNaipRoofSnapshot = z.infer<typeof insertNaipRoofSnapshotSchema
 export type NaipRoofChange = typeof naipRoofChanges.$inferSelect;
 export type InsertNaipRoofChange = z.infer<typeof insertNaipRoofChangeSchema>;
 
+export const enrichmentDecisions = pgTable("enrichment_decisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").references(() => leads.id, { onDelete: "cascade" }).notNull(),
+  marketId: varchar("market_id").notNull(),
+  decisionType: text("decision_type").notNull(),
+  roiScore: real("roi_score"),
+  expectedValue: real("expected_value"),
+  enrichmentCost: real("enrichment_cost"),
+  recommendedApis: text("recommended_apis").array(),
+  confidence: integer("confidence").default(70),
+  reasonSummary: text("reason_summary"),
+  executedAt: timestamp("executed_at"),
+  outcomeTrackedAt: timestamp("outcome_tracked_at"),
+  actualRevenue: real("actual_revenue"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const zipTiles = pgTable("zip_tiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id").notNull(),
+  zipCode: varchar("zip_code").notNull().unique(),
+  zipScore: real("zip_score").notNull(),
+  stormRiskScore: real("storm_risk_score"),
+  roofAgeScore: real("roof_age_score"),
+  dataGapScore: real("data_gap_score"),
+  propertyValueScore: real("property_value_score"),
+  leadDensityScore: real("lead_density_score"),
+  contactabilityScore: real("contactability_score"),
+  leadCount: integer("lead_count").notNull(),
+  avgLeadScore: real("avg_lead_score"),
+  avgHailEvents: real("avg_hail_events"),
+  medianPropertyValue: integer("median_property_value"),
+  pctMissingPhone: real("pct_missing_phone"),
+  pctMissingEmail: real("pct_missing_email"),
+  pctOldRoof: real("pct_old_roof"),
+  recommendedSpend: real("recommended_spend"),
+  projectedEv: real("projected_ev"),
+  centerLat: real("center_lat"),
+  centerLng: real("center_lng"),
+  boundingBox: jsonb("bounding_box"),
+  lastComputedAt: timestamp("last_computed_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const enrichmentBudgets = pgTable("enrichment_budgets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id").notNull().unique(),
+  dailyBudgetUsd: real("daily_budget_usd").notNull().default(500),
+  monthlyBudgetUsd: real("monthly_budget_usd").notNull().default(12000),
+  spentTodayUsd: real("spent_today_usd").default(0),
+  spentThisMonthUsd: real("spent_this_month_usd").default(0),
+  lastResetAt: timestamp("last_reset_at").defaultNow(),
+  hailSeasonMultiplier: real("hail_season_multiplier").default(1.8),
+  minRoiThreshold: real("min_roi_threshold").default(8.0),
+  avgDealSize: real("avg_deal_size").default(28500),
+  baseCloseRate: real("base_close_rate").default(0.09),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEnrichmentDecisionSchema = createInsertSchema(enrichmentDecisions).omit({ id: true, createdAt: true });
+export type InsertEnrichmentDecision = z.infer<typeof insertEnrichmentDecisionSchema>;
+export type EnrichmentDecision = typeof enrichmentDecisions.$inferSelect;
+
+export const insertZipTileSchema = createInsertSchema(zipTiles).omit({ id: true, createdAt: true });
+export type InsertZipTile = z.infer<typeof insertZipTileSchema>;
+export type ZipTile = typeof zipTiles.$inferSelect;
+
+export const insertEnrichmentBudgetSchema = createInsertSchema(enrichmentBudgets).omit({ id: true, createdAt: true });
+export type InsertEnrichmentBudget = z.infer<typeof insertEnrichmentBudgetSchema>;
+export type EnrichmentBudget = typeof enrichmentBudgets.$inferSelect;
+
 export * from "./models/chat";

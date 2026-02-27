@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { ScoreBadge } from "@/components/score-badge";
 import { StatusBadge } from "@/components/status-badge";
-import { Building2, Ruler, Calendar, CloudLightning, X, Radar, Zap } from "lucide-react";
+import { Building2, Ruler, Calendar, CloudLightning, X, Radar, Zap, Map } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Lead, StormRun } from "@shared/schema";
@@ -22,6 +22,29 @@ import type { Lead, StormRun } from "@shared/schema";
 interface LeadsResponse {
   leads: Lead[];
   total: number;
+}
+
+interface ZipTile {
+  zipCode: string;
+  zipScore: number;
+  boundingBox: { minLat: number; maxLat: number; minLng: number; maxLng: number };
+  stormRiskScore: number;
+  roofAgeScore: number;
+  dataGapScore: number;
+  propertyValueScore: number;
+  leadDensityScore: number;
+  leadCount: number;
+  recommendedSpend: number;
+  projectedEv: number;
+  avgLeadScore: number;
+  avgHailEvents: number;
+}
+
+function getZipTileColor(zipScore: number): string {
+  if (zipScore > 75) return "#b91c1c";
+  if (zipScore > 55) return "#f59e0b";
+  if (zipScore > 35) return "#eab308";
+  return "#3b82f6";
 }
 
 interface SwdiHailSignature {
@@ -121,8 +144,10 @@ export default function MapView() {
   const alertLayerRef = useRef<L.LayerGroup | null>(null);
   const swathLayerRef = useRef<L.LayerGroup | null>(null);
   const threatLayerRef = useRef<L.LayerGroup | null>(null);
+  const zipLayerRef = useRef<L.LayerGroup | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showHailTracker, setShowHailTracker] = useState(false);
+  const [showZipHeatmap, setShowZipHeatmap] = useState(false);
   const [showSwathZones, setShowSwathZones] = useState(true);
   const [showThreatForecast, setShowThreatForecast] = useState(true);
   const [daysBack, setDaysBack] = useState("7");
@@ -148,6 +173,12 @@ export default function MapView() {
     refetchInterval: 30000,
   });
 
+  const { data: zipTiles } = useQuery<ZipTile[]>({
+    queryKey: ["/api/zip-tiles"],
+    enabled: showZipHeatmap,
+    staleTime: 5 * 60 * 1000,
+  });
+
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
@@ -166,6 +197,7 @@ export default function MapView() {
     alertLayerRef.current = L.layerGroup().addTo(map);
     swathLayerRef.current = L.layerGroup().addTo(map);
     threatLayerRef.current = L.layerGroup().addTo(map);
+    zipLayerRef.current = L.layerGroup().addTo(map);
 
     mapInstanceRef.current = map;
 
@@ -398,6 +430,49 @@ export default function MapView() {
     }
   }, [threats, showThreatForecast]);
 
+  useEffect(() => {
+    if (!zipLayerRef.current) return;
+    zipLayerRef.current.clearLayers();
+
+    if (!showZipHeatmap || !zipTiles) return;
+
+    for (const tile of zipTiles) {
+      const bb = tile.boundingBox;
+      const color = getZipTileColor(tile.zipScore);
+
+      const rect = L.rectangle(
+        [[bb.minLat, bb.minLng], [bb.maxLat, bb.maxLng]],
+        {
+          color,
+          fillColor: color,
+          fillOpacity: 0.25,
+          weight: 1,
+          opacity: 0.6,
+        }
+      );
+
+      rect.bindPopup(
+        `<div style="font-size:12px;min-width:200px;">
+          <strong>ZIP ${tile.zipCode}</strong><br/>
+          <strong>Overall Score: ${tile.zipScore}</strong><br/>
+          <hr style="margin:4px 0;border-color:#ddd;"/>
+          <strong>Score Breakdown</strong><br/>
+          Storm Risk: ${tile.stormRiskScore}<br/>
+          Roof Age: ${tile.roofAgeScore}<br/>
+          Data Gaps: ${tile.dataGapScore}<br/>
+          Property Value: ${tile.propertyValueScore}<br/>
+          Density: ${tile.leadDensityScore}<br/>
+          <hr style="margin:4px 0;border-color:#ddd;"/>
+          Lead Count: ${tile.leadCount}<br/>
+          Recommended Spend: $${tile.recommendedSpend.toLocaleString()}<br/>
+          Projected EV: $${tile.projectedEv.toLocaleString()}
+        </div>`
+      );
+
+      zipLayerRef.current.addLayer(rect);
+    }
+  }, [zipTiles, showZipHeatmap]);
+
   const sigCount = hailData?.radarSignatures?.length || 0;
   const alertCount = hailData?.alerts?.length || 0;
   const threatCount = threats?.length || 0;
@@ -412,6 +487,15 @@ export default function MapView() {
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Button
+            variant={showZipHeatmap ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowZipHeatmap(!showZipHeatmap)}
+            data-testid="toggle-zip-heatmap"
+          >
+            <Map className="w-4 h-4 mr-1.5" />
+            ZIP Priority Heatmap
+          </Button>
           <Button
             variant={showThreatForecast ? "default" : "outline"}
             size="sm"

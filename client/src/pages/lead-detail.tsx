@@ -678,6 +678,33 @@ export default function LeadDetail() {
     enabled: !!lead,
   });
 
+  const { data: roiDecision } = useQuery<{
+    decisionType: string;
+    roiScore: number;
+    expectedValue: number;
+    enrichmentCost: number;
+    recommendedApis: string[];
+    reasonSummary: string;
+    confidence: number;
+  } | null>({
+    queryKey: ["/api/leads", id, "roi-decision"],
+    enabled: !!lead,
+  });
+
+  const roiBatchMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/roi/run-batch", { marketId: lead?.marketId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", id, "roi-decision"] });
+      toast({ title: "ROI Analysis", description: "Batch ROI analysis started" });
+    },
+    onError: () => {
+      toast({ title: "ROI Analysis failed", variant: "destructive" });
+    },
+  });
+
   const { data: rooftopOwner } = useQuery<{
     primary: { id: string; name: string; role: string; title: string | null; confidence: number; source: string; address: string | null; phone: string | null; email: string | null; propertyCount: number; totalPortfolioValue: number | null; totalPortfolioSqft: number | null; portfolioGroupId: string | null };
     allPeople: Array<{ id: string; name: string; role: string; title: string | null; confidence: number; source: string; isPrimary: boolean }>;
@@ -1287,6 +1314,94 @@ export default function LeadDetail() {
                     data-testid="textarea-notes"
                   />
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm" data-testid="card-enrichment-recommendation">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-muted-foreground" />
+                    <CardTitle className="text-base font-semibold">Enrichment Recommendation</CardTitle>
+                  </div>
+                  {roiDecision && (
+                    <Badge
+                      variant="secondary"
+                      className={`no-default-hover-elevate no-default-active-elevate text-xs ${
+                        roiDecision.roiScore > 12
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                          : roiDecision.roiScore > 6
+                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                          : "bg-red-500/15 text-red-700 dark:text-red-400"
+                      }`}
+                      data-testid="badge-roi-score"
+                    >
+                      ROI {(roiDecision.roiScore || 0).toFixed(1)}x
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="p-6 pt-0 space-y-3">
+                {roiDecision ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Decision Tier</span>
+                      <span className="text-sm font-medium" data-testid="text-roi-decision-type">{roiDecision.decisionType}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-2.5 rounded-md bg-muted/50">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Expected Value</p>
+                        <p className="text-sm font-semibold tabular-nums" data-testid="text-roi-expected-value">
+                          ${(roiDecision.expectedValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="p-2.5 rounded-md bg-muted/50">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Enrichment Cost</p>
+                        <p className="text-sm font-semibold tabular-nums" data-testid="text-roi-enrichment-cost">
+                          ${(roiDecision.enrichmentCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+                    {roiDecision.recommendedApis && roiDecision.recommendedApis.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Recommended APIs</p>
+                        <div className="flex flex-wrap gap-1">
+                          {roiDecision.recommendedApis.map((api) => (
+                            <Badge key={api} variant="outline" className="text-[10px]" data-testid={`badge-roi-api-${api}`}>
+                              {api}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Reason</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed" data-testid="text-roi-reason">{roiDecision.reasonSummary}</p>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t">
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Confidence</span>
+                      <span className="text-xs font-medium" data-testid="text-roi-confidence">{roiDecision.confidence}%</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-3 space-y-3">
+                    <p className="text-sm text-muted-foreground" data-testid="text-roi-not-scored">Not yet scored</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => roiBatchMutation.mutate()}
+                      disabled={roiBatchMutation.isPending}
+                      data-testid="button-run-roi-analysis"
+                    >
+                      {roiBatchMutation.isPending ? (
+                        <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
+                      ) : (
+                        <Play className="w-3 h-3 mr-1.5" />
+                      )}
+                      Run ROI Analysis
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

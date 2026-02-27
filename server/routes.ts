@@ -4754,6 +4754,153 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  app.post("/api/admin/roi/run-batch", async (req, res) => {
+    try {
+      const { runBatch, getBatchProgress } = await import("./enrichment-roi-agent");
+      const progress = getBatchProgress();
+      if (progress.running) {
+        return res.status(409).json({ message: "ROI batch already running", progress });
+      }
+      const { marketId, zipCode } = req.body || {};
+      runBatch(marketId || undefined, undefined, zipCode || undefined);
+      res.json({ message: "ROI batch started", progress: getBatchProgress() });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start ROI batch", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/roi/status", async (_req, res) => {
+    try {
+      const { getBatchProgress } = await import("./enrichment-roi-agent");
+      res.json(getBatchProgress());
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get ROI status", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/roi/stats", async (req, res) => {
+    try {
+      const { getEnrichmentStats } = await import("./enrichment-roi-agent");
+      const stats = await getEnrichmentStats(req.query.marketId as string || undefined);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get ROI stats", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/roi/decisions", async (req, res) => {
+    try {
+      const { enrichmentDecisions, leads } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+      const limit = Number(req.query.limit) || 50;
+      const baseQuery = db
+        .select({
+          id: enrichmentDecisions.id,
+          leadId: enrichmentDecisions.leadId,
+          marketId: enrichmentDecisions.marketId,
+          decisionType: enrichmentDecisions.decisionType,
+          roiScore: enrichmentDecisions.roiScore,
+          expectedValue: enrichmentDecisions.expectedValue,
+          enrichmentCost: enrichmentDecisions.enrichmentCost,
+          recommendedApis: enrichmentDecisions.recommendedApis,
+          confidence: enrichmentDecisions.confidence,
+          reasonSummary: enrichmentDecisions.reasonSummary,
+          createdAt: enrichmentDecisions.createdAt,
+          address: leads.address,
+          leadScore: leads.leadScore,
+        })
+        .from(enrichmentDecisions)
+        .leftJoin(leads, eq(enrichmentDecisions.leadId, leads.id))
+        .orderBy(desc(enrichmentDecisions.roiScore))
+        .limit(limit);
+      if (req.query.marketId) {
+        baseQuery.where(eq(enrichmentDecisions.marketId, req.query.marketId as string));
+      }
+      const decisions = await baseQuery;
+      res.json(decisions);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get ROI decisions", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/roi-decision", async (req, res) => {
+    try {
+      const { getSingleLeadDecision } = await import("./enrichment-roi-agent");
+      const decision = await getSingleLeadDecision(req.params.id);
+      res.json(decision);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get lead ROI decision", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/zip-tiles/compute", async (req, res) => {
+    try {
+      const { scoreAllZips, getComputeProgress } = await import("./zip-tile-scoring");
+      const progress = getComputeProgress();
+      if (progress.running) {
+        return res.status(409).json({ message: "ZIP computation already running", progress });
+      }
+      const { marketId } = req.body || {};
+      scoreAllZips(marketId || undefined);
+      res.json({ message: "ZIP tile computation started", progress: getComputeProgress() });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start ZIP computation", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/zip-tiles/status", async (_req, res) => {
+    try {
+      const { getComputeProgress } = await import("./zip-tile-scoring");
+      res.json(getComputeProgress());
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get ZIP status", error: error.message });
+    }
+  });
+
+  app.get("/api/zip-tiles", async (req, res) => {
+    try {
+      const { getZipTiles } = await import("./zip-tile-scoring");
+      const tiles = await getZipTiles(req.query.marketId as string || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da");
+      res.json(tiles);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get ZIP tiles", error: error.message });
+    }
+  });
+
+  app.get("/api/zip-tiles/:zipCode", async (req, res) => {
+    try {
+      const { getZipTile } = await import("./zip-tile-scoring");
+      const tile = await getZipTile(req.params.zipCode);
+      if (!tile) return res.status(404).json({ message: "ZIP tile not found" });
+      res.json(tile);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get ZIP tile", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/budgets", async (req, res) => {
+    try {
+      const { getMarketConfig } = await import("./enrichment-roi-agent");
+      const config = await getMarketConfig(req.query.marketId as string || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da");
+      res.json(config);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get budget config", error: error.message });
+    }
+  });
+
+  app.patch("/api/admin/budgets", async (req, res) => {
+    try {
+      const { enrichmentBudgets } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const marketId = req.body.marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const { marketId: _, ...updates } = req.body;
+      await db.update(enrichmentBudgets).set(updates).where(eq(enrichmentBudgets.marketId, marketId));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update budget", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

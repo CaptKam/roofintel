@@ -1,6 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Building2, MapPin, Flame, Zap, Radio, Settings, ChevronRight, Network, Share2, HardHat } from "lucide-react";
+import { LayoutDashboard, Building2, MapPin, Flame, Zap, Radio, Settings, ChevronRight, Network, Share2, HardHat, CloudLightning } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +24,7 @@ import {
 import { useMarket } from "@/hooks/use-market";
 
 const mainNav = [
+  { title: "Hail Chaser", url: "/hail-chaser", icon: CloudLightning },
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Leads", url: "/leads", icon: Building2 },
   { title: "Portfolios", url: "/portfolios", icon: Network },
