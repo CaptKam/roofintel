@@ -33,6 +33,8 @@ interface CollinCadFeature {
     IMPR_SQFT?: number;
     yr_built?: number;
     YR_BUILT?: number;
+    eff_yr_blt?: number;
+    EFF_YR_BLT?: number;
     land_use?: string;
     LAND_USE?: string;
     land_use_desc?: string;
@@ -41,6 +43,8 @@ interface CollinCadFeature {
     PROP_TYPE?: string;
     dba?: string;
     DBA?: string;
+    dba_name?: string;
+    DBA_NAME?: string;
     mail_addr?: string;
     MAIL_ADDR?: string;
     mail_city?: string;
@@ -53,6 +57,42 @@ interface CollinCadFeature {
     STORIES?: number;
     struc_type?: string;
     STRUC_TYPE?: string;
+    deed_dt?: string;
+    DEED_DT?: string;
+    deed_book_id?: string;
+    DEED_BOOK_ID?: string;
+    deed_book_pag?: string;
+    DEED_BOOK_PAG?: string;
+    deed_num?: string;
+    DEED_NUM?: string;
+    legal_acreage?: number;
+    LEGAL_ACREAGE?: number;
+    eff_size_acre?: number;
+    EFF_SIZE_ACRE?: number;
+    land_total_sq?: number;
+    LAND_TOTAL_SQ?: number;
+    abs_subdv_des?: string;
+    ABS_SUBDV_DES?: string;
+    school?: string;
+    SCHOOL?: string;
+    city?: string;
+    CITY?: string;
+    tif?: string;
+    TIF?: string;
+    exemptions?: string;
+    EXEMPTIONS?: string;
+    pct_ownership?: number;
+    PCT_OWNERSHIP?: number;
+    addr_line1?: string;
+    ADDR_LINE1?: string;
+    property_use_?: string;
+    PROPERTY_USE_?: string;
+    percent_compl?: number;
+    PERCENT_COMPL?: number;
+    prop_create_d?: string;
+    PROP_CREATE_D?: string;
+    parent_id?: string;
+    PARENT_ID?: string;
   };
   geometry?: {
     rings?: number[][][];
@@ -241,13 +281,33 @@ export async function importCollinCadProperties(
           const impValue = getAttr(feature, "impr_value", "IMPR_VALUE") || 0;
           const landValue = getAttr(feature, "land_value", "LAND_VALUE") || 0;
           const totalValue = getAttr(feature, "market_value", "MARKET_VALUE") || (impValue + landValue);
-          const yearBuilt = getAttr(feature, "yr_built", "YR_BUILT") || 1995;
+          const rawYearBuilt = getAttr(feature, "yr_built", "YR_BUILT");
+          const yearBuilt = (rawYearBuilt && rawYearBuilt > 0) ? rawYearBuilt : null;
+          const effectiveYearBuilt = getAttr(feature, "eff_yr_blt", "EFF_YR_BLT") || undefined;
           const landUse = getAttr(feature, "land_use_desc", "LAND_USE_DESC") || getAttr(feature, "land_use", "LAND_USE") || "";
           const zoning = inferZoning(landUse);
           const stories = getAttr(feature, "stories", "STORIES") || 1;
           const structType = getAttr(feature, "struc_type", "STRUC_TYPE") || "Masonry";
           const dba = getAttr(feature, "dba", "DBA");
+          const dbaName = getAttr(feature, "dba_name", "DBA_NAME") || dba || undefined;
           const llcName = ownerType === "LLC" ? ownerName : undefined;
+
+          const deedDt = getAttr(feature, "deed_dt", "DEED_DT") || undefined;
+          const deedNum = getAttr(feature, "deed_num", "DEED_NUM") || undefined;
+          const deedBookId = getAttr(feature, "deed_book_id", "DEED_BOOK_ID") || undefined;
+          const deedBookPag = getAttr(feature, "deed_book_pag", "DEED_BOOK_PAG") || undefined;
+          const deedInstrument = deedNum || (deedBookId && deedBookPag ? `${deedBookId}/${deedBookPag}` : undefined);
+
+          const legalAcreage = getAttr(feature, "legal_acreage", "LEGAL_ACREAGE") || getAttr(feature, "eff_size_acre", "EFF_SIZE_ACRE") || undefined;
+          const landTotalSq = getAttr(feature, "land_total_sq", "LAND_TOTAL_SQ") || undefined;
+          const subdivisionName = getAttr(feature, "abs_subdv_des", "ABS_SUBDV_DES") || undefined;
+          const schoolDistrict = getAttr(feature, "school", "SCHOOL") || undefined;
+          const taxDistrict = getAttr(feature, "city", "CITY") || getAttr(feature, "tif", "TIF") || undefined;
+          const exemptions = getAttr(feature, "exemptions", "EXEMPTIONS") || undefined;
+          const pctOwnership = getAttr(feature, "pct_ownership", "PCT_OWNERSHIP") || undefined;
+          const secondOwner = getAttr(feature, "owner_name2", "OWNER_NAME2") || getAttr(feature, "addr_line1", "ADDR_LINE1") || undefined;
+          const propertyUseDesc = getAttr(feature, "property_use_", "PROPERTY_USE_") || undefined;
+          const propCreateDate = getAttr(feature, "prop_create_d", "PROP_CREATE_D") || undefined;
 
           let lat: number, lng: number;
           const [geoLat, geoLng] = getCentroid(feature.geometry);
@@ -279,6 +339,7 @@ export async function importCollinCadProperties(
             longitude: lng,
             sqft: sqft || Math.round(impValue / 120),
             yearBuilt,
+            effectiveYearBuilt: (effectiveYearBuilt && effectiveYearBuilt > 0) ? effectiveYearBuilt : undefined,
             constructionType: String(structType),
             zoning,
             stories,
@@ -287,10 +348,23 @@ export async function importCollinCadProperties(
             ownerType,
             ownerAddress,
             llcName,
-            businessName: dba || undefined,
+            businessName: dbaName || undefined,
+            dbaName: dbaName || undefined,
             improvementValue: impValue || undefined,
             landValue: landValue || undefined,
             totalValue: totalValue || undefined,
+            lastDeedDate: deedDt || undefined,
+            deedInstrument: deedInstrument || undefined,
+            landAcreage: legalAcreage || undefined,
+            landSqft: landTotalSq ? Math.round(landTotalSq) : undefined,
+            subdivisionName: subdivisionName || undefined,
+            schoolDistrict: schoolDistrict || undefined,
+            taxDistrict: taxDistrict || undefined,
+            taxExemptions: exemptions || undefined,
+            ownerPercentage: pctOwnership || undefined,
+            secondOwner: secondOwner || undefined,
+            propertyUseDescription: propertyUseDesc || undefined,
+            lastAppraisalDate: propCreateDate || undefined,
             sourceType: "collin_cad_api",
             sourceId,
             leadScore: 0,

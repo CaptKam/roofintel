@@ -41,12 +41,17 @@ interface DentonCadFeature {
     landtotalsqft: number | null;
     land_sqft: number | null;
     effectivesizeacres: number | null;
+    legalacreage: number | null;
     legaldescription: string | null;
     deeddt: string | null;
     deedtype: string | null;
     instrumentnum: string | null;
     exemptions: string | null;
     citytaxingunitname: string | null;
+    schooltaxingunitname: string | null;
+    abstractsubdivisiondescription: string | null;
+    ownerpct: number | null;
+    propertyuse: string | null;
     geoid: string | null;
   };
   geometry?: {
@@ -129,8 +134,10 @@ async function fetchDentonCadPage(offset: number, minImpValue: number): Promise<
     "addrdeliveryline", "addrcity", "addrstate", "addrzip",
     "improvementvalue", "ownermarketvalue", "ownerappraisedvalue", "landnhsvalue",
     "imprvactualyearbuilt", "imprveffyearbuilt", "imprvtotalarea", "imprvmainarea", "imprvclasses",
-    "landtotalsqft", "land_sqft", "effectivesizeacres",
-    "legaldescription", "deeddt", "instrumentnum", "exemptions", "citytaxingunitname", "geoid",
+    "landtotalsqft", "land_sqft", "effectivesizeacres", "legalacreage",
+    "legaldescription", "deeddt", "instrumentnum", "exemptions",
+    "citytaxingunitname", "schooltaxingunitname", "abstractsubdivisiondescription",
+    "ownerpct", "propertyuse", "geoid",
   ].join(",");
 
   const params = new URLSearchParams({
@@ -247,7 +254,7 @@ export async function importDentonCadProperties(
           const impValue = a.improvementvalue || 0;
           const landValue = a.landnhsvalue || 0;
           const totalValue = a.ownermarketvalue || a.ownerappraisedvalue || (impValue + landValue);
-          const yearBuilt = a.imprvactualyearbuilt || a.imprveffyearbuilt || 1995;
+          const yearBuilt = a.imprvactualyearbuilt || a.imprveffyearbuilt || null;
           const zoning = inferZoning(a.proptype || "", a.usecd || "", a.cad_zoning || "", a.imprvclasses || "");
           const llcName = ownerType === "LLC" ? ownerName : undefined;
 
@@ -276,7 +283,7 @@ export async function importDentonCadProperties(
             latitude: lat,
             longitude: lng,
             sqft: sqft || Math.round(impValue / 120),
-            yearBuilt,
+            yearBuilt: yearBuilt ?? null,
             constructionType: a.imprvclasses || "Masonry",
             zoning,
             stories: 1,
@@ -290,6 +297,18 @@ export async function importDentonCadProperties(
             landValue: landValue || undefined,
             totalValue: totalValue || undefined,
             lastDeedDate: a.deeddt || undefined,
+            deedInstrument: a.instrumentnum || undefined,
+            effectiveYearBuilt: a.imprveffyearbuilt || undefined,
+            landAcreage: a.legalacreage || a.effectivesizeacres || undefined,
+            landSqft: a.landtotalsqft || a.land_sqft || undefined,
+            subdivisionName: a.abstractsubdivisiondescription || undefined,
+            schoolDistrict: a.schooltaxingunitname || undefined,
+            taxDistrict: a.citytaxingunitname || undefined,
+            secondOwner: a.namesecondary || undefined,
+            ownerPercentage: a.ownerpct || undefined,
+            taxExemptions: a.exemptions || undefined,
+            dbaName: a.dba || undefined,
+            propertyUseDescription: a.propertyuse || undefined,
             sourceType: "denton_cad_api",
             sourceId,
             leadScore: 0,

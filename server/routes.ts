@@ -4651,6 +4651,81 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  // Property Data Scanner endpoints
+  app.get("/api/admin/property-scan/gaps", async (_req, res) => {
+    try {
+      const { getDataGapSummary } = await import("./property-data-scanner");
+      const gaps = await getDataGapSummary();
+      res.json(gaps);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get data gaps", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/property-scan/run", async (req, res) => {
+    try {
+      const { runPropertyScan, getScanStatus } = await import("./property-data-scanner");
+      const status = getScanStatus();
+      if (status.status === "running") {
+        return res.status(409).json({ message: "Scan already in progress", status });
+      }
+      const { maxLeads, stages, countyFilter } = req.body || {};
+      runPropertyScan({ maxLeads, stages, countyFilter });
+      res.json({ message: "Property scan started", status: getScanStatus() });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start scan", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/property-scan/status", async (_req, res) => {
+    try {
+      const { getScanStatus } = await import("./property-data-scanner");
+      res.json(getScanStatus());
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get scan status", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/property-scan/results", async (req, res) => {
+    try {
+      const { getScanResults } = await import("./property-data-scanner");
+      const results = getScanResults();
+      const limit = parseInt(req.query.limit as string) || 100;
+      const offset = parseInt(req.query.offset as string) || 0;
+      res.json({
+        total: results.length,
+        results: results.slice(offset, offset + limit),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get scan results", error: error.message });
+    }
+  });
+
+  // CAD Reimport endpoints
+  app.post("/api/admin/cad/reimport", async (req, res) => {
+    try {
+      const { runCadReimport, getReimportStatus } = await import("./cad-reimport");
+      const status = getReimportStatus();
+      if (status.status === "running") {
+        return res.status(409).json({ message: "Reimport already in progress", status });
+      }
+      const { counties, maxRecords, dryRun } = req.body || {};
+      runCadReimport({ counties, maxRecords, dryRun });
+      res.json({ message: "CAD reimport started", status: getReimportStatus() });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start reimport", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/cad/reimport/status", async (_req, res) => {
+    try {
+      const { getReimportStatus } = await import("./cad-reimport");
+      res.json(getReimportStatus());
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get reimport status", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

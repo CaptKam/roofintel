@@ -57,6 +57,8 @@ import {
   Bot,
   Sparkles,
   Ban,
+  ScanSearch,
+  ArrowDownUp,
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
@@ -124,6 +126,365 @@ function CoverageBar({ label, value, total, icon }: { label: string; value: numb
           style={{ width: `${pct}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+function PropertyScannerPanel() {
+  const { toast } = useToast();
+  const [scanMaxLeads, setScanMaxLeads] = useState(100);
+  const [reimportCounty, setReimportCounty] = useState("all");
+
+  const { data: gaps, isLoading: gapsLoading } = useQuery<{
+    totalLeads: number;
+    missingYearBuilt: number;
+    defaultYearBuilt: number;
+    missingDeedDate: number;
+    missingSubdivision: number;
+    missingSchoolDistrict: number;
+    missingSecondOwner: number;
+    missingDbaName: number;
+    missingLandAcreage: number;
+    missingEffectiveYearBuilt: number;
+    byCounty: Record<string, { total: number; missingYearBuilt: number; defaultYearBuilt: number }>;
+  }>({ queryKey: ["/api/admin/property-scan/gaps"] });
+
+  const { data: scanStatus, refetch: refetchScan } = useQuery<{
+    status: string;
+    stage: string;
+    processed: number;
+    total: number;
+    found: number;
+    errors: number;
+    startedAt: string | null;
+    completedAt: string | null;
+  }>({
+    queryKey: ["/api/admin/property-scan/status"],
+    refetchInterval: (query) => query.state.data?.status === "running" ? 3000 : false,
+  });
+
+  const { data: reimportStatus, refetch: refetchReimport } = useQuery<{
+    status: string;
+    county: string;
+    processed: number;
+    total: number;
+    updated: number;
+    yearBuiltFixed: number;
+    errors: number;
+    countyStats: Record<string, { total: number; processed: number; updated: number; yearBuiltFixed: number }>;
+  }>({
+    queryKey: ["/api/admin/cad/reimport/status"],
+    refetchInterval: (query) => query.state.data?.status === "running" ? 3000 : false,
+  });
+
+  const { data: scanResults } = useQuery<{
+    total: number;
+    results: Array<{
+      leadId: string;
+      address: string;
+      field: string;
+      oldValue: string | null;
+      newValue: string;
+      source: string;
+      confidence: number;
+    }>;
+  }>({
+    queryKey: ["/api/admin/property-scan/results"],
+    enabled: scanStatus?.status === "completed",
+  });
+
+  const startScanMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/property-scan/run", {
+        maxLeads: scanMaxLeads,
+        stages: ["county_assessor", "cimls", "osm", "web_search"],
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Property scan started" });
+      refetchScan();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/property-scan/gaps"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/property-scan/results"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to start scan", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const startReimportMutation = useMutation({
+    mutationFn: async () => {
+      const counties = reimportCounty === "all"
+        ? ["Dallas", "Tarrant", "Collin", "Denton"]
+        : [reimportCounty];
+      const res = await apiRequest("POST", "/api/admin/cad/reimport", { counties, maxRecords: 5000 });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "CAD reimport started" });
+      refetchReimport();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/property-scan/gaps"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to start reimport", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const scanRunning = scanStatus?.status === "running";
+  const reimportRunning = reimportStatus?.status === "running";
+
+  return (
+    <div className="space-y-6">
+      <Card className="shadow-sm" data-testid="card-data-gaps">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            Data Gap Summary
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/property-scan/gaps"] })} data-testid="btn-refresh-gaps">
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        </CardHeader>
+        <CardContent className="p-6 pt-0 space-y-3">
+          {gapsLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : gaps ? (
+            <>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div className="bg-red-50 dark:bg-red-950/30 rounded-lg p-3 text-center" data-testid="stat-default-year-built">
+                  <div className="text-2xl font-bold text-red-600">{Number(gaps.defaultYearBuilt).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">Defaulted Year Built (1995)</div>
+                </div>
+                <div className="bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 text-center" data-testid="stat-missing-deed-date">
+                  <div className="text-2xl font-bold text-amber-600">{Number(gaps.missingDeedDate).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">Missing Deed Date</div>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-center" data-testid="stat-missing-subdivision">
+                  <div className="text-2xl font-bold text-blue-600">{Number(gaps.missingSubdivision).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">Missing Subdivision</div>
+                </div>
+                <div className="bg-purple-50 dark:bg-purple-950/30 rounded-lg p-3 text-center" data-testid="stat-missing-school">
+                  <div className="text-2xl font-bold text-purple-600">{Number(gaps.missingSchoolDistrict).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">Missing School District</div>
+                </div>
+              </div>
+
+              <CoverageBar label="Year Built (real)" value={Number(gaps.totalLeads) - Number(gaps.defaultYearBuilt) - Number(gaps.missingYearBuilt)} total={Number(gaps.totalLeads)} icon={<Building2 className="w-3.5 h-3.5" />} />
+              <CoverageBar label="Deed Date" value={Number(gaps.totalLeads) - Number(gaps.missingDeedDate)} total={Number(gaps.totalLeads)} icon={<FileText className="w-3.5 h-3.5" />} />
+              <CoverageBar label="Land Acreage" value={Number(gaps.totalLeads) - Number(gaps.missingLandAcreage)} total={Number(gaps.totalLeads)} icon={<MapPin className="w-3.5 h-3.5" />} />
+              <CoverageBar label="DBA Name" value={Number(gaps.totalLeads) - Number(gaps.missingDbaName)} total={Number(gaps.totalLeads)} icon={<Users className="w-3.5 h-3.5" />} />
+              <CoverageBar label="Effective Year Built" value={Number(gaps.totalLeads) - Number(gaps.missingEffectiveYearBuilt)} total={Number(gaps.totalLeads)} icon={<Layers className="w-3.5 h-3.5" />} />
+
+              {Object.keys(gaps.byCounty).length > 0 && (
+                <div className="mt-4 pt-3 border-t">
+                  <div className="text-sm font-medium mb-2">Year Built by County</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(gaps.byCounty).map(([county, stats]) => (
+                      <div key={county} className="flex justify-between bg-muted/30 rounded p-2" data-testid={`county-gap-${county.toLowerCase()}`}>
+                        <span className="font-medium">{county}</span>
+                        <span>
+                          <span className="text-red-500">{stats.defaultYearBuilt}</span> / {stats.total} defaulted
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="shadow-sm" data-testid="card-cad-reimport">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <ArrowDownUp className="w-4 h-4" />
+              CAD Re-Import
+            </CardTitle>
+            {reimportRunning && <Badge variant="secondary" className="animate-pulse">Running</Badge>}
+          </CardHeader>
+          <CardContent className="p-6 pt-0 space-y-4">
+            <p className="text-xs text-muted-foreground">Re-query CAD APIs for existing leads to populate new fields (deed dates, subdivision, school district, etc.) without overwriting existing data.</p>
+
+            <div className="space-y-2">
+              <Label className="text-xs">County</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={reimportCounty}
+                onChange={(e) => setReimportCounty(e.target.value)}
+                disabled={reimportRunning}
+                data-testid="select-reimport-county"
+              >
+                <option value="all">All Counties</option>
+                <option value="Dallas">Dallas (DCAD)</option>
+                <option value="Tarrant">Tarrant (TAD)</option>
+                <option value="Collin">Collin</option>
+                <option value="Denton">Denton</option>
+              </select>
+            </div>
+
+            <Button
+              onClick={() => startReimportMutation.mutate()}
+              disabled={reimportRunning || startReimportMutation.isPending}
+              className="w-full"
+              data-testid="btn-start-reimport"
+            >
+              {reimportRunning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+              {reimportRunning ? "Re-importing..." : "Start CAD Re-Import"}
+            </Button>
+
+            {reimportStatus && reimportStatus.status !== "idle" && (
+              <div className="space-y-2 pt-2 border-t text-xs">
+                <div className="flex justify-between">
+                  <span>Status</span>
+                  <Badge variant={reimportStatus.status === "completed" ? "default" : reimportStatus.status === "running" ? "secondary" : "destructive"}>
+                    {reimportStatus.status}
+                  </Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span>Progress</span>
+                  <span>{reimportStatus.processed} / {reimportStatus.total}</span>
+                </div>
+                {reimportStatus.total > 0 && (
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.round((reimportStatus.processed / reimportStatus.total) * 100)}%` }} />
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Updated</span>
+                  <span className="font-medium text-emerald-600">{reimportStatus.updated}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Year Built Fixed</span>
+                  <span className="font-medium text-blue-600">{reimportStatus.yearBuiltFixed}</span>
+                </div>
+
+                {reimportStatus.countyStats && Object.keys(reimportStatus.countyStats).length > 0 && (
+                  <div className="space-y-1 pt-1 border-t">
+                    {Object.entries(reimportStatus.countyStats).map(([county, stats]) => (
+                      <div key={county} className="flex justify-between bg-muted/30 rounded px-2 py-1">
+                        <span>{county}</span>
+                        <span>{stats.updated} updated, {stats.yearBuiltFixed} yr fixed ({stats.processed}/{stats.total})</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm" data-testid="card-property-scanner">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <ScanSearch className="w-4 h-4" />
+              Web Property Scanner
+            </CardTitle>
+            {scanRunning && <Badge variant="secondary" className="animate-pulse">Running</Badge>}
+          </CardHeader>
+          <CardContent className="p-6 pt-0 space-y-4">
+            <p className="text-xs text-muted-foreground">Search public sources (county assessor sites, CIMLS, OpenStreetMap) for missing property data like year built. Requires SERPER_API_KEY for web search stages.</p>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Max Leads to Scan</Label>
+              <Input
+                type="number"
+                min={10}
+                max={5000}
+                value={scanMaxLeads}
+                onChange={(e) => setScanMaxLeads(parseInt(e.target.value) || 100)}
+                disabled={scanRunning}
+                data-testid="input-scan-max-leads"
+              />
+            </div>
+
+            <Button
+              onClick={() => startScanMutation.mutate()}
+              disabled={scanRunning || startScanMutation.isPending}
+              className="w-full"
+              data-testid="btn-start-scan"
+            >
+              {scanRunning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
+              {scanRunning ? "Scanning..." : "Start Property Scan"}
+            </Button>
+
+            {scanStatus && scanStatus.status !== "idle" && (
+              <div className="space-y-2 pt-2 border-t text-xs">
+                <div className="flex justify-between">
+                  <span>Status</span>
+                  <Badge variant={scanStatus.status === "completed" ? "default" : scanStatus.status === "running" ? "secondary" : "destructive"}>
+                    {scanStatus.status}
+                  </Badge>
+                </div>
+                <div className="flex justify-between">
+                  <span>Stage</span>
+                  <span className="truncate max-w-[200px]">{scanStatus.stage}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Progress</span>
+                  <span>{scanStatus.processed} / {scanStatus.total}</span>
+                </div>
+                {scanStatus.total > 0 && (
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${Math.round((scanStatus.processed / scanStatus.total) * 100)}%` }} />
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Found</span>
+                  <span className="font-medium text-emerald-600">{scanStatus.found}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Errors</span>
+                  <span className="font-medium text-red-500">{scanStatus.errors}</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {scanResults && scanResults.results.length > 0 && (
+        <Card className="shadow-sm" data-testid="card-scan-results">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">Scan Results ({scanResults.total} found)</CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            <div className="max-h-[400px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-background">
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-1">Address</th>
+                    <th className="text-left py-2 px-1">Field</th>
+                    <th className="text-left py-2 px-1">Old</th>
+                    <th className="text-left py-2 px-1">New</th>
+                    <th className="text-left py-2 px-1">Source</th>
+                    <th className="text-right py-2 px-1">Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scanResults.results.slice(0, 100).map((r, i) => (
+                    <tr key={i} className="border-b border-muted/50 hover:bg-muted/30">
+                      <td className="py-1.5 px-1 truncate max-w-[200px]">{r.address}</td>
+                      <td className="py-1.5 px-1">{r.field}</td>
+                      <td className="py-1.5 px-1 text-muted-foreground">{r.oldValue}</td>
+                      <td className="py-1.5 px-1 font-medium text-emerald-600">{r.newValue}</td>
+                      <td className="py-1.5 px-1">
+                        <Badge variant="outline" className="text-[10px]">{r.source}</Badge>
+                      </td>
+                      <td className="py-1.5 px-1 text-right">{r.confidence}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
@@ -2128,6 +2489,7 @@ export default function Admin() {
           <TabsTrigger value="contact-enrichment" className="rounded-lg text-[13px] font-medium" data-testid="tab-contact-enrichment">Contact Enrichment</TabsTrigger>
           <TabsTrigger value="intelligence" className="rounded-lg text-[13px] font-medium" data-testid="tab-intelligence">Intelligence</TabsTrigger>
           <TabsTrigger value="roofing-permits" className="rounded-lg text-[13px] font-medium" data-testid="tab-roofing-permits">Roofing Permits</TabsTrigger>
+          <TabsTrigger value="property-scanner" className="rounded-lg text-[13px] font-medium" data-testid="tab-property-scanner">Property Scanner</TabsTrigger>
           <TabsTrigger value="system" className="rounded-lg text-[13px] font-medium" data-testid="tab-system">System</TabsTrigger>
         </TabsList>
 
@@ -3886,6 +4248,10 @@ export default function Admin() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="property-scanner" className="space-y-6">
+          <PropertyScannerPanel />
         </TabsContent>
 
         <TabsContent value="system" className="space-y-6">

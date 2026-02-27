@@ -35,6 +35,16 @@ interface DcadFeature {
     PSTLSTATE: string | null;
     STRCLASS: string | null;
     DBA1: string | null;
+    PRVASSDVAL: number | null;
+    CNVYNAME: string | null;
+    SCHLDSCRP: string | null;
+    CVTTXDSCRP: string | null;
+    STATEDAREA: number | null;
+    PRPRTYDSCRP: string | null;
+    LASTUPDATE: number | null;
+    REVALYR: number | null;
+    MAPGRID: string | null;
+    "Shape.STArea()": number | null;
   };
   geometry?: {
     rings?: number[][][];
@@ -204,6 +214,8 @@ async function fetchDcadPage(offset: number, minImpValue: number): Promise<{ fea
     "CNTASSDVAL", "USECD", "USEDSCRP", "CLASSDSCRP", "FLOORCOUNT",
     "IMPVALUE", "LNDVALUE", "RESYRBLT", "PSTLZIP5", "PSTLADDRESS",
     "PSTLCITY", "PSTLSTATE", "STRCLASS", "DBA1",
+    "PRVASSDVAL", "CNVYNAME", "SCHLDSCRP", "CVTTXDSCRP", "STATEDAREA",
+    "PRPRTYDSCRP", "LASTUPDATE", "REVALYR", "MAPGRID", "Shape.STArea()",
   ].join(",");
 
   const params = new URLSearchParams({
@@ -324,7 +336,10 @@ export async function importDcadProperties(
           const landValue = a.LNDVALUE || 0;
           const totalValue = a.CNTASSDVAL || (impValue + landValue);
           const sqft = a.BLDGAREA || estimateSqft(impValue);
-          const yearBuilt = a.RESYRBLT || 1995;
+          const yearBuilt = a.RESYRBLT && a.RESYRBLT > 1800 ? a.RESYRBLT
+            : a.REVALYR && a.REVALYR > 1800 ? a.REVALYR
+            : 1995;
+          const effectiveYearBuilt = a.REVALYR && a.REVALYR > 1800 ? a.REVALYR : undefined;
           const zoning = inferZoning(classDesc);
           const llcName = ownerType === "LLC" ? a.OWNERNME1 : undefined;
 
@@ -333,6 +348,8 @@ export async function importDcadProperties(
           const ownerAddress = a.PSTLADDRESS
             ? `${a.PSTLADDRESS}, ${a.PSTLCITY || ""} ${a.PSTLSTATE || "TX"} ${a.PSTLZIP5 || ""}`
             : undefined;
+
+          const cadLastUpdated = a.LASTUPDATE ? new Date(a.LASTUPDATE) : undefined;
 
           const leadData: InsertLead = {
             marketId,
@@ -356,6 +373,17 @@ export async function importDcadProperties(
             improvementValue: impValue || undefined,
             landValue: landValue || undefined,
             totalValue: totalValue || undefined,
+            previousMarketValue: a.PRVASSDVAL || undefined,
+            subdivisionName: a.CNVYNAME || undefined,
+            dbaName: a.DBA1 || undefined,
+            schoolDistrict: a.SCHLDSCRP || undefined,
+            taxDistrict: a.CVTTXDSCRP || undefined,
+            secondOwner: a.OWNERNME2 || undefined,
+            landAcreage: a.STATEDAREA || undefined,
+            parcelAreaSqft: a["Shape.STArea()"] || undefined,
+            propertyUseDescription: a.PRPRTYDSCRP || undefined,
+            effectiveYearBuilt,
+            cadLastUpdated: cadLastUpdated && !isNaN(cadLastUpdated.getTime()) ? cadLastUpdated : undefined,
             sourceType: "dcad_api",
             sourceId,
             leadScore: 0,

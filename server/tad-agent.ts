@@ -29,8 +29,12 @@ interface TadFeature {
     DESCR: string | null;
     PARCELTYPE: number | null;
     DEED_DATE: number | null;
+    DEED_BOOK: string | null;
+    DEED_PAGE: string | null;
     INSTRUMENT_NO: string | null;
     SubdivisionName: string | null;
+    SCHOOL: string | null;
+    EXEMPTION_: string | null;
   };
   geometry?: {
     rings?: number[][][];
@@ -168,7 +172,8 @@ async function fetchTadPage(offset: number, minImprValue: number): Promise<{ fea
     "OWNER_CITY", "OWNER_ZIP", "SITUS_ADDR", "CITY", "ZIPCODE",
     "STATE", "YEAR_BUILT", "LIVING_ARE", "LAND_VALUE", "IMPR_VALUE",
     "TOTAL_VALU", "LAND_SQFT", "LAND_ACRES", "DESCR", "PARCELTYPE",
-    "DEED_DATE", "INSTRUMENT_NO", "SubdivisionName",
+    "DEED_DATE", "DEED_BOOK", "DEED_PAGE", "INSTRUMENT_NO",
+    "SubdivisionName", "SCHOOL", "EXEMPTION_",
   ].join(",");
 
   const params = new URLSearchParams({
@@ -283,7 +288,7 @@ export async function importTadProperties(
           const landValue = a.LAND_VALUE || 0;
           const totalValue = a.TOTAL_VALU || (imprValue + landValue);
           const sqft = a.LIVING_ARE || (imprValue > 0 ? Math.round(imprValue / 120) : 5000);
-          const yearBuilt = a.YEAR_BUILT || 1995;
+          const yearBuilt = (a.YEAR_BUILT && a.YEAR_BUILT > 0) ? a.YEAR_BUILT : null;
           const zoning = inferZoningFromDescription(a.DESCR, a.PARCELTYPE);
           const llcName = ownerType === "LLC" ? a.OWNER_NAME : undefined;
 
@@ -304,6 +309,14 @@ export async function importTadProperties(
             : undefined;
 
           const deedDate = a.DEED_DATE ? new Date(a.DEED_DATE).toISOString().slice(0, 10) : undefined;
+
+          const deedInstrumentParts: string[] = [];
+          if (a.INSTRUMENT_NO) deedInstrumentParts.push(a.INSTRUMENT_NO);
+          else {
+            if (a.DEED_BOOK) deedInstrumentParts.push(`Book ${a.DEED_BOOK}`);
+            if (a.DEED_PAGE) deedInstrumentParts.push(`Page ${a.DEED_PAGE}`);
+          }
+          const deedInstrument = deedInstrumentParts.length > 0 ? deedInstrumentParts.join(", ") : undefined;
 
           const leadData: InsertLead = {
             marketId,
@@ -328,6 +341,14 @@ export async function importTadProperties(
             landValue: landValue || undefined,
             totalValue: totalValue || undefined,
             lastDeedDate: deedDate,
+            deedInstrument,
+            landAcreage: (a.LAND_ACRES && a.LAND_ACRES > 0) ? a.LAND_ACRES : undefined,
+            landSqft: (a.LAND_SQFT && a.LAND_SQFT > 0) ? a.LAND_SQFT : undefined,
+            subdivisionName: a.SubdivisionName?.trim() || undefined,
+            schoolDistrict: a.SCHOOL?.trim() || undefined,
+            taxDistrict: a.CITY?.trim() || undefined,
+            taxExemptions: a.EXEMPTION_?.trim() || undefined,
+            propertyUseDescription: a.DESCR?.trim() || undefined,
             sourceType: "tad_api",
             sourceId,
             leadScore: 0,
