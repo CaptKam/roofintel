@@ -501,7 +501,8 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid update data", errors: parsed.error.flatten() });
       }
-      const updated = await storage.updateLead(req.params.id, parsed.data);
+      const { dualWriteUpdate } = await import("./dual-write");
+      const updated = await dualWriteUpdate(req.params.id, parsed.data, "api_patch");
       if (!updated) {
         return res.status(404).json({ message: "Lead not found" });
       }
@@ -4267,6 +4268,130 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get summary", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Data Normalization Migration
+  // ============================================================
+
+  app.post("/api/admin/migrate/normalize", async (_req, res) => {
+    try {
+      const { runNormalizationMigration, migrationProgress } = await import("./migrations/normalize-leads");
+      if (migrationProgress.running) {
+        return res.status(409).json({ message: "Migration already running", progress: migrationProgress });
+      }
+      res.json({ message: "Normalization migration started" });
+      runNormalizationMigration().catch(err => console.error("[migration] Fatal:", err.message));
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start migration", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/migrate/status", async (_req, res) => {
+    try {
+      const { migrationProgress } = await import("./migrations/normalize-leads");
+      res.json(migrationProgress);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get migration status", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/normalize/stats", async (_req, res) => {
+    try {
+      const result = (await db.execute(sql`
+        SELECT
+          (SELECT COUNT(*) FROM property_roof) as roof,
+          (SELECT COUNT(*) FROM property_owner) as owner,
+          (SELECT COUNT(*) FROM property_risk_signals) as risk_signals,
+          (SELECT COUNT(*) FROM property_contacts) as contacts,
+          (SELECT COUNT(*) FROM property_intelligence) as intelligence,
+          (SELECT COUNT(*) FROM leads) as leads
+      `)) as any;
+      const row = result.rows[0];
+      res.json({
+        leads: Number(row.leads),
+        satellite: {
+          property_roof: Number(row.roof),
+          property_owner: Number(row.owner),
+          property_risk_signals: Number(row.risk_signals),
+          property_contacts: Number(row.contacts),
+          property_intelligence: Number(row.intelligence),
+        },
+        coverage: {
+          property_roof: `${Math.round((Number(row.roof) / Number(row.leads)) * 100)}%`,
+          property_owner: `${Math.round((Number(row.owner) / Number(row.leads)) * 100)}%`,
+          property_risk_signals: `${Math.round((Number(row.risk_signals) / Number(row.leads)) * 100)}%`,
+          property_contacts: `${Math.round((Number(row.contacts) / Number(row.leads)) * 100)}%`,
+          property_intelligence: `${Math.round((Number(row.intelligence) / Number(row.leads)) * 100)}%`,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get normalize stats", error: error.message });
+    }
+  });
+
+  // ============================================================
+  // Market Readiness & Data Quality
+  // ============================================================
+
+  app.get("/api/markets/:id/readiness", async (req, res) => {
+    try {
+      const { computeMarketReadiness } = await import("./data-quality-metrics");
+      const readiness = await computeMarketReadiness(req.params.id);
+      res.json(readiness);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to compute market readiness", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/quality/snapshot", async (req, res) => {
+    try {
+      const { snapshotQualityMetrics } = await import("./data-quality-metrics");
+      const marketId = req.body.marketId;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId required" });
+      }
+      await snapshotQualityMetrics(marketId);
+      res.json({ message: "Quality metrics snapshot stored" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to snapshot quality metrics", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/quality/history", async (req, res) => {
+    try {
+      const marketId = req.query.marketId as string;
+      const metricName = req.query.metric as string;
+      let query;
+      if (marketId && metricName) {
+        query = sql`SELECT * FROM data_quality_metrics WHERE market_id = ${marketId} AND metric_name = ${metricName} ORDER BY measured_at DESC LIMIT 100`;
+      } else if (marketId) {
+        query = sql`SELECT * FROM data_quality_metrics WHERE market_id = ${marketId} ORDER BY measured_at DESC LIMIT 200`;
+      } else {
+        query = sql`SELECT * FROM data_quality_metrics ORDER BY measured_at DESC LIMIT 200`;
+      }
+      const result = (await db.execute(query)) as any;
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get quality history", error: error.message });
+    }
+  });
+
+  // Satellite table endpoints for individual properties
+  app.get("/api/leads/:id/satellite", async (req, res) => {
+    try {
+      const id = req.params.id;
+      const [roof, owner, risk, contacts, intel] = await Promise.all([
+        storage.getPropertyRoof(id),
+        storage.getPropertyOwner(id),
+        storage.getPropertyRiskSignals(id),
+        storage.getPropertyContacts(id),
+        storage.getPropertyIntelligence(id),
+      ]);
+      res.json({ propertyId: id, roof, owner, riskSignals: risk, contacts, intelligence: intel });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get satellite data", error: error.message });
     }
   });
 

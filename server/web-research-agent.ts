@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { dualWriteUpdate } from "./dual-write";
 import type { Lead } from "@shared/schema";
 import * as cheerio from "cheerio";
 import { isPersonName } from "./contact-validation";
@@ -513,11 +514,11 @@ export async function runWebResearch(
         if (result.contactEmail) updates.contactEmail = result.contactEmail;
         if (result.contactSource) updates.contactSource = result.contactSource;
 
-        await storage.updateLead(lead.id, updates as any);
+        await dualWriteUpdate(lead.id, updates as any);
         found++;
         console.log(`[Web Research] Found: ${result.businessName || lead.address} - ${result.contactName || "no staff"} (${result.contactSource})`);
       } else {
-        await storage.updateLead(lead.id, { webResearchedAt: new Date() } as any);
+        await dualWriteUpdate(lead.id, { webResearchedAt: new Date() } as any);
         skipped++;
       }
 
@@ -529,7 +530,7 @@ export async function runWebResearch(
 
     } catch (err: any) {
       console.error(`[Web Research] Error for "${lead.address}":`, err.message);
-      await storage.updateLead(lead.id, { webResearchedAt: new Date() } as any);
+      await dualWriteUpdate(lead.id, { webResearchedAt: new Date() } as any);
       errors++;
 
       if (err.message?.includes("429") || err.message?.includes("rate")) {

@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { dualWriteUpdate } from "./dual-write";
 import type { Lead, InsertIntelligenceClaim } from "@shared/schema";
 import * as cheerio from "cheerio";
 import { runSkipTraceAgent } from "./skip-trace-agent";
@@ -1679,7 +1680,7 @@ export async function runOwnerIntelligenceBatch(
 
       if (result.managingMember || result.dossier.realPeople.length > 0) {
         for (const lead of ownerLeads) {
-          await storage.updateLead(lead.id, {
+          await dualWriteUpdate(lead.id, {
             managingMember: result.managingMember,
             managingMemberTitle: result.managingMemberTitle,
             managingMemberPhone: result.managingMemberPhone,
@@ -1696,7 +1697,7 @@ export async function runOwnerIntelligenceBatch(
         enriched += ownerLeads.length;
       } else {
         for (const lead of ownerLeads) {
-          await storage.updateLead(lead.id, {
+          await dualWriteUpdate(lead.id, {
             ownerIntelligence: result.dossier,
             intelligenceScore: 0,
             intelligenceSources: [],
@@ -1715,7 +1716,7 @@ export async function runOwnerIntelligenceBatch(
     } catch (err: any) {
       console.error(`[Intelligence] Error for "${sampleLead.ownerName}":`, err.message);
       for (const lead of ownerLeads) {
-        await storage.updateLead(lead.id, { intelligenceAt: new Date() } as any);
+        await dualWriteUpdate(lead.id, { intelligenceAt: new Date() } as any);
       }
       errors += ownerLeads.length;
     }

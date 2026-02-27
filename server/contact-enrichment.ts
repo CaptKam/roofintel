@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { dualWriteUpdate } from "./dual-write";
 import type { Lead } from "@shared/schema";
 import { recordEvidence } from "./evidence-recorder";
 
@@ -162,7 +163,7 @@ export async function enrichLeadContacts(
 
       if (records.length === 0) {
         for (const lead of ownerLeads) {
-          await storage.updateLead(lead.id, { contactEnrichedAt: new Date() } as any);
+          await dualWriteUpdate(lead.id, { contactEnrichedAt: new Date() } as any, "contact_enrichment");
         }
         skipped += ownerLeads.length;
         continue;
@@ -214,7 +215,7 @@ export async function enrichLeadContacts(
           delete leadUpdates.ownerPhone;
           delete leadUpdates.phoneSource;
         }
-        await storage.updateLead(lead.id, leadUpdates);
+        await dualWriteUpdate(lead.id, leadUpdates, "contact_enrichment");
 
         if (outletPhone) {
           try {

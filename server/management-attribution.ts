@@ -247,6 +247,20 @@ export async function runManagementAttribution(marketId?: string, filterLeadIds?
     if (result.managementEmail) updates.managementEmail = result.managementEmail;
 
     await db.update(leads).set(updates).where(eq(leads.id, lead.id));
+    try {
+      const { storage } = await import("./storage");
+      await storage.upsertPropertyContacts({
+        propertyId: lead.id,
+        marketId: lead.marketId,
+        managementCompany: updates.managementCompany || undefined,
+        managementContact: updates.managementContact || undefined,
+        managementPhone: updates.managementPhone || undefined,
+        managementEmail: updates.managementEmail || undefined,
+        managementEvidence: updates.managementEvidence || undefined,
+        managementAttributedAt: updates.managementAttributedAt || undefined,
+        source: "management_attribution",
+      });
+    } catch {}
     attributed++;
   }
 

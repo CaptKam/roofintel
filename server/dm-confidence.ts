@@ -362,6 +362,16 @@ export async function runConfidenceScoring(marketId?: string, filterLeadIds?: st
       dmConfidenceComponents: result.components,
       dmReviewStatus: newStatus,
     } as any).where(eq(leads.id, lead.id));
+    try {
+      const { storage } = await import("./storage");
+      await storage.upsertPropertyContacts({
+        propertyId: lead.id, marketId: lead.marketId,
+        dmConfidenceScore: result.overallScore,
+        dmConfidenceComponents: result.components as any,
+        dmReviewStatus: newStatus,
+        source: "dm_confidence",
+      });
+    } catch {}
   }
 
   return {
@@ -447,6 +457,16 @@ export async function reviewDecisionMaker(leadId: string, action: string, review
   }
 
   await db.update(leads).set(updates).where(eq(leads.id, lead.id));
+  try {
+    const { storage } = await import("./storage");
+    await storage.upsertPropertyContacts({
+      propertyId: lead.id, marketId: lead.marketId,
+      dmConfidenceScore: updates.dmConfidenceScore,
+      dmReviewStatus: updates.dmReviewStatus,
+      contactRole: updates.contactRole,
+      source: "dm_review",
+    });
+  } catch {}
 
   return { success: true, action, leadId };
 }

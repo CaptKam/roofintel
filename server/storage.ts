@@ -5,6 +5,7 @@ import {
   leads, hailEvents, markets, dataSources, importRuns, jobs,
   stormAlertConfigs, stormRuns, alertHistory, responseQueue, intelligenceClaims,
   marketDataSources,
+  propertyRoof, propertyOwner, propertyRiskSignals, propertyContacts, propertyIntelligence,
   type Lead, type InsertLead, type HailEvent, type InsertHailEvent,
   type LeadFilter, type Market, type InsertMarket,
   type MarketDataSource, type InsertMarketDataSource,
@@ -16,6 +17,11 @@ import {
   type AlertHistoryRecord, type InsertAlertHistory,
   type ResponseQueueItem, type InsertResponseQueue,
   type IntelligenceClaim, type InsertIntelligenceClaim,
+  type PropertyRoof, type InsertPropertyRoof,
+  type PropertyOwner, type InsertPropertyOwner,
+  type PropertyRiskSignals, type InsertPropertyRiskSignals,
+  type PropertyContacts, type InsertPropertyContacts,
+  type PropertyIntelligence, type InsertPropertyIntelligence,
 } from "@shared/schema";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -95,6 +101,17 @@ export interface IStorage {
   getMarketDataSourceById(id: string): Promise<MarketDataSource | undefined>;
   createMarketDataSource(ds: InsertMarketDataSource): Promise<MarketDataSource>;
   updateMarketDataSource(id: string, updates: Partial<MarketDataSource>): Promise<MarketDataSource | undefined>;
+
+  getPropertyRoof(propertyId: string): Promise<PropertyRoof | undefined>;
+  upsertPropertyRoof(data: InsertPropertyRoof): Promise<PropertyRoof>;
+  getPropertyOwner(propertyId: string): Promise<PropertyOwner | undefined>;
+  upsertPropertyOwner(data: InsertPropertyOwner): Promise<PropertyOwner>;
+  getPropertyRiskSignals(propertyId: string): Promise<PropertyRiskSignals | undefined>;
+  upsertPropertyRiskSignals(data: InsertPropertyRiskSignals): Promise<PropertyRiskSignals>;
+  getPropertyContacts(propertyId: string): Promise<PropertyContacts | undefined>;
+  upsertPropertyContacts(data: InsertPropertyContacts): Promise<PropertyContacts>;
+  getPropertyIntelligence(propertyId: string): Promise<PropertyIntelligence | undefined>;
+  upsertPropertyIntelligence(data: InsertPropertyIntelligence): Promise<PropertyIntelligence>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -610,6 +627,224 @@ export class DatabaseStorage implements IStorage {
     const { id: _id, createdAt: _ca, ...safeUpdates } = updates as any;
     const result = await db.update(marketDataSources).set(safeUpdates).where(eq(marketDataSources.id, id)).returning();
     return result[0];
+  }
+
+  async getPropertyRoof(propertyId: string): Promise<PropertyRoof | undefined> {
+    const result = await db.select().from(propertyRoof).where(eq(propertyRoof.propertyId, propertyId));
+    return result[0];
+  }
+
+  async upsertPropertyRoof(data: InsertPropertyRoof): Promise<PropertyRoof> {
+    const result = await db.execute(sql`
+      INSERT INTO property_roof (property_id, market_id, roof_type, roof_material, roof_last_replaced,
+        estimated_roof_area, last_roofing_permit_date, last_roofing_contractor, last_roofing_permit_type,
+        claim_window_open, roof_risk_index, roof_risk_breakdown, source, updated_at)
+      VALUES (${data.propertyId}, ${data.marketId ?? null}, ${data.roofType ?? null}, ${data.roofMaterial ?? null},
+        ${data.roofLastReplaced ?? null}, ${data.estimatedRoofArea ?? null}, ${data.lastRoofingPermitDate ?? null},
+        ${data.lastRoofingContractor ?? null}, ${data.lastRoofingPermitType ?? null}, ${data.claimWindowOpen ?? null},
+        ${data.roofRiskIndex ?? null}, ${data.roofRiskBreakdown ? JSON.stringify(data.roofRiskBreakdown) : null}::jsonb,
+        ${data.source ?? null}, NOW())
+      ON CONFLICT (property_id) DO UPDATE SET
+        market_id = COALESCE(EXCLUDED.market_id, property_roof.market_id),
+        roof_type = COALESCE(EXCLUDED.roof_type, property_roof.roof_type),
+        roof_material = COALESCE(EXCLUDED.roof_material, property_roof.roof_material),
+        roof_last_replaced = COALESCE(EXCLUDED.roof_last_replaced, property_roof.roof_last_replaced),
+        estimated_roof_area = COALESCE(EXCLUDED.estimated_roof_area, property_roof.estimated_roof_area),
+        last_roofing_permit_date = COALESCE(EXCLUDED.last_roofing_permit_date, property_roof.last_roofing_permit_date),
+        last_roofing_contractor = COALESCE(EXCLUDED.last_roofing_contractor, property_roof.last_roofing_contractor),
+        last_roofing_permit_type = COALESCE(EXCLUDED.last_roofing_permit_type, property_roof.last_roofing_permit_type),
+        claim_window_open = COALESCE(EXCLUDED.claim_window_open, property_roof.claim_window_open),
+        roof_risk_index = COALESCE(EXCLUDED.roof_risk_index, property_roof.roof_risk_index),
+        roof_risk_breakdown = COALESCE(EXCLUDED.roof_risk_breakdown, property_roof.roof_risk_breakdown),
+        source = COALESCE(EXCLUDED.source, property_roof.source),
+        updated_at = NOW()
+      RETURNING *
+    `) as any;
+    return result.rows[0];
+  }
+
+  async getPropertyOwner(propertyId: string): Promise<PropertyOwner | undefined> {
+    const result = await db.select().from(propertyOwner).where(eq(propertyOwner.propertyId, propertyId));
+    return result[0];
+  }
+
+  async upsertPropertyOwner(data: InsertPropertyOwner): Promise<PropertyOwner> {
+    const result = await db.execute(sql`
+      INSERT INTO property_owner (property_id, market_id, owner_name, owner_type, owner_address,
+        owner_phone, owner_email, phone_source, phone_enriched_at, llc_name, registered_agent,
+        officer_name, officer_title, sos_file_number, taxpayer_id, managing_member, managing_member_title,
+        managing_member_phone, managing_member_email, llc_chain, ownership_flag, ownership_structure,
+        ownership_signals, normalized_owner_id, source, updated_at)
+      VALUES (${data.propertyId}, ${data.marketId ?? null}, ${data.ownerName}, ${data.ownerType},
+        ${data.ownerAddress ?? null}, ${data.ownerPhone ?? null}, ${data.ownerEmail ?? null},
+        ${data.phoneSource ?? null}, ${data.phoneEnrichedAt ?? null}, ${data.llcName ?? null},
+        ${data.registeredAgent ?? null}, ${data.officerName ?? null}, ${data.officerTitle ?? null},
+        ${data.sosFileNumber ?? null}, ${data.taxpayerId ?? null}, ${data.managingMember ?? null},
+        ${data.managingMemberTitle ?? null}, ${data.managingMemberPhone ?? null}, ${data.managingMemberEmail ?? null},
+        ${data.llcChain ? JSON.stringify(data.llcChain) : null}::jsonb, ${data.ownershipFlag ?? null},
+        ${data.ownershipStructure ?? null}, ${data.ownershipSignals ? JSON.stringify(data.ownershipSignals) : null}::jsonb,
+        ${data.normalizedOwnerId ?? null}, ${data.source ?? null}, NOW())
+      ON CONFLICT (property_id) DO UPDATE SET
+        market_id = COALESCE(EXCLUDED.market_id, property_owner.market_id),
+        owner_name = COALESCE(EXCLUDED.owner_name, property_owner.owner_name),
+        owner_type = COALESCE(EXCLUDED.owner_type, property_owner.owner_type),
+        owner_address = COALESCE(EXCLUDED.owner_address, property_owner.owner_address),
+        owner_phone = COALESCE(EXCLUDED.owner_phone, property_owner.owner_phone),
+        owner_email = COALESCE(EXCLUDED.owner_email, property_owner.owner_email),
+        phone_source = COALESCE(EXCLUDED.phone_source, property_owner.phone_source),
+        phone_enriched_at = COALESCE(EXCLUDED.phone_enriched_at, property_owner.phone_enriched_at),
+        llc_name = COALESCE(EXCLUDED.llc_name, property_owner.llc_name),
+        registered_agent = COALESCE(EXCLUDED.registered_agent, property_owner.registered_agent),
+        officer_name = COALESCE(EXCLUDED.officer_name, property_owner.officer_name),
+        officer_title = COALESCE(EXCLUDED.officer_title, property_owner.officer_title),
+        sos_file_number = COALESCE(EXCLUDED.sos_file_number, property_owner.sos_file_number),
+        taxpayer_id = COALESCE(EXCLUDED.taxpayer_id, property_owner.taxpayer_id),
+        managing_member = COALESCE(EXCLUDED.managing_member, property_owner.managing_member),
+        managing_member_title = COALESCE(EXCLUDED.managing_member_title, property_owner.managing_member_title),
+        managing_member_phone = COALESCE(EXCLUDED.managing_member_phone, property_owner.managing_member_phone),
+        managing_member_email = COALESCE(EXCLUDED.managing_member_email, property_owner.managing_member_email),
+        llc_chain = COALESCE(EXCLUDED.llc_chain, property_owner.llc_chain),
+        ownership_flag = COALESCE(EXCLUDED.ownership_flag, property_owner.ownership_flag),
+        ownership_structure = COALESCE(EXCLUDED.ownership_structure, property_owner.ownership_structure),
+        ownership_signals = COALESCE(EXCLUDED.ownership_signals, property_owner.ownership_signals),
+        normalized_owner_id = COALESCE(EXCLUDED.normalized_owner_id, property_owner.normalized_owner_id),
+        source = COALESCE(EXCLUDED.source, property_owner.source),
+        updated_at = NOW()
+      RETURNING *
+    `) as any;
+    return result.rows[0];
+  }
+
+  async getPropertyRiskSignals(propertyId: string): Promise<PropertyRiskSignals | undefined> {
+    const result = await db.select().from(propertyRiskSignals).where(eq(propertyRiskSignals.propertyId, propertyId));
+    return result[0];
+  }
+
+  async upsertPropertyRiskSignals(data: InsertPropertyRiskSignals): Promise<PropertyRiskSignals> {
+    const result = await db.execute(sql`
+      INSERT INTO property_risk_signals (property_id, market_id, hail_events, last_hail_date, last_hail_size,
+        flood_zone, flood_zone_subtype, is_flood_high_risk, lien_count, foreclosure_flag, tax_delinquent,
+        violation_count, open_violations, last_violation_date, permit_count, last_permit_date,
+        permit_contractors, distress_score, last_deed_date, source, updated_at)
+      VALUES (${data.propertyId}, ${data.marketId ?? null}, ${data.hailEvents ?? 0}, ${data.lastHailDate ?? null},
+        ${data.lastHailSize ?? null}, ${data.floodZone ?? null}, ${data.floodZoneSubtype ?? null},
+        ${data.isFloodHighRisk ?? false}, ${data.lienCount ?? 0}, ${data.foreclosureFlag ?? false},
+        ${data.taxDelinquent ?? false}, ${data.violationCount ?? 0}, ${data.openViolations ?? 0},
+        ${data.lastViolationDate ?? null}, ${data.permitCount ?? 0}, ${data.lastPermitDate ?? null},
+        ${data.permitContractors ? JSON.stringify(data.permitContractors) : null}::jsonb,
+        ${data.distressScore ?? 0}, ${data.lastDeedDate ?? null}, ${data.source ?? null}, NOW())
+      ON CONFLICT (property_id) DO UPDATE SET
+        market_id = COALESCE(EXCLUDED.market_id, property_risk_signals.market_id),
+        hail_events = COALESCE(EXCLUDED.hail_events, property_risk_signals.hail_events),
+        last_hail_date = COALESCE(EXCLUDED.last_hail_date, property_risk_signals.last_hail_date),
+        last_hail_size = COALESCE(EXCLUDED.last_hail_size, property_risk_signals.last_hail_size),
+        flood_zone = COALESCE(EXCLUDED.flood_zone, property_risk_signals.flood_zone),
+        flood_zone_subtype = COALESCE(EXCLUDED.flood_zone_subtype, property_risk_signals.flood_zone_subtype),
+        is_flood_high_risk = COALESCE(EXCLUDED.is_flood_high_risk, property_risk_signals.is_flood_high_risk),
+        lien_count = COALESCE(EXCLUDED.lien_count, property_risk_signals.lien_count),
+        foreclosure_flag = COALESCE(EXCLUDED.foreclosure_flag, property_risk_signals.foreclosure_flag),
+        tax_delinquent = COALESCE(EXCLUDED.tax_delinquent, property_risk_signals.tax_delinquent),
+        violation_count = COALESCE(EXCLUDED.violation_count, property_risk_signals.violation_count),
+        open_violations = COALESCE(EXCLUDED.open_violations, property_risk_signals.open_violations),
+        last_violation_date = COALESCE(EXCLUDED.last_violation_date, property_risk_signals.last_violation_date),
+        permit_count = COALESCE(EXCLUDED.permit_count, property_risk_signals.permit_count),
+        last_permit_date = COALESCE(EXCLUDED.last_permit_date, property_risk_signals.last_permit_date),
+        permit_contractors = COALESCE(EXCLUDED.permit_contractors, property_risk_signals.permit_contractors),
+        distress_score = COALESCE(EXCLUDED.distress_score, property_risk_signals.distress_score),
+        last_deed_date = COALESCE(EXCLUDED.last_deed_date, property_risk_signals.last_deed_date),
+        source = COALESCE(EXCLUDED.source, property_risk_signals.source),
+        updated_at = NOW()
+      RETURNING *
+    `) as any;
+    return result.rows[0];
+  }
+
+  async getPropertyContacts(propertyId: string): Promise<PropertyContacts | undefined> {
+    const result = await db.select().from(propertyContacts).where(eq(propertyContacts.propertyId, propertyId));
+    return result[0];
+  }
+
+  async upsertPropertyContacts(data: InsertPropertyContacts): Promise<PropertyContacts> {
+    const result = await db.execute(sql`
+      INSERT INTO property_contacts (property_id, market_id, contact_name, contact_title, contact_phone,
+        contact_email, contact_source, contact_role, role_confidence, decision_maker_rank, role_evidence,
+        dm_confidence_score, dm_confidence_components, dm_review_status, decision_makers,
+        management_company, management_contact, management_phone, management_email,
+        management_evidence, management_attributed_at, reverse_address_type, reverse_address_businesses,
+        reverse_address_enriched_at, source, updated_at)
+      VALUES (${data.propertyId}, ${data.marketId ?? null}, ${data.contactName ?? null}, ${data.contactTitle ?? null},
+        ${data.contactPhone ?? null}, ${data.contactEmail ?? null}, ${data.contactSource ?? null},
+        ${data.contactRole ?? null}, ${data.roleConfidence ?? null}, ${data.decisionMakerRank ?? null},
+        ${data.roleEvidence ? JSON.stringify(data.roleEvidence) : null}::jsonb,
+        ${data.dmConfidenceScore ?? null}, ${data.dmConfidenceComponents ? JSON.stringify(data.dmConfidenceComponents) : null}::jsonb,
+        ${data.dmReviewStatus ?? 'unreviewed'}, ${data.decisionMakers ? JSON.stringify(data.decisionMakers) : null}::jsonb,
+        ${data.managementCompany ?? null}, ${data.managementContact ?? null}, ${data.managementPhone ?? null},
+        ${data.managementEmail ?? null}, ${data.managementEvidence ? JSON.stringify(data.managementEvidence) : null}::jsonb,
+        ${data.managementAttributedAt ?? null}, ${data.reverseAddressType ?? null},
+        ${data.reverseAddressBusinesses ? JSON.stringify(data.reverseAddressBusinesses) : null}::jsonb,
+        ${data.reverseAddressEnrichedAt ?? null}, ${data.source ?? null}, NOW())
+      ON CONFLICT (property_id) DO UPDATE SET
+        market_id = COALESCE(EXCLUDED.market_id, property_contacts.market_id),
+        contact_name = COALESCE(EXCLUDED.contact_name, property_contacts.contact_name),
+        contact_title = COALESCE(EXCLUDED.contact_title, property_contacts.contact_title),
+        contact_phone = COALESCE(EXCLUDED.contact_phone, property_contacts.contact_phone),
+        contact_email = COALESCE(EXCLUDED.contact_email, property_contacts.contact_email),
+        contact_source = COALESCE(EXCLUDED.contact_source, property_contacts.contact_source),
+        contact_role = COALESCE(EXCLUDED.contact_role, property_contacts.contact_role),
+        role_confidence = COALESCE(EXCLUDED.role_confidence, property_contacts.role_confidence),
+        decision_maker_rank = COALESCE(EXCLUDED.decision_maker_rank, property_contacts.decision_maker_rank),
+        role_evidence = COALESCE(EXCLUDED.role_evidence, property_contacts.role_evidence),
+        dm_confidence_score = COALESCE(EXCLUDED.dm_confidence_score, property_contacts.dm_confidence_score),
+        dm_confidence_components = COALESCE(EXCLUDED.dm_confidence_components, property_contacts.dm_confidence_components),
+        dm_review_status = COALESCE(EXCLUDED.dm_review_status, property_contacts.dm_review_status),
+        decision_makers = COALESCE(EXCLUDED.decision_makers, property_contacts.decision_makers),
+        management_company = COALESCE(EXCLUDED.management_company, property_contacts.management_company),
+        management_contact = COALESCE(EXCLUDED.management_contact, property_contacts.management_contact),
+        management_phone = COALESCE(EXCLUDED.management_phone, property_contacts.management_phone),
+        management_email = COALESCE(EXCLUDED.management_email, property_contacts.management_email),
+        management_evidence = COALESCE(EXCLUDED.management_evidence, property_contacts.management_evidence),
+        management_attributed_at = COALESCE(EXCLUDED.management_attributed_at, property_contacts.management_attributed_at),
+        reverse_address_type = COALESCE(EXCLUDED.reverse_address_type, property_contacts.reverse_address_type),
+        reverse_address_businesses = COALESCE(EXCLUDED.reverse_address_businesses, property_contacts.reverse_address_businesses),
+        reverse_address_enriched_at = COALESCE(EXCLUDED.reverse_address_enriched_at, property_contacts.reverse_address_enriched_at),
+        source = COALESCE(EXCLUDED.source, property_contacts.source),
+        updated_at = NOW()
+      RETURNING *
+    `) as any;
+    return result.rows[0];
+  }
+
+  async getPropertyIntelligence(propertyId: string): Promise<PropertyIntelligence | undefined> {
+    const result = await db.select().from(propertyIntelligence).where(eq(propertyIntelligence.propertyId, propertyId));
+    return result[0];
+  }
+
+  async upsertPropertyIntelligence(data: InsertPropertyIntelligence): Promise<PropertyIntelligence> {
+    const result = await db.execute(sql`
+      INSERT INTO property_intelligence (property_id, market_id, owner_intelligence, intelligence_score,
+        intelligence_sources, building_contacts, intelligence_at, business_name, business_website,
+        web_researched_at, source, updated_at)
+      VALUES (${data.propertyId}, ${data.marketId ?? null},
+        ${data.ownerIntelligence ? JSON.stringify(data.ownerIntelligence) : null}::jsonb,
+        ${data.intelligenceScore ?? 0}, ${data.intelligenceSources ?? null},
+        ${data.buildingContacts ? JSON.stringify(data.buildingContacts) : null}::jsonb,
+        ${data.intelligenceAt ?? null}, ${data.businessName ?? null}, ${data.businessWebsite ?? null},
+        ${data.webResearchedAt ?? null}, ${data.source ?? null}, NOW())
+      ON CONFLICT (property_id) DO UPDATE SET
+        market_id = COALESCE(EXCLUDED.market_id, property_intelligence.market_id),
+        owner_intelligence = COALESCE(EXCLUDED.owner_intelligence, property_intelligence.owner_intelligence),
+        intelligence_score = COALESCE(EXCLUDED.intelligence_score, property_intelligence.intelligence_score),
+        intelligence_sources = COALESCE(EXCLUDED.intelligence_sources, property_intelligence.intelligence_sources),
+        building_contacts = COALESCE(EXCLUDED.building_contacts, property_intelligence.building_contacts),
+        intelligence_at = COALESCE(EXCLUDED.intelligence_at, property_intelligence.intelligence_at),
+        business_name = COALESCE(EXCLUDED.business_name, property_intelligence.business_name),
+        business_website = COALESCE(EXCLUDED.business_website, property_intelligence.business_website),
+        web_researched_at = COALESCE(EXCLUDED.web_researched_at, property_intelligence.web_researched_at),
+        source = COALESCE(EXCLUDED.source, property_intelligence.source),
+        updated_at = NOW()
+      RETURNING *
+    `) as any;
+    return result.rows[0];
   }
 }
 

@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { dualWriteUpdate } from "./dual-write";
 import type { Lead } from "@shared/schema";
 
 export interface PhoneResult {
@@ -563,7 +564,7 @@ export async function enrichLeadPhones(
 
       if (result) {
         for (const lead of ownerLeads) {
-          await storage.updateLead(lead.id, {
+          await dualWriteUpdate(lead.id, {
             ownerPhone: result.phone,
             phoneSource: result.source,
             phoneEnrichedAt: new Date(),
@@ -572,7 +573,7 @@ export async function enrichLeadPhones(
         enriched += ownerLeads.length;
       } else {
         for (const lead of ownerLeads) {
-          await storage.updateLead(lead.id, {
+          await dualWriteUpdate(lead.id, {
             phoneEnrichedAt: new Date(),
           } as any);
         }

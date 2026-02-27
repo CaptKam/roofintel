@@ -212,6 +212,10 @@ export async function runReverseAddressEnrichment(marketId?: string, batchSize =
         reverseAddressType: "same_as_property",
         reverseAddressEnrichedAt: new Date(),
       } as any).where(eq(leads.id, lead.id));
+      try {
+        const { storage } = await import("./storage");
+        await storage.upsertPropertyContacts({ propertyId: lead.id, marketId: lead.marketId, reverseAddressType: "same_as_property", reverseAddressEnrichedAt: new Date(), source: "reverse_address" });
+      } catch {}
       skipped++;
       byType["same_as_property"] = (byType["same_as_property"] || 0) + 1;
       continue;
@@ -254,6 +258,19 @@ export async function runReverseAddressEnrichment(marketId?: string, batchSize =
       }
 
       await db.update(leads).set(updates).where(eq(leads.id, lead.id));
+      try {
+        const { storage } = await import("./storage");
+        await storage.upsertPropertyContacts({
+          propertyId: lead.id, marketId: lead.marketId,
+          reverseAddressType: updates.reverseAddressType,
+          reverseAddressBusinesses: updates.reverseAddressBusinesses,
+          reverseAddressEnrichedAt: updates.reverseAddressEnrichedAt,
+          managementCompany: updates.managementCompany,
+          managementPhone: updates.managementPhone,
+          managementEvidence: updates.managementEvidence,
+          source: "reverse_address",
+        });
+      } catch {}
       enriched++;
       byType[result.addressType] = (byType[result.addressType] || 0) + 1;
 

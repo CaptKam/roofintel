@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { dualWriteUpdate } from "./dual-write";
 import { calculateScore } from "./seed";
 
 const HAIL_RADIUS_MILES = 5;
@@ -94,12 +95,12 @@ export async function correlateHailToLeads(
 
     const newScore = calculateScore(updatedLead);
 
-    await storage.updateLead(lead.id, {
+    await dualWriteUpdate(lead.id, {
       hailEvents: newHailEvents,
       lastHailDate: newLastHailDate,
       lastHailSize: newLastHailSize,
       leadScore: newScore,
-    });
+    }, "hail_correlator");
 
     leadsUpdated++;
   }

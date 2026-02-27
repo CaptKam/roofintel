@@ -346,6 +346,17 @@ export async function batchComputeRoofRisk(): Promise<void> {
           UPDATE leads SET roof_risk_index = ${u.score}, roof_risk_breakdown = ${JSON.stringify(u.breakdown)}
           WHERE id = ${u.id}
         `);
+        try {
+          await db.execute(sql`
+            INSERT INTO property_roof (property_id, roof_risk_index, roof_risk_breakdown, source, updated_at)
+            VALUES (${u.id}, ${u.score}, ${JSON.stringify(u.breakdown)}::jsonb, 'roof_risk_engine', NOW())
+            ON CONFLICT (property_id) DO UPDATE SET
+              roof_risk_index = EXCLUDED.roof_risk_index,
+              roof_risk_breakdown = EXCLUDED.roof_risk_breakdown,
+              source = EXCLUDED.source,
+              updated_at = NOW()
+          `);
+        } catch {}
       }
 
       batchProgress.processed = Math.min(i + BATCH_SIZE, leadRows.length);

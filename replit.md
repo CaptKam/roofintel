@@ -45,8 +45,21 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 ### Multi-Market Architecture
 The platform supports multi-market expansion through a `markets` table with hierarchical fields and a `market_data_sources` table that maps markets to configurable data sources (e.g., `cad_arcgis`, `permits_socrata`) via field mapping and filter configurations. New markets can be onboarded by adding configuration rows without requiring new code.
 
+### Normalized Satellite Tables (Data Model v2)
+The monolithic `leads` table (~115 columns) is being decomposed into 5 domain-specific satellite tables using an additive, non-breaking migration approach:
+- **`property_roof`**: Roof type, material, age, area, permit data, risk index/breakdown. Unique on `property_id`.
+- **`property_owner`**: Owner identity, LLC chain, registered agent, officer, managing member, ownership structure/signals. Unique on `property_id`.
+- **`property_risk_signals`**: Hail events, flood zone, liens, foreclosure, violations, permits, distress score. Unique on `property_id`.
+- **`property_contacts`**: Contact info, role inference, DM confidence, decision makers, management company, reverse address data. Unique on `property_id`.
+- **`property_intelligence`**: Owner intelligence JSONB, intelligence score/sources, building contacts, business info. Unique on `property_id`.
+- **`data_quality_metrics`**: Periodic snapshots of quality metrics per market.
+
+All tables have `market_id` for multi-market support, `source` for data provenance, and `updated_at` timestamps. A **dual-write pattern** (`server/dual-write.ts`) ensures writes propagate to both the leads table and appropriate satellite tables during the transition period. The migration (`POST /api/admin/migrate/normalize`) populates satellite tables from existing leads data.
+
+Key endpoints: `GET /api/admin/normalize/stats`, `GET /api/admin/migrate/status`, `GET /api/leads/:id/satellite`, `GET /api/markets/:id/readiness`, `POST /api/admin/quality/snapshot`, `GET /api/admin/quality/history`.
+
 ### Data Quality System
-Each lead has a computed `dataConfidence` (High, Medium, Low) based on multiple indicators. A quality summary endpoint and dashboard card provide metrics on data quality tiers, key metrics, and identified data gaps. Admin endpoints are available for cleanup and backfilling evidence verification.
+Each lead has a computed `dataConfidence` (High, Medium, Low) based on multiple indicators. A quality summary endpoint and dashboard card provide metrics on data quality tiers, key metrics, and identified data gaps. Admin endpoints are available for cleanup and backfilling evidence verification. Market readiness scores (0-100) are computed from weighted field coverage metrics.
 
 ### Feature Specifications
 Key features include a comprehensive **Dashboard**, filterable **Leads & Lead Detail** pages with extensive property and contact intelligence, an interactive **Map & Storms** view, **Portfolios & Network Explorer** for relationship visualization, **Data Management** tools, and an **Admin** interface for system control. A **Contractors Directory** provides a searchable list of contractors from permit records, and all data can be **Exported** to CSV.

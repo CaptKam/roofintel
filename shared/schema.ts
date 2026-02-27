@@ -809,4 +809,161 @@ export const insertAiAuditResultSchema = createInsertSchema(aiAuditResults).omit
 export type InsertAiAuditResult = z.infer<typeof insertAiAuditResultSchema>;
 export type AiAuditResult = typeof aiAuditResults.$inferSelect;
 
+// ============================================================
+// Normalized Satellite Tables (Multi-Market Architecture)
+// ============================================================
+
+export const propertyRoof = pgTable("property_roof", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").notNull(),
+  marketId: varchar("market_id"),
+  roofType: text("roof_type"),
+  roofMaterial: text("roof_material"),
+  roofLastReplaced: integer("roof_last_replaced"),
+  estimatedRoofArea: integer("estimated_roof_area"),
+  lastRoofingPermitDate: text("last_roofing_permit_date"),
+  lastRoofingContractor: text("last_roofing_contractor"),
+  lastRoofingPermitType: text("last_roofing_permit_type"),
+  claimWindowOpen: boolean("claim_window_open"),
+  roofRiskIndex: integer("roof_risk_index"),
+  roofRiskBreakdown: jsonb("roof_risk_breakdown"),
+  source: text("source"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const propertyOwner = pgTable("property_owner", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").notNull(),
+  marketId: varchar("market_id"),
+  ownerName: text("owner_name").notNull(),
+  ownerType: text("owner_type").notNull(),
+  ownerAddress: text("owner_address"),
+  ownerPhone: text("owner_phone"),
+  ownerEmail: text("owner_email"),
+  phoneSource: text("phone_source"),
+  phoneEnrichedAt: timestamp("phone_enriched_at"),
+  llcName: text("llc_name"),
+  registeredAgent: text("registered_agent"),
+  officerName: text("officer_name"),
+  officerTitle: text("officer_title"),
+  sosFileNumber: text("sos_file_number"),
+  taxpayerId: text("taxpayer_id"),
+  managingMember: text("managing_member"),
+  managingMemberTitle: text("managing_member_title"),
+  managingMemberPhone: text("managing_member_phone"),
+  managingMemberEmail: text("managing_member_email"),
+  llcChain: jsonb("llc_chain"),
+  ownershipFlag: text("ownership_flag"),
+  ownershipStructure: text("ownership_structure"),
+  ownershipSignals: jsonb("ownership_signals"),
+  normalizedOwnerId: varchar("normalized_owner_id"),
+  source: text("source"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const propertyRiskSignals = pgTable("property_risk_signals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").notNull(),
+  marketId: varchar("market_id"),
+  hailEvents: integer("hail_events").default(0),
+  lastHailDate: text("last_hail_date"),
+  lastHailSize: real("last_hail_size"),
+  floodZone: text("flood_zone"),
+  floodZoneSubtype: text("flood_zone_subtype"),
+  isFloodHighRisk: boolean("is_flood_high_risk").default(false),
+  lienCount: integer("lien_count").default(0),
+  foreclosureFlag: boolean("foreclosure_flag").default(false),
+  taxDelinquent: boolean("tax_delinquent").default(false),
+  violationCount: integer("violation_count").default(0),
+  openViolations: integer("open_violations").default(0),
+  lastViolationDate: text("last_violation_date"),
+  permitCount: integer("permit_count").default(0),
+  lastPermitDate: text("last_permit_date"),
+  permitContractors: jsonb("permit_contractors"),
+  distressScore: integer("distress_score").default(0),
+  lastDeedDate: text("last_deed_date"),
+  source: text("source"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const propertyContacts = pgTable("property_contacts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").notNull(),
+  marketId: varchar("market_id"),
+  contactName: text("contact_name"),
+  contactTitle: text("contact_title"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  contactSource: text("contact_source"),
+  contactRole: text("contact_role"),
+  roleConfidence: integer("role_confidence"),
+  decisionMakerRank: integer("decision_maker_rank"),
+  roleEvidence: jsonb("role_evidence"),
+  dmConfidenceScore: integer("dm_confidence_score"),
+  dmConfidenceComponents: jsonb("dm_confidence_components"),
+  dmReviewStatus: text("dm_review_status").default("unreviewed"),
+  decisionMakers: jsonb("decision_makers"),
+  managementCompany: text("management_company"),
+  managementContact: text("management_contact"),
+  managementPhone: text("management_phone"),
+  managementEmail: text("management_email"),
+  managementEvidence: jsonb("management_evidence"),
+  managementAttributedAt: timestamp("management_attributed_at"),
+  reverseAddressType: text("reverse_address_type"),
+  reverseAddressBusinesses: jsonb("reverse_address_businesses"),
+  reverseAddressEnrichedAt: timestamp("reverse_address_enriched_at"),
+  source: text("source"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const propertyIntelligence = pgTable("property_intelligence", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyId: varchar("property_id").notNull(),
+  marketId: varchar("market_id"),
+  ownerIntelligence: jsonb("owner_intelligence"),
+  intelligenceScore: integer("intelligence_score").default(0),
+  intelligenceSources: text("intelligence_sources").array(),
+  buildingContacts: jsonb("building_contacts"),
+  intelligenceAt: timestamp("intelligence_at"),
+  businessName: text("business_name"),
+  businessWebsite: text("business_website"),
+  webResearchedAt: timestamp("web_researched_at"),
+  source: text("source"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const dataQualityMetrics = pgTable("data_quality_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id"),
+  metricName: text("metric_name").notNull(),
+  metricValue: real("metric_value").notNull(),
+  metricDetail: jsonb("metric_detail"),
+  measuredAt: timestamp("measured_at").defaultNow(),
+});
+
+export const insertPropertyRoofSchema = createInsertSchema(propertyRoof).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPropertyOwnerSchema = createInsertSchema(propertyOwner).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPropertyRiskSignalsSchema = createInsertSchema(propertyRiskSignals).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPropertyContactsSchema = createInsertSchema(propertyContacts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPropertyIntelligenceSchema = createInsertSchema(propertyIntelligence).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDataQualityMetricsSchema = createInsertSchema(dataQualityMetrics).omit({ id: true, measuredAt: true });
+
+export type PropertyRoof = typeof propertyRoof.$inferSelect;
+export type InsertPropertyRoof = z.infer<typeof insertPropertyRoofSchema>;
+export type PropertyOwner = typeof propertyOwner.$inferSelect;
+export type InsertPropertyOwner = z.infer<typeof insertPropertyOwnerSchema>;
+export type PropertyRiskSignals = typeof propertyRiskSignals.$inferSelect;
+export type InsertPropertyRiskSignals = z.infer<typeof insertPropertyRiskSignalsSchema>;
+export type PropertyContacts = typeof propertyContacts.$inferSelect;
+export type InsertPropertyContacts = z.infer<typeof insertPropertyContactsSchema>;
+export type PropertyIntelligence = typeof propertyIntelligence.$inferSelect;
+export type InsertPropertyIntelligence = z.infer<typeof insertPropertyIntelligenceSchema>;
+export type DataQualityMetric = typeof dataQualityMetrics.$inferSelect;
+export type InsertDataQualityMetric = z.infer<typeof insertDataQualityMetricsSchema>;
+
 export * from "./models/chat";

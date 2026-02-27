@@ -1,4 +1,5 @@
 import { db } from "./storage";
+import { storage } from "./storage";
 import { leads } from "@shared/schema";
 import type { Lead } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
@@ -418,10 +419,22 @@ export async function classifyAllLeads(): Promise<{
       byStructure[result.structure] = (byStructure[result.structure] || 0) + 1;
       classified++;
 
-      await db.update(leads).set({
+      const updates = {
         ownershipStructure: result.structure,
         ownershipSignals: result.signals as any,
-      } as any).where(eq(leads.id, lead.id));
+      };
+      await db.update(leads).set(updates as any).where(eq(leads.id, lead.id));
+      try {
+        await storage.upsertPropertyOwner({
+          propertyId: lead.id,
+          marketId: lead.marketId,
+          ownerName: lead.ownerName || "Unknown",
+          ownerType: lead.ownerType || "Unknown",
+          ownershipStructure: result.structure,
+          ownershipSignals: result.signals as any,
+          source: "ownership_classifier",
+        });
+      } catch {}
     }
   }
 
@@ -470,11 +483,31 @@ export async function classifyAndAssignDecisionMakers(filterLeadIds?: string[]):
 
     if (dms.length > 0) withDecisionMakers++;
 
-    await db.update(leads).set({
+    const updates2 = {
       ownershipStructure: classification.structure,
       ownershipSignals: classification.signals as any,
       decisionMakers: dms as any,
-    } as any).where(eq(leads.id, lead.id));
+    };
+    await db.update(leads).set(updates2 as any).where(eq(leads.id, lead.id));
+    try {
+      await Promise.all([
+        storage.upsertPropertyOwner({
+          propertyId: lead.id,
+          marketId: lead.marketId,
+          ownerName: lead.ownerName || "Unknown",
+          ownerType: lead.ownerType || "Unknown",
+          ownershipStructure: classification.structure,
+          ownershipSignals: classification.signals as any,
+          source: "ownership_classifier",
+        }),
+        storage.upsertPropertyContacts({
+          propertyId: lead.id,
+          marketId: lead.marketId,
+          decisionMakers: dms as any,
+          source: "ownership_classifier",
+        }),
+      ]);
+    } catch {}
   }
 
   return {

@@ -237,7 +237,7 @@ export async function runRoleInference(marketId?: string, filterLeadIds?: string
     const top = candidates[0];
     byRole[top.role] = (byRole[top.role] || 0) + 1;
 
-    await db.update(leads).set({
+    const roleUpdates = {
       contactRole: top.role,
       roleConfidence: top.confidence,
       decisionMakerRank: ROLE_AUTHORITY_RANK[top.role],
@@ -249,7 +249,19 @@ export async function runRoleInference(marketId?: string, filterLeadIds?: string
         phone: c.phone,
         email: c.email,
       })),
-    } as any).where(eq(leads.id, lead.id));
+    };
+    await db.update(leads).set(roleUpdates as any).where(eq(leads.id, lead.id));
+    try {
+      const { storage } = await import("./storage");
+      await storage.upsertPropertyContacts({
+        propertyId: lead.id, marketId: lead.marketId,
+        contactRole: roleUpdates.contactRole,
+        roleConfidence: roleUpdates.roleConfidence,
+        decisionMakerRank: roleUpdates.decisionMakerRank,
+        roleEvidence: roleUpdates.roleEvidence as any,
+        source: "role_inference",
+      });
+    } catch {}
 
     rolesAssigned++;
   }
