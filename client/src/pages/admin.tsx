@@ -1886,8 +1886,7 @@ export default function Admin() {
     queryKey: ["/api/permits/roofing-stats"],
   });
 
-  const dfwMarket = markets?.[0];
-  const marketId = dfwMarket?.id;
+  const marketId = activeMarket?.id;
 
   const { data: violationsStatus, isLoading: violationsLoading } = useQuery<ViolationsStatus>({
     queryKey: ["/api/violations/status"],
@@ -2307,13 +2306,13 @@ export default function Admin() {
 
   const networkAnalysisMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/network/analyze", { marketId: dfwMarket?.id });
+      const res = await apiRequest("POST", "/api/network/analyze", { marketId: marketId });
       return res.json();
     },
     onSuccess: (data) => {
       toast({ title: "Network Analysis Complete", description: `Created ${data.portfoliosCreated} portfolios linking ${data.leadsLinked} properties` });
-      queryClient.invalidateQueries({ queryKey: ["/api/network/stats", dfwMarket?.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/portfolios", dfwMarket?.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/network/stats", marketId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolios", marketId] });
     },
     onError: (err: any) => {
       toast({ title: "Network analysis failed", description: err?.message, variant: "destructive" });
@@ -2321,9 +2320,9 @@ export default function Admin() {
   });
 
   const entityResolutionStatsQuery = useQuery<any>({
-    queryKey: ["/api/entity-resolution/stats", dfwMarket?.id],
+    queryKey: ["/api/entity-resolution/stats", marketId],
     queryFn: async () => {
-      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const params = marketId ? `?marketId=${marketId}` : "";
       const res = await fetch(`/api/entity-resolution/stats${params}`);
       if (!res.ok) throw new Error("Failed to fetch stats");
       return res.json();
@@ -2331,10 +2330,10 @@ export default function Admin() {
   });
 
   const entityResolutionClustersQuery = useQuery<any[]>({
-    queryKey: ["/api/entity-resolution/clusters", "pending", dfwMarket?.id],
+    queryKey: ["/api/entity-resolution/clusters", "pending", marketId],
     queryFn: async () => {
       const params = new URLSearchParams({ status: "pending", limit: "20" });
-      if (dfwMarket?.id) params.set("marketId", dfwMarket.id);
+      if (marketId) params.set("marketId", marketId);
       const res = await fetch(`/api/entity-resolution/clusters?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch clusters");
       return res.json();
@@ -2343,7 +2342,7 @@ export default function Admin() {
 
   const entityScanMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/entity-resolution/scan", { marketId: dfwMarket?.id });
+      const res = await apiRequest("POST", "/api/entity-resolution/scan", { marketId: marketId });
       return res.json();
     },
     onSuccess: (data) => {
@@ -2387,9 +2386,9 @@ export default function Admin() {
   });
 
   const attributionStatsQuery = useQuery<any>({
-    queryKey: ["/api/attribution/stats", dfwMarket?.id],
+    queryKey: ["/api/attribution/stats", marketId],
     queryFn: async () => {
-      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const params = marketId ? `?marketId=${marketId}` : "";
       const res = await fetch(`/api/attribution/stats${params}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -2398,7 +2397,7 @@ export default function Admin() {
 
   const attributionScanMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/attribution/scan", { marketId: dfwMarket?.id });
+      const res = await apiRequest("POST", "/api/attribution/scan", { marketId: marketId });
       return res.json();
     },
     onSuccess: (data) => {
@@ -2411,9 +2410,9 @@ export default function Admin() {
   });
 
   const roleStatsQuery = useQuery<any>({
-    queryKey: ["/api/roles/stats", dfwMarket?.id],
+    queryKey: ["/api/roles/stats", marketId],
     queryFn: async () => {
-      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const params = marketId ? `?marketId=${marketId}` : "";
       const res = await fetch(`/api/roles/stats${params}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -2422,7 +2421,7 @@ export default function Admin() {
 
   const roleInferenceMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/roles/infer", { marketId: dfwMarket?.id });
+      const res = await apiRequest("POST", "/api/roles/infer", { marketId: marketId });
       return res.json();
     },
     onSuccess: (data) => {
@@ -2435,9 +2434,9 @@ export default function Admin() {
   });
 
   const confidenceStatsQuery = useQuery<any>({
-    queryKey: ["/api/dm-confidence/stats", dfwMarket?.id],
+    queryKey: ["/api/dm-confidence/stats", marketId],
     queryFn: async () => {
-      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const params = marketId ? `?marketId=${marketId}` : "";
       const res = await fetch(`/api/dm-confidence/stats${params}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -2446,7 +2445,7 @@ export default function Admin() {
 
   const confidenceScoringMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/dm-confidence/score", { marketId: dfwMarket?.id });
+      const res = await apiRequest("POST", "/api/dm-confidence/score", { marketId: marketId });
       return res.json();
     },
     onSuccess: (data) => {
@@ -2460,10 +2459,10 @@ export default function Admin() {
   });
 
   const reviewQueueQuery = useQuery<any[]>({
-    queryKey: ["/api/dm-confidence/review-queue", dfwMarket?.id],
+    queryKey: ["/api/dm-confidence/review-queue", marketId],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: "15" });
-      if (dfwMarket?.id) params.set("marketId", dfwMarket.id);
+      if (marketId) params.set("marketId", marketId);
       const res = await fetch(`/api/dm-confidence/review-queue?${params.toString()}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -2496,7 +2495,7 @@ export default function Admin() {
 
   const reverseAddressScanMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/reverse-address/scan", { marketId: dfwMarket?.id, batchSize: 200 });
+      const res = await apiRequest("POST", "/api/reverse-address/scan", { marketId: marketId, batchSize: 200 });
       return res.json();
     },
     onSuccess: (data) => {
@@ -2649,9 +2648,9 @@ export default function Admin() {
   });
 
   const complianceOverviewQuery = useQuery<any>({
-    queryKey: ["/api/compliance/overview", dfwMarket?.id],
+    queryKey: ["/api/compliance/overview", marketId],
     queryFn: async () => {
-      const params = dfwMarket?.id ? `?marketId=${dfwMarket.id}` : "";
+      const params = marketId ? `?marketId=${marketId}` : "";
       const res = await fetch(`/api/compliance/overview${params}`);
       if (!res.ok) throw new Error("Failed");
       return res.json();
@@ -2694,8 +2693,8 @@ export default function Admin() {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && dfwMarket) {
-      csvUploadMutation.mutate({ file, marketId: dfwMarket.id });
+    if (file && marketId) {
+      csvUploadMutation.mutate({ file, marketId });
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -2824,13 +2823,13 @@ export default function Admin() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     size="sm"
-                    onClick={() => dfwMarket && dcadImportMutation.mutate({
-                      marketId: dfwMarket.id,
+                    onClick={() => marketId && dcadImportMutation.mutate({
+                      marketId: marketId,
                       minImpValue: parseInt(dcadMinValue) || 100000,
                       maxRecords: parseInt(dcadMaxRecords) || 5000,
                       minSqft: parseInt(dcadMinSqft) || 0,
                     })}
-                    disabled={dcadImportMutation.isPending || !dfwMarket}
+                    disabled={dcadImportMutation.isPending || !marketId}
                     data-testid="button-import-dcad"
                   >
                     {dcadImportMutation.isPending ? (
@@ -2870,7 +2869,7 @@ export default function Admin() {
                   <Button
                     size="sm"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={csvUploadMutation.isPending || !dfwMarket}
+                    disabled={csvUploadMutation.isPending || !marketId}
                     data-testid="button-upload-csv"
                   >
                     {csvUploadMutation.isPending ? (
@@ -2934,8 +2933,8 @@ export default function Admin() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => dfwMarket && storyEstimateMutation.mutate({ marketId: dfwMarket.id })}
-                      disabled={storyEstimateMutation.isPending || !dfwMarket}
+                      onClick={() => marketId && storyEstimateMutation.mutate({ marketId: marketId })}
+                      disabled={storyEstimateMutation.isPending || !marketId}
                       data-testid="button-estimate-stories"
                     >
                       {storyEstimateMutation.isPending ? (
@@ -2948,8 +2947,8 @@ export default function Admin() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => dfwMarket && roofTypeEstimateMutation.mutate({ marketId: dfwMarket.id })}
-                      disabled={roofTypeEstimateMutation.isPending || !dfwMarket}
+                      onClick={() => marketId && roofTypeEstimateMutation.mutate({ marketId: marketId })}
+                      disabled={roofTypeEstimateMutation.isPending || !marketId}
                       data-testid="button-estimate-roof-type"
                     >
                       {roofTypeEstimateMutation.isPending ? (
@@ -3012,12 +3011,12 @@ export default function Admin() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     size="sm"
-                    onClick={() => dfwMarket && noaaImportMutation.mutate({
-                      marketId: dfwMarket.id,
+                    onClick={() => marketId && noaaImportMutation.mutate({
+                      marketId: marketId,
                       startYear: currentYear,
                       endYear: currentYear,
                     })}
-                    disabled={noaaImportMutation.isPending || !dfwMarket}
+                    disabled={noaaImportMutation.isPending || !marketId}
                     data-testid="button-import-noaa-current"
                   >
                     {noaaImportMutation.isPending ? (
@@ -3030,12 +3029,12 @@ export default function Admin() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => dfwMarket && noaaImportMutation.mutate({
-                      marketId: dfwMarket.id,
+                    onClick={() => marketId && noaaImportMutation.mutate({
+                      marketId: marketId,
                       startYear: currentYear - 5,
                       endYear: currentYear,
                     })}
-                    disabled={noaaImportMutation.isPending || !dfwMarket}
+                    disabled={noaaImportMutation.isPending || !marketId}
                     data-testid="button-import-noaa-5yr"
                   >
                     Import Last 5 Years
@@ -3085,11 +3084,11 @@ export default function Admin() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Button
                     size="sm"
-                    onClick={() => dfwMarket && hailCorrelationMutation.mutate({
-                      marketId: dfwMarket.id,
+                    onClick={() => marketId && hailCorrelationMutation.mutate({
+                      marketId: marketId,
                       radiusMiles: 5,
                     })}
-                    disabled={hailCorrelationMutation.isPending || !dfwMarket}
+                    disabled={hailCorrelationMutation.isPending || !marketId}
                     data-testid="button-correlate-hail"
                   >
                     {hailCorrelationMutation.isPending ? (
@@ -3517,7 +3516,7 @@ export default function Admin() {
                   <Button
                     size="sm"
                     onClick={() => batchReprocessMutation.mutate()}
-                    disabled={batchReprocessMutation.isPending || batchReprocessStatusQuery.data?.running || !dfwMarket}
+                    disabled={batchReprocessMutation.isPending || batchReprocessStatusQuery.data?.running || !marketId}
                     data-testid="button-run-intel-pipeline"
                   >
                     {batchReprocessMutation.isPending || batchReprocessStatusQuery.data?.running ? (
@@ -3623,7 +3622,7 @@ export default function Admin() {
                     size="sm"
                     variant="outline"
                     onClick={() => networkAnalysisMutation.mutate()}
-                    disabled={networkAnalysisMutation.isPending || !dfwMarket}
+                    disabled={networkAnalysisMutation.isPending || !marketId}
                     data-testid="button-analyze-network"
                   >
                     {networkAnalysisMutation.isPending ? (
@@ -3667,7 +3666,7 @@ export default function Admin() {
                           <Badge variant="outline" className="text-[10px]">{attributionStatsQuery.data.withCompany?.toLocaleString()} companies</Badge>
                         </div>
                       )}
-                      <Button size="sm" variant="outline" onClick={() => attributionScanMutation.mutate()} disabled={attributionScanMutation.isPending || !dfwMarket} data-testid="button-attribution-scan">
+                      <Button size="sm" variant="outline" onClick={() => attributionScanMutation.mutate()} disabled={attributionScanMutation.isPending || !marketId} data-testid="button-attribution-scan">
                         {attributionScanMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Users className="w-3 h-3" />}
                         Scan Management
                       </Button>
@@ -3681,7 +3680,7 @@ export default function Admin() {
                           <Badge variant="outline" className="text-[10px]">{roleStatsQuery.data.avgConfidence}% avg confidence</Badge>
                         </div>
                       )}
-                      <Button size="sm" variant="outline" onClick={() => roleInferenceMutation.mutate()} disabled={roleInferenceMutation.isPending || !dfwMarket} data-testid="button-role-inference">
+                      <Button size="sm" variant="outline" onClick={() => roleInferenceMutation.mutate()} disabled={roleInferenceMutation.isPending || !marketId} data-testid="button-role-inference">
                         {roleInferenceMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3 h-3" />}
                         Infer Roles
                       </Button>
@@ -3695,7 +3694,7 @@ export default function Admin() {
                           <Badge variant="outline" className="text-[10px]">{reverseAddressStatsQuery.data.mgmtDiscovered?.toLocaleString()} mgmt found</Badge>
                         </div>
                       )}
-                      <Button size="sm" variant="outline" onClick={() => reverseAddressScanMutation.mutate()} disabled={reverseAddressScanMutation.isPending || !dfwMarket} data-testid="button-reverse-address-scan">
+                      <Button size="sm" variant="outline" onClick={() => reverseAddressScanMutation.mutate()} disabled={reverseAddressScanMutation.isPending || !marketId} data-testid="button-reverse-address-scan">
                         {reverseAddressScanMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
                         Scan Addresses
                       </Button>
@@ -3703,7 +3702,7 @@ export default function Admin() {
                     <div className="space-y-2">
                       <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Confidence Scoring</p>
                       <p className="text-xs text-muted-foreground">7-factor decision-maker confidence scoring.</p>
-                      <Button size="sm" variant="outline" onClick={() => confidenceScoringMutation.mutate()} disabled={confidenceScoringMutation.isPending || !dfwMarket} data-testid="button-confidence-scoring">
+                      <Button size="sm" variant="outline" onClick={() => confidenceScoringMutation.mutate()} disabled={confidenceScoringMutation.isPending || !marketId} data-testid="button-confidence-scoring">
                         {confidenceScoringMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Target className="w-3 h-3" />}
                         Score Confidence
                       </Button>
@@ -3979,7 +3978,7 @@ export default function Admin() {
               <Button
                 size="sm"
                 onClick={() => entityScanMutation.mutate()}
-                disabled={entityScanMutation.isPending || !dfwMarket}
+                disabled={entityScanMutation.isPending || !marketId}
                 data-testid="button-entity-scan"
               >
                 {entityScanMutation.isPending ? (
@@ -4298,8 +4297,8 @@ export default function Admin() {
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   size="sm"
-                  onClick={() => dfwMarket && roofingPermitMutation.mutate({ marketId: dfwMarket.id, yearsBack: 10 })}
-                  disabled={roofingPermitMutation.isPending || !dfwMarket}
+                  onClick={() => marketId && roofingPermitMutation.mutate({ marketId: marketId, yearsBack: 10 })}
+                  disabled={roofingPermitMutation.isPending || !marketId}
                   data-testid="button-import-roofing-permits"
                 >
                   {roofingPermitMutation.isPending ? (
@@ -4381,11 +4380,11 @@ export default function Admin() {
               </CardTitle>
               <Button
                 size="sm"
-                onClick={() => dfwMarket && pipelineMutation.mutate({
-                  marketId: dfwMarket.id,
+                onClick={() => marketId && pipelineMutation.mutate({
+                  marketId: marketId,
                   batchSize: 25,
                 })}
-                disabled={pipelineMutation.isPending || !dfwMarket}
+                disabled={pipelineMutation.isPending || !marketId}
                 data-testid="button-run-pipeline"
               >
                 {pipelineMutation.isPending ? (
@@ -4463,11 +4462,11 @@ export default function Admin() {
                       LLC/Corp contacts via Texas Open Data Portal.
                     </p>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts">
+                      <Button size="sm" variant="outline" onClick={() => marketId && contactEnrichMutation.mutate({ marketId: marketId, batchSize: 50 })} disabled={contactEnrichMutation.isPending || !marketId} data-testid="button-enrich-contacts">
                         {contactEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserSearch className="w-3 h-3" />}
                         Enrich (50)
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts-all">
+                      <Button size="sm" variant="ghost" onClick={() => marketId && contactEnrichMutation.mutate({ marketId: marketId, batchSize: 500 })} disabled={contactEnrichMutation.isPending || !marketId} data-testid="button-enrich-contacts-all">
                         All Leads
                       </Button>
                     </div>
@@ -4484,11 +4483,11 @@ export default function Admin() {
                       Cascading lookup: Google Places, OpenCorporates, web search.
                     </p>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones">
+                      <Button size="sm" variant="outline" onClick={() => marketId && phoneEnrichMutation.mutate({ marketId: marketId, batchSize: 50 })} disabled={phoneEnrichMutation.isPending || !marketId || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones">
                         {phoneEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Phone className="w-3 h-3" />}
                         Find (50)
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones-all">
+                      <Button size="sm" variant="ghost" onClick={() => marketId && phoneEnrichMutation.mutate({ marketId: marketId, batchSize: 500 })} disabled={phoneEnrichMutation.isPending || !marketId || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones-all">
                         All Leads
                       </Button>
                     </div>
@@ -4506,11 +4505,11 @@ export default function Admin() {
                       Scans business websites for decision-maker contacts.
                     </p>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 25 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research">
+                      <Button size="sm" variant="outline" onClick={() => marketId && webResearchMutation.mutate({ marketId: marketId, batchSize: 25 })} disabled={webResearchMutation.isPending || !marketId || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research">
                         {webResearchMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
                         Research (25)
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 100 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research-all">
+                      <Button size="sm" variant="ghost" onClick={() => marketId && webResearchMutation.mutate({ marketId: marketId, batchSize: 100 })} disabled={webResearchMutation.isPending || !marketId || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research-all">
                         Research (100)
                       </Button>
                     </div>
