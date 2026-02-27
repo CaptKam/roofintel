@@ -549,47 +549,70 @@ function PropStreamImportCard() {
     }
   };
 
-  const FIELD_LABELS: Record<string, string> = {
+  const PROPERTY_FIELDS: Record<string, string> = {
     yearBuilt: "Year Built",
+    effectiveYearBuilt: "Effective Year Built",
     lastDeedDate: "Last Sale Date",
     previousMarketValue: "Sale Amount",
+    totalValue: "Assessed Value",
     landAcreage: "Lot Acres",
     landSqft: "Lot SqFt",
     subdivisionName: "Subdivision",
     schoolDistrict: "School District",
-    propertyUseDescription: "Land Use",
+    propertyUseDescription: "Land Use / Type",
     sqft: "Building SqFt",
   };
+
+  const SKIP_TRACE_FIELDS: Record<string, string> = {
+    ownerPhone: "Owner Phone",
+    contactPhone: "Contact Phone",
+    ownerEmail: "Owner Email",
+    contactEmail: "Contact Email",
+    contactName: "Contact Name",
+    secondOwner: "Second Owner",
+    ownerAddress: "Mailing Address",
+    dncRegistered: "Do Not Contact",
+  };
+
+  const ALL_LABELS: Record<string, string> = { ...PROPERTY_FIELDS, ...SKIP_TRACE_FIELDS };
+
+  const propertyUpdates = importStatus?.fieldsUpdated
+    ? Object.entries(importStatus.fieldsUpdated).filter(([k]) => k in PROPERTY_FIELDS).sort(([, a], [, b]) => b - a)
+    : [];
+  const skipTraceUpdates = importStatus?.fieldsUpdated
+    ? Object.entries(importStatus.fieldsUpdated).filter(([k]) => k in SKIP_TRACE_FIELDS).sort(([, a], [, b]) => b - a)
+    : [];
 
   return (
     <Card className="shadow-sm" data-testid="card-propstream-import">
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Upload className="w-4 h-4" />
-          PropStream CSV Import
+          PropStream Import
         </CardTitle>
         {isRunning && <Badge variant="secondary" className="animate-pulse">Importing...</Badge>}
         {isComplete && <Badge variant="default">Complete</Badge>}
       </CardHeader>
       <CardContent className="p-6 pt-0 space-y-4">
         <p className="text-xs text-muted-foreground">
-          Upload a CSV export from PropStream to enrich existing leads with missing data (year built, sale dates, lot size, school district, etc.). Only fills in empty fields — never overwrites existing data.
+          Upload a PropStream export (CSV or Excel) to enrich leads with property data and skip trace contacts (phones, emails, person names). Only fills in empty fields — never overwrites existing data.
         </p>
 
         <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-300 space-y-1">
           <div className="font-medium">How to export from PropStream:</div>
           <ol className="list-decimal list-inside space-y-0.5 text-[11px]">
             <li>Go to app.propstream.com and search DFW commercial properties</li>
-            <li>Select all results and click "Export to CSV"</li>
-            <li>Include: Year Built, Last Sale Date, Lot Size, School District, Subdivision</li>
-            <li>Upload the exported CSV file here</li>
+            <li>Save to a list, then go to Lists and select your saved properties</li>
+            <li>Click "Export" — choose CSV or Excel format</li>
+            <li>For skip trace data: run Skip Trace on the list before exporting</li>
+            <li>Upload the exported file here</li>
           </ol>
         </div>
 
         <input
           ref={fileInputRef}
           type="file"
-          accept=".csv"
+          accept=".csv,.xlsx,.xls"
           className="hidden"
           onChange={handleFileSelect}
           data-testid="input-propstream-file"
@@ -606,7 +629,7 @@ function PropStreamImportCard() {
           ) : (
             <Upload className="w-4 h-4 mr-2" />
           )}
-          {isRunning ? "Importing..." : "Upload PropStream CSV"}
+          {isRunning ? "Importing..." : "Upload PropStream File"}
         </Button>
 
         {importStatus && importStatus.status !== "idle" && (
@@ -652,17 +675,30 @@ function PropStreamImportCard() {
               </div>
             </div>
 
-            {Object.keys(importStatus.fieldsUpdated).length > 0 && (
+            {propertyUpdates.length > 0 && (
               <div className="space-y-1 pt-2 border-t">
-                <div className="text-xs font-medium">Fields Enriched</div>
-                {Object.entries(importStatus.fieldsUpdated)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([field, count]) => (
-                    <div key={field} className="flex justify-between text-xs bg-muted/30 rounded px-2 py-1">
-                      <span>{FIELD_LABELS[field] || field}</span>
-                      <span className="font-medium text-emerald-600">+{count}</span>
-                    </div>
-                  ))}
+                <div className="text-xs font-medium">Property Data Enriched</div>
+                {propertyUpdates.map(([field, count]) => (
+                  <div key={field} className="flex justify-between text-xs bg-muted/30 rounded px-2 py-1">
+                    <span>{ALL_LABELS[field] || field}</span>
+                    <span className="font-medium text-emerald-600">+{count}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {skipTraceUpdates.length > 0 && (
+              <div className="space-y-1 pt-2 border-t">
+                <div className="text-xs font-medium flex items-center gap-1">
+                  Skip Trace Enriched
+                  <Badge variant="secondary" className="text-[9px] px-1 py-0">contacts</Badge>
+                </div>
+                {skipTraceUpdates.map(([field, count]) => (
+                  <div key={field} className="flex justify-between text-xs bg-purple-50 dark:bg-purple-950/30 rounded px-2 py-1">
+                    <span>{ALL_LABELS[field] || field}</span>
+                    <span className="font-medium text-purple-600">+{count}</span>
+                  </div>
+                ))}
               </div>
             )}
 
