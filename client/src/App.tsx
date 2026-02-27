@@ -22,10 +22,12 @@ import About from "@/pages/about";
 import Contact from "@/pages/contact";
 import Contractors from "@/pages/contractors";
 import HailChaser from "@/pages/hail-chaser";
+import OpsCenter from "@/pages/ops-center";
 
 function Router() {
   return (
     <Switch>
+      <Route path="/ops" component={OpsCenter} />
       <Route path="/hail-chaser" component={HailChaser} />
       <Route path="/" component={Dashboard} />
       <Route path="/leads" component={Leads} />

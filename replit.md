@@ -56,8 +56,15 @@ The `consent_tokens` table stores TrustedForm/Jornaya/manual consent tokens with
 ### Phone Validation Pipeline
 The phone-validation-pipeline wraps Twilio Lookup V2 with TTL-aware validation, logging results to contact_evidence and skip_trace_log. Batch validation supports rate limiting. The ROI agent uses phone line type (mobile/landline/voip) in contactability scoring.
 
+### UX Architecture: Ops Center + Admin
+The frontend is split into two focused surfaces:
+- **`/ops` (Operations Center)**: Daily command center with 6 card-based panels — Live Budget Guardrails, ROI Engine (expandable), ZIP Priority Tiles, Pipeline Control, Analytics & KPIs (expandable), Storm & Phone Ops. Search bar for card filtering. File: `client/src/pages/ops-center.tsx`.
+- **`/admin` (System Config)**: 4-tab admin for rarely-changed settings — Markets & Sources, Data Quality, Compliance, System. File: `client/src/pages/admin.tsx`.
+- **Extracted panel components**: `client/src/components/admin/roi-engine-panel.tsx`, `analytics-kpis-panel.tsx`, `compliance-panel.tsx` — shared between Ops Center and Admin.
+- **Sidebar**: Ops Center prominently featured in Navigation group (first item, Zap icon). Admin in System group.
+
 ### Feature Specifications
-Key features include a comprehensive Dashboard with KPI cards (conversion rate, cost/lead, ROI), filterable Leads & Lead Detail pages with ROI decision cards and outcome recording, an interactive Map & Storms view with ZIP priority heatmap, a Hail Chaser mode, Portfolios & Network Explorer, Data Management tools, and an Admin interface with 11 tabs (including ROI Engine, Analytics & KPIs, and Compliance). A Contractors Directory and CSV export functionality are also included.
+Key features include a comprehensive Dashboard with KPI cards (conversion rate, cost/lead, ROI), filterable Leads & Lead Detail pages with ROI decision cards and outcome recording, an interactive Map & Storms view with ZIP priority heatmap, a Hail Chaser mode, Portfolios & Network Explorer, Data Management tools, an Operations Center for daily ROI/pipeline/budget/storm management, and an Admin interface with 4 system config tabs (Markets & Sources, Data Quality, Compliance, System). A Contractors Directory and CSV export functionality are also included.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database.

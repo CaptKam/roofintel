@@ -24,6 +24,7 @@ import {
 import { useMarket } from "@/hooks/use-market";
 
 const mainNav = [
+  { title: "Ops Center", url: "/ops", icon: Zap },
   { title: "Hail Chaser", url: "/hail-chaser", icon: CloudLightning },
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Leads", url: "/leads", icon: Building2 },

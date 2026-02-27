@@ -37,39 +37,19 @@ export function AnalyticsKPIsPanel({ marketId }: { marketId?: string }) {
   const DFW_MARKET_ID = marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
 
   const { data: currentKpi, isLoading: kpiLoading } = useQuery<any>({
-    queryKey: ["/api/admin/kpis/current", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/kpis/current?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch KPI");
-      return res.json();
-    },
+    queryKey: [`/api/admin/kpis/current?marketId=${DFW_MARKET_ID}`],
   });
 
   const { data: timeSeries, isLoading: timeSeriesLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/kpis/timeseries", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/kpis/timeseries?marketId=${DFW_MARKET_ID}&days=90`);
-      if (!res.ok) throw new Error("Failed to fetch timeseries");
-      return res.json();
-    },
+    queryKey: [`/api/admin/kpis/timeseries?marketId=${DFW_MARKET_ID}&days=90`],
   });
 
   const { data: funnel, isLoading: funnelLoading } = useQuery<any>({
-    queryKey: ["/api/admin/kpis/funnel", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/kpis/funnel?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch funnel");
-      return res.json();
-    },
+    queryKey: [`/api/admin/kpis/funnel?marketId=${DFW_MARKET_ID}`],
   });
 
   const { data: traceCosts, isLoading: traceCostsLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/trace-costs", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/trace-costs?marketId=${DFW_MARKET_ID}&days=90`);
-      if (!res.ok) throw new Error("Failed to fetch trace costs");
-      return res.json();
-    },
+    queryKey: [`/api/admin/trace-costs?marketId=${DFW_MARKET_ID}&days=90`],
   });
 
   const snapshotMutation = useMutation({

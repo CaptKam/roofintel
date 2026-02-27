@@ -74,12 +74,7 @@ export function CompliancePanel() {
     consentRate: number;
     complianceScore: number;
   }>({
-    queryKey: ["/api/admin/compliance/report", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/compliance/report?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch compliance report");
-      return res.json();
-    },
+    queryKey: [`/api/admin/compliance/report?marketId=${DFW_MARKET_ID}`],
   });
 
   const { data: suppressionStats } = useQuery<{
@@ -121,12 +116,7 @@ export function CompliancePanel() {
     voipPct: number;
     invalidPct: number;
   }>({
-    queryKey: ["/api/admin/phone-validation/summary", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/phone-validation/summary?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch phone validation summary");
-      return res.json();
-    },
+    queryKey: [`/api/admin/phone-validation/summary?marketId=${DFW_MARKET_ID}`],
   });
 
   const { data: batchValidationStatus } = useQuery<{

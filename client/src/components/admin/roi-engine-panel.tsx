@@ -132,12 +132,7 @@ export function ROIEnginePanel() {
   });
 
   const { data: topDecisions, isLoading: decisionsLoading } = useQuery<RoiDecisionRow[]>({
-    queryKey: ["/api/admin/roi/decisions", "limit=20"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/roi/decisions?limit=20");
-      if (!res.ok) throw new Error("Failed to fetch decisions");
-      return res.json();
-    },
+    queryKey: ["/api/admin/roi/decisions?limit=20"],
   });
 
   const batchRunning = batchStatus?.running || false;

@@ -59,14 +59,8 @@ import {
   Ban,
   ScanSearch,
   ArrowDownUp,
-  DollarSign,
-  TrendingUp,
-  Gauge,
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid, Legend, FunnelChart, Funnel, LabelList, PieChart, Pie } from "recharts";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
-import { ROIEnginePanel } from "@/components/admin/roi-engine-panel";
-import { AnalyticsKPIsPanel } from "@/components/admin/analytics-kpis-panel";
 import { CompliancePanel } from "@/components/admin/compliance-panel";
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -4565,7 +4559,6 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
-          </div>
 
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
