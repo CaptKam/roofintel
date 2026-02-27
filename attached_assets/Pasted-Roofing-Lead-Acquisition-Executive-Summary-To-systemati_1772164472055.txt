@@ -1,0 +1,150 @@
+Roofing Lead Acquisition – Executive Summary
+To systematically acquire high-quality roofing leads, we integrate multiple building and owner data sources (public and commercial) at scale. We tile service areas by ZIP Code and score each tile (based on storm exposure, building age/permits, property values, insurance claims, etc.) to prioritize where to buy data. For each prioritized building, we purchase skip-traced contact information only when scoring criteria are met. This report inventories key U.S. data sources (e.g. parcel/assessor databases, permit records, tax rolls, aerial imagery, NOAA/FEMA data, and skip-trace providers), compares their cost models and data fields, and recommends a scoring algorithm (age, roof material, recent permits, claim indicators, etc.) to rank properties. We outline a detailed pilot plan (3–4 months in 3 ZIPs) with defined metrics (contact rate, appointment rate, ROI) and budget scenarios. Additionally, we discuss legal/compliance (TCPA, CCPA, DNC, vendor warranties) and data quality. Technical stack recommendations and a flowchart illustrate the end-to-end process from data ingestion to lead delivery.
+
+(1) Data Source Inventory
+We categorize data by type. Key public sources (often free or low-cost) include county Parcel/Assessor data and Building Permits, which vary by locality (often downloadable via GIS portals or FOIA). For example, New York’s open PLUTO dataset provides detailed tax lots and building info
+. The HUD/County building permits survey provides county-level aggregates
+, but individual permits often require local city APIs or FOIA. Utility hookup data (water/sewer connections) may exist at city GIS (e.g. some jurisdictions open utility parcel layers). FEMA/NOAA storm data (e.g. the NOAA Storm Events Database) provides historical severe-weather events (hail, wind, tornadoes) by location
+. FEMA’s NFIP claims dataset gives flood claim counts by policy, but roof claims (wind/hail) are proprietary (sold by Verisk/ISO or LexisNexis). Street view/aerial imagery (Google, Bing, EagleView, etc.) can infer roof condition/area.
+
+Major commercial datasets aggregate public records nationwide:
+
+ATTOM Data – U.S. property data (158M+ properties, 99% coverage
+). Includes assessor/tax data, parcel, owner, detailed property characteristics (year built, building area, roof material, stories, etc.)
+, plus ~200M historical building permits updated monthly
+. Cost model: subscription or bulk licensing (API, cloud, or data feed)
+.
+LightBox (SmartParcels®) – Nationwide parcel database (300+ attributes, 100% U.S. coverage)
+. Provides parcel boundaries, ownership, land use, assessed values, building footprints, etc. Data delivery via API or bulk; quarterly updates
+. Pricing: typically annual subscription or pay-per-dataset (exact pricing on request).
+ReportAll – Nationwide parcel and land data (3229 counties, 99% population coverage
+). Standardized daily. Offers API or county-level downloads. Likely enterprise pricing per county/state.
+Regrid – U.S. parcel boundaries with linked attributes (ownership, addresses, zoning, etc.)
+. Offers API access, tile layers, and bulk downloads. Daily ownership updates (add-on)
+. Pricing: per-parcel subscription or credits via portal (from $0.10+ per parcel in volume).
+Other specialized vendors:
+
+Municipal/State GIS Portals – e.g. NYC PLUTO, CA Los Angeles parcel data, Cook County PIN lists; often free or low-cost. Field availability varies, but usually include at least year built, building area, land use, and addresses.
+Commercial imagery/GIS – EagleView/Hover: Provide roof measurements and roof-only aerial imagery. EagleView charges per-report (e.g. ~$50–$90 per roof
+) or via subscriptions. Maxar, Nearmap, Google Maps API yield aerial/street imagery (license costs apply).
+Hazard/Claim Data – NOAA Storm Events (free; CSV downloads by county)
+. FEMA NFIP claims (public data by flood policy, no roof specifics). ISO/HailStrike – proprietary hail frequency maps. Insurance company leads – some agencies sell past claims (via LexisNexis or Verisk), usually per-name or subscription.
+Skip-Trace Providers – e.g. LexisNexis Accurint, Tracers, BatchData. These provide phone/email append and owner contact. Pricing typically per-search ($0.10–$3 each) or monthly seat. For example, BatchData’s API offers contact search and phone verification (see their Pricing page for rates, e.g. ~5¢–30¢ per lookup). LeadSherpa and USLeadList similarly market owner contact data with API/pricing on inquiry.
+Data Type	Source/Example	Access & Cost Model	Fields (sample)	Update Frequency
+Parcel/Assessor Data	County GIS/ATTOM/Regrid	Public free (county) / API sub/bulk	Parcel boundaries, owner name/addr, year built, sq ft, lot size, land use, assessed value
+Updated regularly (varies by county; attom monthly)
+Building Permits	County/City permits via API; ATTOM
+Usually free (city GIS); ATTOM API/bulk subscription	Permit date, type (roof, renovation), status, est. cost	Varies: many cities daily; ATTOM monthly
+Tax Records	County Tax Assessor (ATTOM)	Public / via vendors (sub)	Assessed land/improvement value, tax delinquency, last sale price, mortgage info	Annual (tax year)
+Property Characteristics	ATTOM/LightBox/Regrid	Subscription/APIs (per record or bulk)	Bedrooms, baths, building area, roof material (some), stories, HVAC	Varies (tax assessor updates yearly)
+Owner Contact (Skip-trace)	LexisNexis, BatchData, etc.	Per-search fee or sub (e.g. $0.10–$3)	Owner name, mailing address, phone, email (if found), household contacts	Real-time (database)
+Utility/Occupancy	Local utility hookups (rare)	Mostly unavailable publicly	Indicator if meter active (proxy for occupancy)	N/A
+Aerial/Street Imagery	EagleView/Google/Maxar	Per image/report ($50–100+)	Roof footprint, slope, area, potential damage visible	Updated every few years
+Storm/Hazard History	NOAA Storm Events
+Free (NCEI Storm DB)	Date, event type (hail, wind, etc.), magnitude, location (county)	Monthly/Annual releases
+Insurance Claims	LexisNexis, Verisk (not public)	Subscription/API ($$$)	Claim indicator (yes/no), date, cause (wind, hail)	Annual refresh (incidents)
+
+(2) ZIP-Code Tiling & Prioritization
+ZIP tiling: Divide target city into ZIP Code areas (using USPS ZIP shape files or a GIS layer). Each ZIP tile should contain all street addresses/parcel centroids within its bounds. To sample, randomly select a fixed number of properties per ZIP (e.g. 1,000) or use all properties if small. Prioritization of ZIPs is based on a score formula combining factors:
+
+Storm exposure: e.g. average past 5-year hail/wind damage events (from NOAA) or FEMA disaster declarations. High exposure zips get higher weight.
+Building/roof age: Higher weight to Zips with many older roofs (year built < 2000) or roof age if known (from assessor).
+Recent permits: Zips with a high rate of recent roofing or construction permits (per capita) indicate active roofers needed.
+Property value/tax: More affluent areas (higher assessed value or home price) yield better ROI, so weight by average property value.
+Insurance claim density: If available, ZIPs with high insurance claims (storm-related) get priority. (Alternatively, high local storm incidence from NOAA as proxy.)
+Competitor density: Less crowded ZIPs (fewer roofers per household) might yield better penetration. Use professional directories or Google Places for number of roofers.
+Scoring formula (example):
+ZIP_score = 0.3*(StormRisk) + 0.2*(%RoofsOlder) + 0.2*(PermitDensity) + 0.15*(MedianValueScore) + 0.15*(ClaimDensity)
+Each factor is normalized (0–1) for that ZIP. Weights can be tuned by pilot results.
+
+(3) Lead/Building Scoring Algorithm
+For each property (building), gather as many fields as possible and compute a lead score. Key data fields: owner name, mailing address, phone, email (from skip-trace); property type (SFR, MF, commercial); year built and roof material/age (if available from assessor or imagery); square footage; permit history (flags for recent roof/renovation permits); prior insurance claims indicator; occupancy status (vacant vs. owner-occupied, from tax mailing or skip-trace); tax delinquency (from tax roll). Fields like roof age or damage may require a survey or EagleView.
+
+Example scoring:
+
+Base factors: Age weight = 1.2 if year_built < 1990; 1.0 if 1990–2010; 0.8 if newer. Roof material (tile/metal vs. shingle) may affect cost but not likely score.
+Permit factor: +1.0 if roofing permit in last year (from city records), +0.5 for any major permit in 2 years, else 0.
+Value factor: scale by log(property_value); higher value yields slight bump.
+Occupancy: +1.0 if absentee owner (mailing != property), +0.5 if rental.
+Claim flag: +2.0 if known claim (e.g. hail date in zipcode or data vendor flags “likely damage”).
+Vacancy/Foreclosure: exclude or give low score, as roofs likely fine (some foreclosures might need repair, but often covered by sale).
+We would buy the full skip-trace (with phone/email) only if score > threshold, otherwise skip or buy minimal data (just confirm address/occupancy). E.g., threshold score = 1.5. Properties below threshold might still be batched in a lower-tier marketing list (mailers without immediate contact).
+
+(4) Cost Optimization & ROI
+Vendor costs (approx.):
+
+Data append/skip-trace: $0.20–$0.50 per record for phone+email.
+Bulk parcel/permit data: often $0.01–$0.05 per record if licensed by county (or included via subscription).
+EagleView roof reports: ~$50–$90 each
+ (typically only for premium leads).
+Worker hours/CRM cost etc.
+Sample Budgets:
+
+Pilot (3 ZIPs x 500 records = 1,500 leads): Data purchase ~1,500×$0.30 = $450 skip-trace. Ad spend/person-time nominal.
+Scale (100 ZIPs x 2,000 = 200,000 leads): Skip-trace 200,000×$0.25 = $50,000. Add data (permits, appraisal) maybe $0.05×200k=$10k. Total $60k.
+ROI model: Suppose 20% contact rate, 10% appointment/book rate, and average job value $X. Then leads needed for one job = 1/(0.2*0.1)=50. If buying at $0.30, cost/job = $15. If closing yields $1,000 profit, 66× margin. Graph ROI over varying contact rates.
+
+Scenario	Records	Contact%	Book%	Cost/Lead	Leads/Booked	Cost per Sale
+Pilot (low)	1,500	15%	8%	$0.30	83	$25
+Scale (target)	200,000	20%	10%	$0.25	50	$12.50
+Sensitivity: if contact falls to 10% or costs to $0.50, costs triple.						
+
+(5) Data Quality & Compliance
+TCPA: Scrub numbers against national DNC. Only call cell phones with written opt-in. Maintain records of consent (TrustedForm or click-logs). Skip-trace lists are compiled from public records and scrapes, so consent is assumed absent; thus strictly abide by TCPA and municipal call hours (9am–8pm). Use legitimate-interest/failure-forward filters.
+State Privacy: California (CCPA/CPRA) requires opt-out for sale of PII of Californians – document data source opt-outs. Some states limit commercial data (e.g. MA = no prescreened marketing calls).
+Data Retention: Delete or anonymize leads who opt-out. Follow vendor’s data deletion provisions.
+Vendor Warranties: Require vendor SLA (accuracy >95%, refund for NPE (non-person entity), updated contact info). Get guarantees on update frequency.
+Security: Store PII encrypted, share only with authorized marketers.
+(6) Workflow & Tech Stack
+Data Ingestion: Load base list of addresses in target ZIPs (from parcel data or USPS). Enrich with property info via bulk APIs (Attom, LightBox) and permit counts (Attom API).
+Validation & Enrichment: Append owner contacts via skip-trace API (e.g. BatchData, LexisNexis Accurint). Verify phone via Twilio/NumVerify (reduce bad numbers). Verify email formatting (Hunter).
+Scoring: Apply scoring model in a database or CRM (e.g. Salesforce or Pipedrive). Automate scoring by rules engine (e.g. Python script or ETL tool).
+Routing: Export high-scoring contacts to outbound sales/agents/ads. Integration with a CRM (JobNimbus/AccuLynx or HubSpot) to create tasks. Lower scores might be emailed campaign or mailed postcards.
+Feedback Loop: Track contact outcomes (calls made, connects, conversion). Feed back actual contact rates and conversions to retrain score weights (e.g. via a CRM report or BI tool). Adjust weights by ROI.
+Vendors: For ETL/Integration – consider Fivetran or Talend. CRM – JobNimbus or Salesforce. GIS – QGIS/ArcGIS for mapping. Phone verification – Twilio Lookup. Skip-trace – BatchData, Whitepages Pro, or TLOxp. Imagery – EagleView (API) or Google Street (paid API).
+Mermaid flowchart for data pipeline:
+
+mermaid
+Copy
+flowchart TD
+  A[Select ZIP Tiles] --> B[Fetch Parcel & Assessor Data]
+  B --> C[Compute ZIP Priority Score]
+  C -->|Top ZIPs| D[Generate Address List]
+  D --> E[Skip-Trace Owner Contacts]
+  E --> F[Append Property/Permit Attributes]
+  F --> G[Apply Lead Scoring Algorithm]
+  G --> H{Score >= Threshold?}
+  H -->|Yes| I[Send to CRM / Agent]
+  H -->|No| J[Secondary Marketing (mail/email)]
+  I --> K[Sales Follow-Up & Bookings]
+  K --> L[Record Outcomes for ML Feedback]
+(7) Pilot Plan (6–8 weeks)
+Site Selection: Choose 3 ZIPs of varying profile (e.g. high-storm urban, high-storm suburban, low-storm area) within same city or region. Ensure one has poor prior data to test uplift.
+Data Acquisition: Pull 500–1,000 addresses from each ZIP using parcel/APIs. Enrich with property data (age, size, value) and permits.
+Skip-Trace: Purchase contacts for these addresses. Use A/B test: e.g. fully enriched contact list vs. minimal contact info list (just mail) to see lift from direct calling.
+KPIs: Track Contact Rate, Appointment Rate, and Cost per Appointment for each cohort. Also measure match rate (found phone/email).
+SLA/Vendors: Define SLAs with data providers (accuracy >90% on append). Provide sample requests and get turnaround.
+Reporting: Weekly updates on leads purchased vs. converted. End-of-pilot evaluation: conversion vs. spend per ZIP.
+(8) Risks & Mitigation
+Bad Data: Inaccurate addresses or contacts lower ROI. Mitigation: multi-source verification (cross-check parcel vs USPS vs skip-trace).
+Legal Exposure: Risk of TCPA/CCPA fines. Mitigation: rigorous DNC scrubs, consent capture, keep minimal necessary PII, vendor NDAs.
+Low Contact Rate: If below 10%, campaign fails. Mitigation: pilot small, measure match rate, adjust scoring thresholds to target better segments.
+Cost Overruns: Unexpected high skip-trace cost. Mitigation: cap spends per ZIP, prefer subscription discounts for volume.
+Competitor Interference: Overlapping leads sold to many. Mitigation: target exclusivity (smaller, targeted lists) and integrate direct marketing with installers.
+(9) Deliverables and Next Steps
+Maps (by ZIP): Create a GIS heatmap showing ZIP prioritization scores (data in CSV join with ZIP shapefile). (Use QGIS/ArcGIS: join our score table to ZIP code polygons.)
+Mermaid Flowchart: See above for the lead data pipeline.
+Vendor Comparison Tables: We have compiled tables of data vendors (see section 1) and pricing models (see section 4).
+Next-Step Checklist:
+
+Acquire trial access or samples from key vendors (Attom, LightBox, BatchData).
+Develop script/ETL to pull data for selected ZIPs.
+Implement scoring model in spreadsheet/BI tool for pilot.
+Run pilot and collect performance data.
+Analyze pilot results and adjust strategy (e.g. raise threshold or target different areas).
+Sources: Industry and vendor documentation cited above (ATTOM
+, LightBox
+, ReportAll
+, NOAA Storm DB
+, EagleView pricing
+). These cover data content, coverage, update frequency, and (when available) pricing models. We prioritized official or industry-recognized sources to ensure reliability.

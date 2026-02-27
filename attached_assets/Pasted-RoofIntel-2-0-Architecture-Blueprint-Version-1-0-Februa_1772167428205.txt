@@ -1,0 +1,330 @@
+RoofIntel 2.0 — Architecture Blueprint
+Version: 1.0 (February 2026)
+Author: Grok (for Kameron)
+Status: Proposed clean-sheet restructure for national scale
+
+Table of Contents
+
+Executive Summary
+Design Principles
+System Overview & High-Level Architecture
+Project Structure 2.0
+Data Model 2.0
+Domain-Driven Architecture (Bounded Contexts)
+Event-Driven Core & Messaging
+Pipeline & Orchestration 2.0
+Enrichment ROI Engine (Core of 2.0)
+ZIP-Code Tiling & Heatmap System
+Hail-Chaser Mode (Default UX)
+Frontend Architecture 2.0
+Multi-Market Scaling Strategy
+Migration Path (Zero Downtime)
+Tech Stack Updates
+Security, Compliance & Observability
+Roadmap & Phased Delivery
+Appendix A: New Tables & Schema Changes
+Appendix B: Example Domain Event Payloads
+Appendix C: ROI Configuration per Market
+
+
+1. Executive Summary
+RoofIntel 2.0 is a complete architectural evolution of the current production system. It preserves 100% of your existing data, agents, scoring, evidence provenance, storm monitoring, and ROI logic while eliminating the “scattered” feeling and making every new market a 1-day onboarding exercise.
+Key Outcomes
+
+New market (Houston, Austin, Chicago, etc.) = 1 day (config only).
+Hail-chaser experience becomes the default login (storm dashboard first).
+ROI Engine becomes the single gatekeeper for all enrichment.
+Code duplication reduced by ~65%.
+Future velocity 3–5× higher.
+Ready for 500k+ leads and 20+ markets by end of 2026.
+
+This is not a rewrite from scratch — it is a reorganization with dual-write migration so DFW users experience zero disruption.
+
+2. Design Principles
+
+Config-First Everywhere — CAD endpoints, NOAA bounding boxes, permit APIs, ROI thresholds, hail-season multipliers all live in market_data_sources + markets config.
+Domain-Driven Design — 6 bounded contexts (Property, Storm, Owner, Enrichment, Scoring, Presentation). Each owns its data, events, and repository.
+Event-First — All state changes publish immutable domain events (HailSwathDetected, RoiDecisionMade, LeadEnriched, etc.).
+Hail-Chaser First — Default UX is storm-centric; full intelligence platform is behind “Pro Mode” toggle.
+Intelligence as a Lake — leads becomes a thin hub (35 columns). Heavy data stays in normalized satellites + materialized views.
+ROI as Gatekeeper — No enrichment (free or paid) runs without positive ROI decision.
+Idempotent & Stateless Agents — Every agent is a pure function + event emitter.
+Observability by Default — Every decision, event, and spend is auditable.
+
+
+3. System Overview & High-Level Architecture
+#mermaid-diagram-mermaid-tlbu52p{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#000000;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-diagram-mermaid-tlbu52p .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-diagram-mermaid-tlbu52p .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-diagram-mermaid-tlbu52p .error-icon{fill:#552222;}#mermaid-diagram-mermaid-tlbu52p .error-text{fill:#552222;stroke:#552222;}#mermaid-diagram-mermaid-tlbu52p .edge-thickness-normal{stroke-width:1px;}#mermaid-diagram-mermaid-tlbu52p .edge-thickness-thick{stroke-width:3.5px;}#mermaid-diagram-mermaid-tlbu52p .edge-pattern-solid{stroke-dasharray:0;}#mermaid-diagram-mermaid-tlbu52p .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-diagram-mermaid-tlbu52p .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-diagram-mermaid-tlbu52p .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-diagram-mermaid-tlbu52p .marker{fill:#666;stroke:#666;}#mermaid-diagram-mermaid-tlbu52p .marker.cross{stroke:#666;}#mermaid-diagram-mermaid-tlbu52p svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#mermaid-diagram-mermaid-tlbu52p p{margin:0;}#mermaid-diagram-mermaid-tlbu52p .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#000000;}#mermaid-diagram-mermaid-tlbu52p .cluster-label text{fill:#333;}#mermaid-diagram-mermaid-tlbu52p .cluster-label span{color:#333;}#mermaid-diagram-mermaid-tlbu52p .cluster-label span p{background-color:transparent;}#mermaid-diagram-mermaid-tlbu52p .label text,#mermaid-diagram-mermaid-tlbu52p span{fill:#000000;color:#000000;}#mermaid-diagram-mermaid-tlbu52p .node rect,#mermaid-diagram-mermaid-tlbu52p .node circle,#mermaid-diagram-mermaid-tlbu52p .node ellipse,#mermaid-diagram-mermaid-tlbu52p .node polygon,#mermaid-diagram-mermaid-tlbu52p .node path{fill:#eee;stroke:#999;stroke-width:1px;}#mermaid-diagram-mermaid-tlbu52p .rough-node .label text,#mermaid-diagram-mermaid-tlbu52p .node .label text,#mermaid-diagram-mermaid-tlbu52p .image-shape .label,#mermaid-diagram-mermaid-tlbu52p .icon-shape .label{text-anchor:middle;}#mermaid-diagram-mermaid-tlbu52p .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-diagram-mermaid-tlbu52p .rough-node .label,#mermaid-diagram-mermaid-tlbu52p .node .label,#mermaid-diagram-mermaid-tlbu52p .image-shape .label,#mermaid-diagram-mermaid-tlbu52p .icon-shape .label{text-align:center;}#mermaid-diagram-mermaid-tlbu52p .node.clickable{cursor:pointer;}#mermaid-diagram-mermaid-tlbu52p .root .anchor path{fill:#666!important;stroke-width:0;stroke:#666;}#mermaid-diagram-mermaid-tlbu52p .arrowheadPath{fill:#333333;}#mermaid-diagram-mermaid-tlbu52p .edgePath .path{stroke:#666;stroke-width:2.0px;}#mermaid-diagram-mermaid-tlbu52p .flowchart-link{stroke:#666;fill:none;}#mermaid-diagram-mermaid-tlbu52p .edgeLabel{background-color:white;text-align:center;}#mermaid-diagram-mermaid-tlbu52p .edgeLabel p{background-color:white;}#mermaid-diagram-mermaid-tlbu52p .edgeLabel rect{opacity:0.5;background-color:white;fill:white;}#mermaid-diagram-mermaid-tlbu52p .labelBkg{background-color:rgba(255, 255, 255, 0.5);}#mermaid-diagram-mermaid-tlbu52p .cluster rect{fill:hsl(0, 0%, 98.9215686275%);stroke:#707070;stroke-width:1px;}#mermaid-diagram-mermaid-tlbu52p .cluster text{fill:#333;}#mermaid-diagram-mermaid-tlbu52p .cluster span{color:#333;}#mermaid-diagram-mermaid-tlbu52p div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(-160, 0%, 93.3333333333%);border:1px solid #707070;border-radius:2px;pointer-events:none;z-index:100;}#mermaid-diagram-mermaid-tlbu52p .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#000000;}#mermaid-diagram-mermaid-tlbu52p rect.text{fill:none;stroke-width:0;}#mermaid-diagram-mermaid-tlbu52p .icon-shape,#mermaid-diagram-mermaid-tlbu52p .image-shape{background-color:white;text-align:center;}#mermaid-diagram-mermaid-tlbu52p .icon-shape p,#mermaid-diagram-mermaid-tlbu52p .image-shape p{background-color:white;padding:2px;}#mermaid-diagram-mermaid-tlbu52p .icon-shape rect,#mermaid-diagram-mermaid-tlbu52p .image-shape rect{opacity:0.5;background-color:white;fill:white;}#mermaid-diagram-mermaid-tlbu52p :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}External Sources
+ArcGIS • NOAA • Xweather • Permits • TX SOSConfig-Driven Importers
+market_data_sourcesEvent Bus
+Redis Streams + Pg LISTEN/NOTIFYStorm Context
+Real-time Monitor + Response QueueProperty Context
+CAD + Footprints + PermitsOwner Context
+Intelligence + Portfolios + DMsEnrichment Context
+ROI Engine + Evidence RecorderScoring Context
+Lead Score + ZIP Tiles + ROI DecisionsMaterialized Views + Read ReplicasGraphQL + REST API Layer
+Feature Flags + Rate LimitingHail-Chaser Default UX + Pro ModeAdmin Console
+Config Editor + Budget + Pipeline DAG
+Core Flow (Hail Example)
+
+Xweather detects threat → HailSwathDetected event.
+Storm context tags affected leads → publishes LeadsAffectedByHail.
+Enrichment context runs ROI on those ZIPs (3× hail multiplier).
+Scoring context updates ZIP tiles + lead scores.
+Frontend pushes real-time update to Hail-Chaser map.
+
+
+4. Project Structure 2.0
+textroofintel/
+├── domains/                          # Core business logic — 6 bounded contexts
+│   ├── storm/
+│   ├── property/
+│   ├── owner/
+│   ├── enrichment/                   # ROI Engine lives here
+│   ├── scoring/                      # ZIP tiling + lead scoring
+│   └── shared/                       # events, types, errors
+├── infrastructure/
+│   ├── db/                           # Drizzle + migrations + materialized views
+│   ├── events/                       # Redis + Pg event bus
+│   ├── importers/                    # Generic CAD, Permit, NOAA importers
+│   └── scheduler/                    # BullMQ / Temporal DAG
+├── api/                              # Controllers + resolvers
+├── client/
+│   ├── features/hail-chaser/         # Default route tree
+│   ├── features/pro-mode/            # Full intelligence behind flag
+│   └── components/                   # Shared UI
+├── config/
+│   └── markets/                      # per-market JSON configs
+├── shared/                           # schema.ts, DTOs, constants
+└── scripts/                          # migration, backfill, seed
+
+5. Data Model 2.0 (Evolution)
+Keep (unchanged)
+
+All satellite tables (contact_evidence, intelligence_claims, building_permits, portfolios, rooftop_owners, hail_events, etc.)
+markets, market_data_sources, storm_runs, response_queue
+
+Thin the leads table (from ~80→35 columns):
+
+Core identity + FKs only.
+All derived data moves to materialized views (lead_storm_view, lead_owner_view, lead_roi_view).
+
+New Tables (Appendix A)
+
+domain_events (event sourcing lite)
+zip_tiles (pre-computed scores + cached GeoJSON)
+materialized_lead_views (refreshed hourly or on event)
+enrichment_budgets (per-market daily/seasonal caps)
+
+Indexes & Performance
+
+GIN on all JSONB.
+Materialized views with concurrent refresh.
+Read replicas for dashboard/map queries.
+
+
+6. Domain-Driven Architecture (Bounded Contexts)
+Storm Context (real-time first)
+
+HailSwathDetected, StormThreatPredicted
+Real-time Xweather + NOAA workers
+Response queue with ETA calculation
+
+Property Context
+
+Generic importer using market_data_sources
+Building footprints, permits, violations
+Idempotent upsert by source_type + source_id
+
+Owner Context
+
+16-agent intelligence pipeline (now event-triggered)
+Portfolio detection, DM inference
+LLC chain resolution
+
+Enrichment Context (see section 9)
+
+ROI Engine (your T002)
+Evidence recorder
+Paid/free gating
+
+Scoring Context
+
+Lead scoring v3 + v4 (hail-first weights)
+ZIP tiling (your T003)
+ROI decisions stored per lead
+
+Shared Context
+
+Domain events, compliance gates, audit logging
+
+
+7. Event-Driven Core & Messaging
+Implementation
+
+Redis Streams for high-throughput events
+PostgreSQL LISTEN/NOTIFY for low-latency internal triggers
+Each event has:
+eventId, eventType, marketId, payload, timestamp, version
+
+
+Key Events
+
+LeadImported
+HailSwathDetected
+RoiDecisionMade
+EnrichmentExecuted
+LeadScoreUpdated
+ZipTileUpdated
+
+Benefits
+
+Decoupled contexts (add Chicago without touching DFW code)
+Replayable audit trail
+Real-time push to Hail-Chaser map via WebSocket
+
+
+8. Pipeline & Orchestration 2.0
+Replace linear 9-phase orchestrator with event-driven DAG using BullMQ or Temporal.
+New Flow
+
+Import → LeadImported event
+Storm context listens → tags hail
+Enrichment context listens → runs ROI
+Scoring context listens → updates scores + ZIP tiles
+Frontend subscribes to ZipTileUpdated + LeadScoreUpdated
+
+Admin UI
+
+Visual DAG editor (new tab)
+One-click “Force Hail Swath Processing” for testing
+
+
+9. Enrichment ROI Engine (Core of 2.0)
+Full implementation from our previous message (T002) lives in domains/enrichment/roi-agent.ts.
+Hail-Chaser Enhancements
+
+hailFactor 3× multiplier on fresh hail or open claim window
+Active storm auto-approves Tier 2+ on affected ZIPs
+Per-market budget guardrails in enrichment_budgets table
+
+Admin Config
+
+Tune MIN_ROI_THRESHOLD, AVG_DEAL_SIZE, seasonal multipliers per market
+Live budget sliders with projected EV
+
+
+10. ZIP-Code Tiling & Heatmap System
+Full implementation from T003 lives in domains/scoring/zip-tile-scoring.ts.
+Enhancements in 2.0
+
+Pre-computed zip_tiles table (refreshed on ZipTileUpdated event)
+GeoJSON cached per market in S3 or /public
+Clickable choropleth on Hail-Chaser map (red = high storm priority)
+Filter by “Recommended Spend This Week”
+
+
+11. Hail-Chaser Mode (Default UX)
+Login lands on /hail-chaser
+
+Full-screen Leaflet with live Xweather + NOAA overlays
+Sidebar: Current Swaths (live), Prioritized Response Queue, ZIP Heatmap
+One-tap “Enrich & Call” on any lead in queue
+“Switch to Pro Mode” for portfolios, deep owner intel, etc.
+
+Feature Flag hailMode: true (default for new users, toggleable)
+
+12. Frontend Architecture 2.0
+
+React 18 + TanStack Router (replace Wouter)
+Feature-based folder structure (features/hail-chaser/, features/pro-mode/)
+Real-time subscriptions via Socket.io or GraphQL subscriptions
+Recharts + Leaflet unchanged, but now consume materialized views
+
+
+13. Multi-Market Scaling Strategy
+Onboard New Market Steps
+
+Admin → “Add Market” → name, center, counties, NOAA bbox
+Add 4–8 rows to market_data_sources (CAD endpoint, permit API, etc.)
+Run importers/run-all for that market
+System auto-generates ZIP tiles + first ROI batch
+Done — heatmap and Hail-Chaser ready
+
+
+14. Migration Path (Zero Downtime — 4–6 Weeks)
+Phase 1 (Week 1) — Dual-write new domains
+Phase 2 (Week 2) — Backfill domain events from existing data
+Phase 3 (Week 3) — Materialized views + read-replica cutover
+Phase 4 (Week 4) — Deprecate old agents/files
+Phase 5 (Week 5–6) — Ship Hail-Chaser default + new admin DAG editor
+All old routes remain functional via compatibility layer.
+
+15. Tech Stack Updates
+Add
+
+Redis (Streams + Pub/Sub)
+BullMQ or Temporal (DAG)
+GraphQL Yoga (optional for complex queries)
+Socket.io (real-time map)
+
+Keep
+
+Drizzle, Express, React, Tailwind, Shadcn, Recharts, Leaflet, PostgreSQL
+
+Remove
+
+Hardcoded CAD agents (replaced by generic importer)
+Linear pipeline orchestrator
+
+
+16. Security, Compliance & Observability
+
+All events logged to domain_events
+Row-level security on leads by market_id
+Budget alerts when projected spend > 80% of monthly cap
+OpenTelemetry + Sentry for tracing
+Full provenance remains (evidence recorder unchanged)
+
+
+17. Roadmap & Phased Delivery
+Week 1–2 — Infrastructure + Storm Context + Event Bus
+Week 3 — Property + Enrichment (ROI) Contexts
+Week 4 — Scoring + ZIP tiles + Hail-Chaser frontend
+Week 5 — Migration dual-write + testing
+Week 6 — Cutover + launch Hail-Chaser as default
+Post-2.0
+
+Q3 2026: 5 new markets (Austin, San Antonio, Chicago, Atlanta, Denver)
+Q4 2026: White-label enterprise tier
+
+
+Appendix A: New Tables & Schema Changes
+TypeScript// New in shared/schema.ts
+export const domainEvents = pgTable('domain_events', { ... });
+export const zipTiles = pgTable('zip_tiles', { ... });
+export const enrichmentBudgets = pgTable('enrichment_budgets', { ... });
+(Full DDL available on request.)
+
+Appendix B: Example Domain Event Payloads
+JSON{
+  "eventId": "evt_...",
+  "type": "HailSwathDetected",
+  "marketId": "dfw",
+  "payload": {
+    "swathId": "...",
+    "hailSize": 2.25,
+    "affectedLeadIds": ["lead_1", "lead_2"],
+    "predictedEtaMinutes": [12, 45]
+  }
+}
+
+Appendix C: ROI Configuration per Market
+Stored in markets table as JSONB or separate market_config table:
+JSON{
+  "roi": {
+    "minThreshold": 8.0,
+    "avgDealSize": 28500,
+    "hailSeasonMultiplier": 2.2,
+    "dailyBudgetUsd": 450
+  }
+}
