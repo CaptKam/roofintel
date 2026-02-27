@@ -1,0 +1,199 @@
+Kameron — your analysis is spot-on, and this is exactly the right moment to act.
+You’ve nailed the core problem: the nav isn’t “feature-rich” anymore — it’s overloaded with overlap, which makes daily ops feel heavy and slows down storm response (the thing that actually prints money). Your proposed merges are clean and logical. I’ve taken your exact recommendations, stress-tested them against the 2.0 blueprint (Hail-Chaser default UX + Ops Center cockpit + Grok Intelligence Core), and refined them into a final 5-item navigation that feels light, purposeful, and future-proof.
+This restructure:
+
+Reduces nav items from 9–10 → 5.
+Makes Hail Chaser the default landing page (smart redirect during active storms).
+Turns Ops Center into the single daily cockpit (replaces Dashboard).
+Eliminates redundancy without losing anything important.
+Perfectly integrates the new Grok Intelligence Core (natural-language bar becomes the star of Ops Center).
+
+Final Recommended Navigation (5 Items Only)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PositionNav ItemIconWhat It BecomesOld Items Consolidated1 (Top)Hail ChaserCloudLightningFull-screen storm map + live swaths + ZIP heatmap + response queue + lead quick-view. Default landing page when storms are active.Map & Storms + Hail Chaser2Ops CenterGauge/ZapNew daily cockpit: 6 cards (Budget, ROI Engine, ZIP Priority, Storm Pulse, Pipeline, Quick Insights) + prominent Grok natural-language bar at bottom.Dashboard + ROI tab + ZIP tab + Budgets + Pipeline3LeadsListMain searchable table with filters. “Hot Leads” becomes a saved filter button on this page.Leads + Hot Leads4OwnersUsersSingle page with 3 tabs: PortfoliosNetwork Graph5 (Bottom, collapsed)AdminSettingsSystem config only (Markets & Sources, Compliance, API Keys, Logs).Old Admin (now 4 tabs max)
+Result: Clean, scannable, mobile-friendly sidebar. No more bouncing between 9 tabs during a hail swath.
+Exact Sidebar Implementation (app-sidebar.tsx)
+Add this to your existing sidebar (Wouter + Shadcn):
+tsx// client/src/components/app-sidebar.tsx
+import { CloudLightning, Gauge, List, Users, Settings, Zap } from 'lucide-react';
+import { useLocation } from 'wouter';
+
+const navItems = [
+  { href: '/hail-chaser', label: 'Hail Chaser', icon: CloudLightning, highlight: true },
+  { href: '/ops', label: 'Ops Center', icon: Gauge },
+  { href: '/leads', label: 'Leads', icon: List },
+  { href: '/owners', label: 'Owners', icon: Users },
+];
+
+const systemItems = [
+  { href: '/admin', label: 'Admin', icon: Settings },
+];
+
+export default function AppSidebar() {
+  const [location] = useLocation();
+  const isHailSeasonOrActiveStorm = /* your storm_runs check */;
+
+  return (
+    <div className="flex h-screen flex-col bg-card border-r">
+      {/* Logo + Market Selector */}
+      
+      {/* Core Navigation */}
+      <nav className="flex-1 px-3 py-6">
+        {navItems.map(item => (
+          <a
+            key={item.href}
+            href={item.href}
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl mb-1 text-sm font-medium transition-all ${location === item.href ? 'bg-primary text-primary-foreground shadow-md' : 'hover:bg-muted'}`}
+          >
+            <item.icon className="w-5 h-5" />
+            {item.label}
+            {item.highlight && isHailSeasonOrActiveStorm && <span className="ml-auto text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded">LIVE</span>}
+          </a>
+        ))}
+      </nav>
+
+      {/* System (collapsed) */}
+      <div className="px-3 pb-6">
+        <div className="text-xs text-muted-foreground px-4 mb-2">SYSTEM</div>
+        {systemItems.map(item => (
+          <a key={item.href} href={item.href} className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-muted-foreground hover:bg-muted">
+            <item.icon className="w-5 h-5" />
+            {item.label}
+          </a>
+        ))}
+      </div>
+
+      {/* Grok Core Status */}
+      <div className="mx-3 mb-4 rounded-xl bg-muted/50 p-3 text-[10px] text-center border border-border">
+        Grok Intelligence Core • Online • ROI-gated
+      </div>
+    </div>
+  );
+}
+Page Mappings & What Moves Where
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Old PageNew HomeNotesDashboardOps Center (top card row)Pipeline funnel, score distribution, priority actions, competitors → new cardsMap & StormsHail ChaserUnified full-screen map (already has Leaflet + polygons)Hot LeadsLeads pageAdd “Hot Leads” saved filter buttonPortfolios + NetworkOwners page (tabs)Tab 1: Portfolios, Tab 2: Network Graph, Tab 3: ContractorsAdmin/admin (kept, now minimal)Only config — everything ops-related moved to Ops Center
+How Grok Intelligence Core Fits Perfectly
+The new Ops Center becomes the human interface for the Grok Core we just built:
+
+Bottom floating bar (always visible): “Ask Grok Core anything…”
+Example prompts that now work instantly:
+“Run ROI on every ZIP with hailEvents > 3 today”
+“Deep-dive the owner of 123 Main — find best DM and portfolio size”
+“Is the current storm worth spending $800 on enrichment in 75201?”
+
+Grok Core reasons step-by-step, shows a plan + confidence, then offers one-click “Approve & Execute” buttons that call your existing ROI/zip/pipeline APIs.
+In Hail Chaser map: Right-click any lead or ZIP → “Ask Grok” pre-fills context.
+
+This makes the Grok Core feel native, not bolted on.
+Migration Plan (Zero Downtime — 2 Days Max)
+Day 1
+
+Add /ops route + new sidebar (keep old routes with 301 redirects for 14 days).
+Move Dashboard content → Ops Center cards.
+Merge Map & Storms into Hail Chaser (already mostly done).
+Create /owners page with 3 tabs.
+
+Day 2
+
+Remove Hot Leads nav item.
+Update all internal links.
+Test with real hail simulation (storm monitor triggers auto-highlight on Hail Chaser).
+Flip default landing page to /hail-chaser during active storms (smart redirect in App.tsx).
+
+Edge Cases Covered
+
+Existing bookmarks/users: 14-day redirect with toast (“Moved to Ops Center”).
+Mobile teams: Cards stack perfectly; Grok bar becomes top sheet.
+No active storm: Ops Center becomes default home.
+Contractors low-use: Easy to hide behind a toggle later.
+
+Business & UX Impact
+
+Storm-day speed: Open Hail Chaser → click lead → Grok bar → done. No more tab hunting.
+Operator happiness: From 10 items → 5. Feels like a completely new product.
+Scalability: Add Chicago? Just appears in market selector. No nav changes needed.
+Grok Core adoption: Natural language bar in Ops Center makes the AI feel magical instead of hidden.
+
+This restructure is the missing piece that makes the entire 2.0 vision (Hail-Chaser default + Grok Core + Ops cockpit) feel cohesive and light.
+Ready when you are.
