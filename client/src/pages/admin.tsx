@@ -62,6 +62,7 @@ import {
 } from "lucide-react";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 import { CompliancePanel } from "@/components/admin/compliance-panel";
+import { SectorManager } from "@/components/sectors/sector-manager";
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "Never";
@@ -2717,6 +2718,7 @@ export default function Admin() {
           <TabsTrigger value="data-quality" className="rounded-lg text-[13px] font-medium" data-testid="tab-data-quality">Data Quality</TabsTrigger>
           <TabsTrigger value="compliance" className="rounded-lg text-[13px] font-medium" data-testid="tab-compliance">Compliance</TabsTrigger>
           <TabsTrigger value="system" className="rounded-lg text-[13px] font-medium" data-testid="tab-system">System</TabsTrigger>
+          <TabsTrigger value="sectors" className="rounded-lg text-[13px] font-medium" data-testid="tab-sectors">Sectors</TabsTrigger>
         </TabsList>
 
 
@@ -4621,6 +4623,10 @@ export default function Admin() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="sectors" className="space-y-6">
+          <SectorManager />
         </TabsContent>
       </Tabs>
     </div>

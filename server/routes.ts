@@ -4902,6 +4902,167 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  // ==================== SECTOR ROUTES ====================
+
+  app.get("/api/sectors", async (req, res) => {
+    try {
+      const marketId = req.query.marketId as string | undefined;
+      const sectorList = await storage.getSectors(marketId);
+      res.json(sectorList);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get sectors", error: error.message });
+    }
+  });
+
+  app.get("/api/sectors/:id", async (req, res) => {
+    try {
+      const sector = await storage.getSectorById(req.params.id);
+      if (!sector) return res.status(404).json({ message: "Sector not found" });
+      res.json(sector);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get sector", error: error.message });
+    }
+  });
+
+  app.post("/api/sectors", async (req, res) => {
+    try {
+      const { insertSectorSchema } = await import("@shared/schema");
+      const parsed = insertSectorSchema.parse(req.body);
+      const sector = await storage.createSector(parsed);
+      res.json(sector);
+    } catch (error: any) {
+      if (error.name === "ZodError") return res.status(400).json({ message: "Validation failed", errors: error.errors });
+      res.status(500).json({ message: "Failed to create sector", error: error.message });
+    }
+  });
+
+  app.patch("/api/sectors/:id", async (req, res) => {
+    try {
+      const { insertSectorSchema } = await import("@shared/schema");
+      const partial = insertSectorSchema.partial().parse(req.body);
+      const sector = await storage.updateSector(req.params.id, partial);
+      if (!sector) return res.status(404).json({ message: "Sector not found" });
+      res.json(sector);
+    } catch (error: any) {
+      if (error.name === "ZodError") return res.status(400).json({ message: "Validation failed", errors: error.errors });
+      res.status(500).json({ message: "Failed to update sector", error: error.message });
+    }
+  });
+
+  app.delete("/api/sectors/:id", async (req, res) => {
+    try {
+      await storage.deleteSector(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete sector", error: error.message });
+    }
+  });
+
+  app.post("/api/sectors/:id/compute", async (req, res) => {
+    try {
+      const sector = await storage.getSectorById(req.params.id);
+      if (!sector) return res.status(404).json({ message: "Sector not found" });
+
+      const { zipTiles: zipTilesTable } = await import("@shared/schema");
+      const { inArray } = await import("drizzle-orm");
+      const tiles = await db.select().from(zipTilesTable).where(
+        inArray(zipTilesTable.zipCode, sector.zipCodes)
+      );
+
+      if (tiles.length === 0) {
+        return res.json({ ...sector, sectorScore: 0, leadCount: 0 });
+      }
+
+      const totalLeads = tiles.reduce((s, t) => s + (t.leadCount || 0), 0);
+      const avgScore = Math.round(tiles.reduce((s, t) => s + (t.zipScore || 0), 0) / tiles.length);
+      const avgLeadScore = tiles.reduce((s, t) => s + (t.avgLeadScore || 0), 0) / tiles.length;
+      const totalValue = tiles.reduce((s, t) => s + (t.medianPropertyValue || 0) * (t.leadCount || 0), 0);
+
+      const updated = await storage.updateSector(sector.id, {
+        sectorScore: avgScore,
+        leadCount: totalLeads,
+        avgLeadScore: Math.round(avgLeadScore * 10) / 10,
+        totalPropertyValue: totalValue,
+      });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to compute sector score", error: error.message });
+    }
+  });
+
+  app.post("/api/sectors/auto-generate", async (req, res) => {
+    try {
+      const marketId = req.body.marketId;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+
+      const { zipTiles: zipTilesTable } = await import("@shared/schema");
+      const tiles = await db.select().from(zipTilesTable).where(eq(zipTilesTable.marketId, marketId));
+
+      if (tiles.length === 0) {
+        return res.json({ message: "No ZIP tiles found for this market. Compute ZIP tiles first.", sectors: [] });
+      }
+
+      const tilesWithCoords = tiles.filter(t => t.centerLat && t.centerLng);
+      if (tilesWithCoords.length === 0) {
+        return res.json({ message: "No ZIP tiles with coordinates found.", sectors: [] });
+      }
+
+      const latCenter = tilesWithCoords.reduce((s, t) => s + t.centerLat!, 0) / tilesWithCoords.length;
+      const lngCenter = tilesWithCoords.reduce((s, t) => s + t.centerLng!, 0) / tilesWithCoords.length;
+
+      const quadrants: { name: string; color: string; zips: string[] }[] = [
+        { name: "North", color: "#3B82F6", zips: [] },
+        { name: "South", color: "#EF4444", zips: [] },
+        { name: "East", color: "#10B981", zips: [] },
+        { name: "West", color: "#F59E0B", zips: [] },
+        { name: "Northeast", color: "#8B5CF6", zips: [] },
+        { name: "Northwest", color: "#EC4899", zips: [] },
+        { name: "Southeast", color: "#06B6D4", zips: [] },
+        { name: "Southwest", color: "#F97316", zips: [] },
+      ];
+
+      for (const tile of tilesWithCoords) {
+        const isNorth = tile.centerLat! > latCenter;
+        const isEast = tile.centerLng! > lngCenter;
+        const latDist = Math.abs(tile.centerLat! - latCenter);
+        const lngDist = Math.abs(tile.centerLng! - lngCenter);
+        const isDiagonal = latDist > 0.02 && lngDist > 0.02;
+
+        if (isDiagonal) {
+          if (isNorth && isEast) quadrants[4].zips.push(tile.zipCode);
+          else if (isNorth && !isEast) quadrants[5].zips.push(tile.zipCode);
+          else if (!isNorth && isEast) quadrants[6].zips.push(tile.zipCode);
+          else quadrants[7].zips.push(tile.zipCode);
+        } else {
+          if (isNorth && latDist >= lngDist) quadrants[0].zips.push(tile.zipCode);
+          else if (!isNorth && latDist >= lngDist) quadrants[1].zips.push(tile.zipCode);
+          else if (isEast) quadrants[2].zips.push(tile.zipCode);
+          else quadrants[3].zips.push(tile.zipCode);
+        }
+      }
+
+      const market = await storage.getMarketById(marketId);
+      const marketName = market?.name || "Market";
+
+      const created = [];
+      for (const q of quadrants) {
+        if (q.zips.length === 0) continue;
+        const sector = await storage.createSector({
+          marketId,
+          name: `${marketName} - ${q.name}`,
+          color: q.color,
+          zipCodes: q.zips,
+          priority: "medium",
+        });
+        created.push(sector);
+      }
+
+      res.json({ message: `Generated ${created.length} sectors`, sectors: created });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to auto-generate sectors", error: error.message });
+    }
+  });
+
   app.get("/api/admin/budgets", async (req, res) => {
     try {
       const { getMarketConfig } = await import("./enrichment-roi-agent");

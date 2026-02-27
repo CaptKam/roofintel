@@ -25,13 +25,14 @@ import {
   CloudLightning, Phone, Mail, ExternalLink, ChevronLeft, ChevronRight,
   Zap, AlertTriangle, Target, DollarSign, Building2, X, Copy, ArrowRight,
   Radar, Play, Square, RefreshCw, CheckCircle, Bell, Plus, Trash2, Shield,
-  ChevronDown, Settings2, Radio
+  ChevronDown, Settings2, Radio, Layers, MapPin, ArrowUpDown, User
 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Lead, StormRun, ResponseQueueItem, StormAlertConfig, AlertHistoryRecord } from "@shared/schema";
+import type { Lead, StormRun, ResponseQueueItem, StormAlertConfig, AlertHistoryRecord, Sector } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useMarket } from "@/hooks/use-market";
 import { Helmet } from "react-helmet-async";
 
 interface LeadsResponse {
@@ -185,6 +186,36 @@ function getThreatColor(probSevere: number, severe: boolean): string {
   return "#eab308";
 }
 
+function getPriorityColor(priority: string): string {
+  switch (priority) {
+    case "high": return "text-red-600 dark:text-red-400";
+    case "medium": return "text-yellow-600 dark:text-yellow-400";
+    case "low": return "text-green-600 dark:text-green-400";
+    default: return "text-muted-foreground";
+  }
+}
+
+function buildSectorPopup(sector: Sector): string {
+  const priorityLabel = (sector.priority || "medium").charAt(0).toUpperCase() + (sector.priority || "medium").slice(1);
+  const priorityColor = sector.priority === "high" ? "#dc2626" : sector.priority === "low" ? "#16a34a" : "#ca8a04";
+  return `<div style="min-width:220px;font-size:12px;">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <div style="width:10px;height:10px;border-radius:50%;background:${sector.color || '#3B82F6'};"></div>
+      <strong style="font-size:13px;">${sector.name}</strong>
+    </div>
+    <hr style="margin:4px 0;border-color:#e5e7eb;" />
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;">
+      <span>Score:</span><strong>${sector.sectorScore ?? 'N/A'}</strong>
+      <span>Leads:</span><strong>${sector.leadCount || 0}</strong>
+      <span>Avg Score:</span><strong>${sector.avgLeadScore != null ? sector.avgLeadScore.toFixed(1) : 'N/A'}</strong>
+      <span>Value:</span><strong>${sector.totalPropertyValue ? '$' + sector.totalPropertyValue.toLocaleString() : 'N/A'}</strong>
+      <span>Priority:</span><strong style="color:${priorityColor};">${priorityLabel}</strong>
+      <span>Assigned:</span><strong>${sector.assignedTo || 'Unassigned'}</strong>
+    </div>
+    ${sector.zipCodes?.length ? `<hr style="margin:4px 0;border-color:#e5e7eb;" /><span style="font-size:11px;color:#6b7280;">ZIPs: ${sector.zipCodes.join(', ')}</span>` : ''}
+  </div>`;
+}
+
 function createMarkerIcon(tier: string) {
   const color = getTierColor(tier);
   return L.divIcon({
@@ -216,6 +247,7 @@ export default function HailChaser() {
   const swathLayerRef = useRef<L.LayerGroup | null>(null);
   const footprintLayerRef = useRef<L.LayerGroup | null>(null);
   const footprintCacheRef = useRef<Map<string, any>>(new Map());
+  const sectorLayerRef = useRef<L.LayerGroup | null>(null);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -224,6 +256,8 @@ export default function HailChaser() {
   const [showThreatForecast, setShowThreatForecast] = useState(true);
   const [showFootprints, setShowFootprints] = useState(false);
   const [showAlertNws, setShowAlertNws] = useState(true);
+  const [showSectors, setShowSectors] = useState(false);
+  const [sectorSort, setSectorSort] = useState<"priority" | "score">("priority");
   const [footprintLoading, setFootprintLoading] = useState(false);
   const [daysBack, setDaysBack] = useState("7");
   const [alertConfigOpen, setAlertConfigOpen] = useState(false);
@@ -241,6 +275,7 @@ export default function HailChaser() {
   const [newRecipients, setNewRecipients] = useState<Array<{ type: string; value: string }>>([]);
 
   const { toast } = useToast();
+  const { activeMarket } = useMarket();
 
   const { data: leadsData } = useQuery<LeadsResponse>({
     queryKey: ["/api/leads?limit=2000"],
@@ -298,6 +333,13 @@ export default function HailChaser() {
 
   const { data: alertHistoryData } = useQuery<AlertHistoryRecord[]>({
     queryKey: ["/api/storm/alert-history"],
+  });
+
+  const sectorUrl = activeMarket?.id ? `/api/sectors?marketId=${activeMarket.id}` : "/api/sectors";
+  const { data: sectorsData } = useQuery<Sector[]>({
+    queryKey: [sectorUrl],
+    staleTime: 5 * 60 * 1000,
+    enabled: showSectors,
   });
 
   const startMonitor = useMutation({
@@ -499,6 +541,7 @@ export default function HailChaser() {
     const alertLayer = L.layerGroup().addTo(map);
     const swathLayer = L.layerGroup().addTo(map);
     const footprintLayer = L.layerGroup().addTo(map);
+    const sectorLayer = L.layerGroup().addTo(map);
 
     zipLayerRef.current = zipLayer;
     threatLayerRef.current = threatLayer;
@@ -506,6 +549,7 @@ export default function HailChaser() {
     alertLayerRef.current = alertLayer;
     swathLayerRef.current = swathLayer;
     footprintLayerRef.current = footprintLayer;
+    sectorLayerRef.current = sectorLayer;
 
     mapInstanceRef.current = map;
 
@@ -753,6 +797,85 @@ export default function HailChaser() {
       swathLayerRef.current.addLayer(polygon);
     }
   }, [stormRuns, showSwathZones]);
+
+  useEffect(() => {
+    const layer = sectorLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+
+    if (!showSectors || !sectorsData || !zipTiles) return;
+
+    const zipBboxMap = new Map<string, { minLat: number; maxLat: number; minLng: number; maxLng: number }>();
+    for (const tile of zipTiles) {
+      if (tile.boundingBox) {
+        zipBboxMap.set(tile.zipCode, tile.boundingBox);
+      }
+    }
+
+    for (const sector of sectorsData) {
+      const boundary = sector.boundary as any;
+      if (boundary?.type === "Polygon" && boundary.coordinates?.length > 0) {
+        const coords = boundary.coordinates[0].map((c: number[]) => [c[1], c[0]] as [number, number]);
+        const poly = L.polygon(coords, {
+          color: sector.color || "#3B82F6",
+          weight: 2,
+          fillColor: sector.color || "#3B82F6",
+          fillOpacity: 0.15,
+        });
+        poly.bindPopup(buildSectorPopup(sector));
+        const center = poly.getBounds().getCenter();
+        const label = L.marker(center, {
+          icon: L.divIcon({
+            className: "sector-label",
+            html: `<div style="background:${sector.color || '#3B82F6'}cc;color:white;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,0.3);">${sector.name}${sector.sectorScore != null ? ` (${sector.sectorScore})` : ''}</div>`,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          }),
+          interactive: false,
+        });
+        poly.addTo(layer);
+        label.addTo(layer);
+      } else {
+        const sectorBboxes = sector.zipCodes
+          .map(z => zipBboxMap.get(z))
+          .filter((b): b is NonNullable<typeof b> => !!b);
+
+        if (sectorBboxes.length === 0) continue;
+
+        const merged = {
+          minLat: Math.min(...sectorBboxes.map(b => b.minLat)),
+          maxLat: Math.max(...sectorBboxes.map(b => b.maxLat)),
+          minLng: Math.min(...sectorBboxes.map(b => b.minLng)),
+          maxLng: Math.max(...sectorBboxes.map(b => b.maxLng)),
+        };
+
+        for (const bbox of sectorBboxes) {
+          const bounds: L.LatLngBoundsExpression = [[bbox.minLat, bbox.minLng], [bbox.maxLat, bbox.maxLng]];
+          const rect = L.rectangle(bounds, {
+            color: sector.color || "#3B82F6",
+            weight: 1.5,
+            fillColor: sector.color || "#3B82F6",
+            fillOpacity: 0.15,
+          });
+          rect.bindPopup(buildSectorPopup(sector));
+          rect.addTo(layer);
+        }
+
+        const centerLat = (merged.minLat + merged.maxLat) / 2;
+        const centerLng = (merged.minLng + merged.maxLng) / 2;
+        const label = L.marker([centerLat, centerLng], {
+          icon: L.divIcon({
+            className: "sector-label",
+            html: `<div style="background:${sector.color || '#3B82F6'}cc;color:white;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,0.3);">${sector.name}${sector.sectorScore != null ? ` (${sector.sectorScore})` : ''}</div>`,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0],
+          }),
+          interactive: false,
+        });
+        label.addTo(layer);
+      }
+    }
+  }, [sectorsData, showSectors, zipTiles]);
 
   useEffect(() => {
     if (!footprintLayerRef.current) return;
@@ -1039,6 +1162,95 @@ export default function HailChaser() {
                           </div>
                         </Card>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {showSectors && sectorsData && sectorsData.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between gap-1 mb-2">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Sectors
+                        <span className="ml-1 text-muted-foreground">({sectorsData.length})</span>
+                      </h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[10px] px-1.5"
+                        onClick={() => setSectorSort(sectorSort === "priority" ? "score" : "priority")}
+                        data-testid="button-sort-sectors"
+                      >
+                        <ArrowUpDown className="w-3 h-3 mr-0.5" />
+                        {sectorSort === "priority" ? "Priority" : "Score"}
+                      </Button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {[...sectorsData]
+                        .sort((a, b) => {
+                          if (sectorSort === "score") {
+                            return (b.sectorScore ?? 0) - (a.sectorScore ?? 0);
+                          }
+                          const pOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+                          return (pOrder[a.priority] ?? 1) - (pOrder[b.priority] ?? 1);
+                        })
+                        .map(sector => (
+                          <Card
+                            key={sector.id}
+                            className="p-2 cursor-pointer hover-elevate"
+                            onClick={() => {
+                              if (!zipTiles) return;
+                              const bboxes = sector.zipCodes
+                                .map(z => zipTiles.find(t => t.zipCode === z)?.boundingBox)
+                                .filter((b): b is NonNullable<typeof b> => !!b);
+                              if (bboxes.length > 0) {
+                                const merged = {
+                                  minLat: Math.min(...bboxes.map(b => b.minLat)),
+                                  maxLat: Math.max(...bboxes.map(b => b.maxLat)),
+                                  minLng: Math.min(...bboxes.map(b => b.minLng)),
+                                  maxLng: Math.max(...bboxes.map(b => b.maxLng)),
+                                };
+                                mapInstanceRef.current?.fitBounds([
+                                  [merged.minLat, merged.minLng],
+                                  [merged.maxLat, merged.maxLng],
+                                ], { padding: [30, 30] });
+                              }
+                            }}
+                            data-testid={`card-sector-${sector.id}`}
+                          >
+                            <div className="flex items-start justify-between gap-1">
+                              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: sector.color || "#3B82F6" }}
+                                />
+                                <span className="text-xs font-medium truncate">{sector.name}</span>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <Badge
+                                  variant={sector.priority === "high" ? "destructive" : "secondary"}
+                                  className="text-[10px]"
+                                >
+                                  {sector.priority}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
+                              {sector.sectorScore != null && (
+                                <span className="font-medium">Score: {sector.sectorScore}</span>
+                              )}
+                              <span>{sector.leadCount || 0} leads</span>
+                              {sector.totalPropertyValue != null && sector.totalPropertyValue > 0 && (
+                                <span>${(sector.totalPropertyValue / 1000000).toFixed(1)}M</span>
+                              )}
+                              {sector.assignedTo && (
+                                <span className="flex items-center gap-0.5">
+                                  <User className="w-2.5 h-2.5" />
+                                  {sector.assignedTo}
+                                </span>
+                              )}
+                            </div>
+                          </Card>
+                        ))}
                     </div>
                   </div>
                 )}
@@ -1440,6 +1652,19 @@ export default function HailChaser() {
               Alerts
               {showAlertNws && alertCount > 0 && (
                 <span className="ml-1 text-[10px] opacity-70">{alertCount}</span>
+              )}
+            </Button>
+            <Button
+              variant={showSectors ? "default" : "outline"}
+              size="sm"
+              className="shadow-md bg-background/90 backdrop-blur-sm text-xs"
+              onClick={() => setShowSectors(!showSectors)}
+              data-testid="button-toggle-sectors"
+            >
+              <Layers className="w-3 h-3 mr-1" />
+              Sectors
+              {showSectors && sectorsData && sectorsData.length > 0 && (
+                <span className="ml-1 text-[10px] opacity-70">{sectorsData.length}</span>
               )}
             </Button>
             {showHailTracker && (

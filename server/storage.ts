@@ -22,9 +22,10 @@ import {
   type PropertyRiskSignals, type InsertPropertyRiskSignals,
   type PropertyContacts, type InsertPropertyContacts,
   type PropertyIntelligence, type InsertPropertyIntelligence,
-  agentSessions, agentTraces,
+  agentSessions, agentTraces, sectors,
   type AgentSession, type InsertAgentSession,
   type AgentTrace, type InsertAgentTrace,
+  type Sector, type InsertSector,
 } from "@shared/schema";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -122,6 +123,12 @@ export interface IStorage {
   listAgentSessions(limit?: number): Promise<AgentSession[]>;
   createAgentTrace(trace: InsertAgentTrace): Promise<AgentTrace>;
   listAgentTraces(sessionId?: string, limit?: number): Promise<AgentTrace[]>;
+
+  getSectors(marketId?: string): Promise<Sector[]>;
+  getSectorById(id: string): Promise<Sector | undefined>;
+  createSector(sector: InsertSector): Promise<Sector>;
+  updateSector(id: string, updates: Partial<Sector>): Promise<Sector | undefined>;
+  deleteSector(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -907,6 +914,36 @@ export class DatabaseStorage implements IStorage {
       .from(agentTraces)
       .orderBy(desc(agentTraces.createdAt))
       .limit(limit);
+  }
+
+  async getSectors(marketId?: string): Promise<Sector[]> {
+    if (marketId) {
+      return db.select().from(sectors).where(eq(sectors.marketId, marketId)).orderBy(desc(sectors.sectorScore));
+    }
+    return db.select().from(sectors).orderBy(desc(sectors.sectorScore));
+  }
+
+  async getSectorById(id: string): Promise<Sector | undefined> {
+    const result = await db.select().from(sectors).where(eq(sectors.id, id));
+    return result[0];
+  }
+
+  async createSector(sector: InsertSector): Promise<Sector> {
+    const [created] = await db.insert(sectors).values(sector).returning();
+    return created;
+  }
+
+  async updateSector(id: string, updates: Partial<Sector>): Promise<Sector | undefined> {
+    const [updated] = await db
+      .update(sectors)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(sectors.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSector(id: string): Promise<void> {
+    await db.delete(sectors).where(eq(sectors.id, id));
   }
 }
 

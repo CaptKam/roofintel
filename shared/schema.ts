@@ -1202,6 +1202,29 @@ export const agentTraces = pgTable("agent_traces", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const sectors = pgTable("sectors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id").notNull(),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  color: varchar("color").notNull().default("#3B82F6"),
+  zipCodes: text("zip_codes").array().notNull(),
+  boundary: jsonb("boundary"),
+  sectorScore: integer("sector_score"),
+  leadCount: integer("lead_count").notNull().default(0),
+  avgLeadScore: real("avg_lead_score"),
+  totalPropertyValue: bigint("total_property_value", { mode: "number" }),
+  assignedTo: varchar("assigned_to"),
+  priority: varchar("priority").notNull().default("medium"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSectorSchema = createInsertSchema(sectors).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSector = z.infer<typeof insertSectorSchema>;
+export type Sector = typeof sectors.$inferSelect;
+
 export const insertAgentSessionSchema = createInsertSchema(agentSessions).omit({ id: true, createdAt: true, lastActiveAt: true });
 export type InsertAgentSession = z.infer<typeof insertAgentSessionSchema>;
 export type AgentSession = typeof agentSessions.$inferSelect;

@@ -195,4 +195,41 @@ export async function seedDatabase() {
   });
 
   console.log("Seeded DFW market with data source configurations");
+
+  console.log("Seeding Colorado Springs market...");
+
+  const cosMarket = await storage.createMarket({
+    name: "Colorado Springs",
+    state: "CO",
+    counties: ["El Paso"],
+    centerLat: 38.8339,
+    centerLng: -104.8214,
+    radiusMiles: 40,
+    isActive: true,
+    boundingBox: {
+      north: 39.15,
+      south: 38.50,
+      east: -104.40,
+      west: -105.25,
+    },
+    metroArea: "Colorado Springs",
+  });
+
+  await storage.createDataSource({
+    name: "NOAA Storm Events - Colorado",
+    type: "noaa_hail",
+    url: "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
+    marketId: cosMarket.id,
+    isActive: true,
+  });
+
+  await storage.createDataSource({
+    name: "El Paso County Assessor",
+    type: "cad_arcgis",
+    url: "https://gis.elpasoco.com/arcgis/rest/services",
+    marketId: cosMarket.id,
+    isActive: true,
+  });
+
+  console.log("Seeded Colorado Springs market with data source configurations");
 }
