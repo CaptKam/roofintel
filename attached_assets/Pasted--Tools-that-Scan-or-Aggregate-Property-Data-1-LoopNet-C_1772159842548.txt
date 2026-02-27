@@ -1,0 +1,77 @@
+🧰 Tools that Scan or Aggregate Property Data
+1. LoopNet – Commercial Listings & Basic Data
+
+Free marketplace for commercial buildings across the U.S.
+
+Agents can search property listings, filter by asset type, city, price, square footage, etc.
+
+Good for quick property scans when sourcing deals.
+
+May require a free account.
+
+Use case: Scan by city or property type to see availability and basic details.
+
+2. CIMLS – Free Commercial Real Estate Database
+
+Completely free CRE database with searchable commercial listings (sale & lease).
+
+Filters for city, price, size, property type.
+
+No signup required for basic browsing.
+
+Use case: Quick broad scans for commercial inventory and comp research.
+
+3. CompStak – Free CRE Lease/Sales Comps
+
+Professional database used by brokers with lease and sales comparables.
+
+Accessible “free” data/analytics for agents.
+
+Provides deeper transaction data than simple listings.
+
+Use case: Pull comps for valuation or negotiation support.
+
+4. Property Address Scanner (Chrome Extension)
+
+A free scanning tool that extracts property addresses from webpages.
+
+Takes lists of addresses online and turns them into spreadsheets you can export.
+
+Works with Zillow, Redfin, listings, PDF pages, market reports.
+
+Use case: If you find a list of addresses (e.g., LoopNet results), you can automatically extract them into a CSV.
+
+🧠 Deep Property Data Tools (Some Free, Some Paid)
+5. PropertyShark – Commercial Property Details
+
+Offers property details, ownership info, tax history, comps, and maps.
+
+Free account gives limited basic info; paid gives full access.
+
+Good for digging into property records and portfolios.
+
+Use case: Research building attributes & ownership before outreach.
+
+6. Reonomy – Commercial Data Intelligence
+
+One of the best sources for ownership, transaction history, building details, and market insights.
+
+Offers a free trial for agents to scan large datasets.
+
+Includes predictive metrics and portfolio profiling.
+
+Use case: Deep scans for off-market leads and owner contact info.
+
+7. ATTOM Property Navigator
+
+National property data coverage including commercial insights (values, foreclosure, AVM).
+
+Often part of free/entry-level products — powerful scan tool for U.S. property database queries.
+
+🧠 Insights Tools for Property Data
+
+These aren’t “scanners” per se, but help agents aggregate or interpret property data quickly:
+
+RPR (Realtors Property Resource) – Generates AI-powered property summaries for listed properties (residential and commercial) if you’re a Realtor.
+
+CoreLogic & HouseCanary models – Property valuation and analytics used by agents, sometimes accessible via free reports/tools.
