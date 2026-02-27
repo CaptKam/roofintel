@@ -584,10 +584,12 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
-  app.get("/api/data-sources", async (_req, res) => {
+  app.get("/api/data-sources", async (req, res) => {
     try {
+      const marketId = req.query.marketId as string | undefined;
       const sources = await storage.getDataSources();
-      res.json(sources);
+      const filtered = marketId ? sources.filter(s => s.marketId === marketId) : sources;
+      res.json(filtered);
     } catch (error) {
       console.error("Data sources error:", error);
       res.status(500).json({ message: "Failed to load data sources" });

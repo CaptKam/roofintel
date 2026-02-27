@@ -37,7 +37,7 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 - **Graph Engine**: Builds a relationship network of entities, people, agents, and addresses for advanced intelligence queries.
 - **Intelligence Alerts Engine**: Proactive alert system computing 7 alert types from real DB data (claim windows, high-value storm targets, contactability gaps, portfolio opportunities, permit activity, enrichment sources, data freshness).
 - **Sector Targeting System**: Groups ZIP codes into named, colored sectors (territories) with aggregated scoring, map overlays, auto-generation via geographic clustering, rep assignment, and priority management.
-- **Multi-Market Architecture**: Config-driven support for market expansion without code changes. Active markets: DFW (4-county TX) and Colorado Springs (El Paso County, CO).
+- **Multi-Market Architecture**: Config-driven support for market expansion without code changes. Active markets: DFW (4-county TX) and Colorado Springs (El Paso County, CO). All dashboard/ops/alert endpoints accept `?marketId=` for market-scoped data. Frontend pages pass `activeMarket.id` via `useMarket()` hook.
 - **Normalized Satellite Tables**: Data model designed for flexibility and scalability, decomposing the monolithic `leads` table.
 - **Data Quality System**: Computes `dataConfidence` for each lead and provides quality metrics.
 - **Outcome Tracking & KPI Engine**: Tracks deal outcomes and captures periodic metrics for performance analysis and scoring weight adjustments.
@@ -69,3 +69,6 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 - **EmailMX verification services**: Email validation.
 - **Various public record APIs/databases**: Including TREC, TDLR, HUD, BBB, WHOIS/RDAP.
 - **xAI (Grok API)**: AI-powered intelligence core.
+- **COS City GIS (ArcGIS)**: Colorado Springs parcels, address points, land records, building footprints, zoning, planning/dev tracker.
+- **CO Secretary of State (Socrata)**: Business entity registrations for owner/LLC resolution.
+- **El Paso County Assessor (ArcGIS)**: County-level property assessor data.

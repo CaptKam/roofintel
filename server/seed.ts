@@ -231,5 +231,153 @@ export async function seedDatabase() {
     isActive: true,
   });
 
+  await storage.createDataSource({
+    name: "COS Parcels - Accela",
+    type: "cad_arcgis",
+    url: "https://gis.coloradosprings.gov/arcgis/rest/services/Accela/AccelaAddressesParcels/MapServer/1",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "City of Colorado Springs parcel data with owner names, addresses, zoning, acreage",
+      fields: ["PARCEL", "ZONING", "MAINADDRES", "OwnerName", "OwnerCSZ", "ADDRESS1", "ADDRESS2", "CITY", "STATE", "zip", "ACREAGE", "LEGAL"],
+      geometryType: "esriGeometryPolygon",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "COS Address Points",
+    type: "cad_arcgis",
+    url: "https://gis.coloradosprings.gov/arcgis/rest/services/Accela/AccelaAddressesParcels/MapServer/0",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "City of Colorado Springs address points linked to parcels",
+      geometryType: "esriGeometryPoint",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "COS Land Records - Parcels",
+    type: "cad_arcgis",
+    url: "https://gis.coloradosprings.gov/arcgis/rest/services/GeneralUse/LandRecords/MapServer/4",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "General use parcel layer with ownership, zoning, and acreage data",
+      fields: ["PARCEL", "ZONING", "MAINADDRES", "OwnerName", "OwnerCSZ", "ADDRESS1", "ADDRESS2", "ACREAGE", "LEGAL"],
+      geometryType: "esriGeometryPolygon",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "COS Building Footprints",
+    type: "building_footprints",
+    url: "https://gis.coloradosprings.gov/arcgis/rest/services/GeneralUse/BuildingsImpSurfaces/MapServer/0",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "Building footprint polygons with area for roof size estimation",
+      fields: ["OBJECTID", "BUILDINGTYPE", "FEATURECODE", "Shape_Area"],
+      geometryType: "esriGeometryPolygon",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "COS Planning & Dev Tracker",
+    type: "permits",
+    url: "https://gis.coloradosprings.gov/arcgis/rest/services/Planning/PlanDevTracker_PRO/MapServer/0",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "Planning and development applications (zone changes, variances, site plans) with status",
+      fields: ["record_id", "record_type", "record_name", "record_description", "record_status", "record_address"],
+      geometryType: "esriGeometryPoint",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "COS Zoning",
+    type: "zoning",
+    url: "https://gis.coloradosprings.gov/arcgis/rest/services/GeneralUse/PlanningZoning/MapServer",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "Zoning districts and overlay layers for Colorado Springs",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "CO Business Entities (SOS)",
+    type: "business_entity",
+    url: "https://data.colorado.gov/resource/4ykn-tg5h.json",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "Colorado Secretary of State business entity registrations via Socrata API. Filter by principalcity=COLORADO SPRINGS. Fields: entityid, entityname, principaladdress1, principalcity, principalstate, principalzipcode, entitystatus, entitytype, agentfirstname, agentlastname, agentprincipaladdress1, entityformdate",
+      filterParam: "$where=principalcity='COLORADO SPRINGS'",
+      apiType: "socrata",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "NOAA SWDI Radar Hail - COS",
+    type: "noaa_swdi",
+    url: "https://www.ncei.noaa.gov/access/services/search/v1/data?dataset=swdi-nx3hail",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "Real-time NOAA SWDI NEXRAD Level-3 hail signatures for COS bounding box",
+      bbox: "-105.25,38.5,-104.4,39.15",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "FEMA Flood Zones - COS",
+    type: "fema_flood",
+    url: "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "FEMA National Flood Hazard Layer for flood zone risk assessment around COS properties",
+      bbox: { north: 39.15, south: 38.50, east: -104.40, west: -105.25 },
+    },
+  });
+
+  await storage.createDataSource({
+    name: "OpenStreetMap Buildings - COS",
+    type: "osm_buildings",
+    url: "https://overpass-api.de/api/interpreter",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "OpenStreetMap Overpass API for building footprint polygons in COS area for roof area computation",
+      bbox: "38.5,-105.25,39.15,-104.4",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "NAIP Aerial Imagery - COS",
+    type: "naip_imagery",
+    url: "https://planetarycomputer.microsoft.com/api/stac/v1",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "Microsoft Planetary Computer STAC API for USDA NAIP aerial imagery to detect roof replacement events in COS area",
+      bbox: [-105.25, 38.5, -104.4, 39.15],
+      collection: "naip",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "Esri Satellite Imagery - COS",
+    type: "satellite_imagery",
+    url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+    marketId: cosMarket.id,
+    isActive: true,
+    config: {
+      description: "Esri World Imagery for satellite views of COS commercial rooftops",
+    },
+  });
+
   console.log("Seeded Colorado Springs market with data source configurations");
 }
