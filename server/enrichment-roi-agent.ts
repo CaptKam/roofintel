@@ -124,10 +124,10 @@ export async function processOneLead(lead: Lead, marketConfig: EnrichmentBudget)
   const actualApis = actualTier === "skip" ? [] : recommendedApis;
   const actualReason = roiScore < minThreshold && tier !== "skip" ? `ROI ${roiScore.toFixed(1)}x below ${minThreshold}x threshold` : reason;
 
-  const confidence = Math.min(
+  const confidence = Math.round(Math.min(
     95,
-    55 + Math.round((lead.leadScore || 0) / 2) + contactability * 8 + hailFactor * 6
-  );
+    55 + (lead.leadScore || 0) / 2 + contactability * 8 + hailFactor * 6
+  ));
 
   const dailyRemaining = (marketConfig.dailyBudgetUsd || 500) - (marketConfig.spentTodayUsd || 0);
   const monthlyRemaining = (marketConfig.monthlyBudgetUsd || 12000) - (marketConfig.spentThisMonthUsd || 0);
