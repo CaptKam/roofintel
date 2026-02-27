@@ -22,6 +22,9 @@ import {
   type PropertyRiskSignals, type InsertPropertyRiskSignals,
   type PropertyContacts, type InsertPropertyContacts,
   type PropertyIntelligence, type InsertPropertyIntelligence,
+  agentSessions, agentTraces,
+  type AgentSession, type InsertAgentSession,
+  type AgentTrace, type InsertAgentTrace,
 } from "@shared/schema";
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -112,6 +115,13 @@ export interface IStorage {
   upsertPropertyContacts(data: InsertPropertyContacts): Promise<PropertyContacts>;
   getPropertyIntelligence(propertyId: string): Promise<PropertyIntelligence | undefined>;
   upsertPropertyIntelligence(data: InsertPropertyIntelligence): Promise<PropertyIntelligence>;
+
+  createAgentSession(session: InsertAgentSession): Promise<AgentSession>;
+  getAgentSession(sessionId: string): Promise<AgentSession | undefined>;
+  updateAgentSession(sessionId: string, updates: Partial<AgentSession>): Promise<AgentSession | undefined>;
+  listAgentSessions(limit?: number): Promise<AgentSession[]>;
+  createAgentTrace(trace: InsertAgentTrace): Promise<AgentTrace>;
+  listAgentTraces(sessionId?: string, limit?: number): Promise<AgentTrace[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -845,6 +855,58 @@ export class DatabaseStorage implements IStorage {
       RETURNING *
     `) as any;
     return result.rows[0];
+  }
+
+  async createAgentSession(session: InsertAgentSession): Promise<AgentSession> {
+    const [created] = await db.insert(agentSessions).values(session).returning();
+    return created;
+  }
+
+  async getAgentSession(sessionId: string): Promise<AgentSession | undefined> {
+    const [found] = await db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.sessionId, sessionId))
+      .limit(1);
+    return found;
+  }
+
+  async updateAgentSession(sessionId: string, updates: Partial<AgentSession>): Promise<AgentSession | undefined> {
+    const [updated] = await db
+      .update(agentSessions)
+      .set({ ...updates, lastActiveAt: new Date() })
+      .where(eq(agentSessions.sessionId, sessionId))
+      .returning();
+    return updated;
+  }
+
+  async listAgentSessions(limit = 50): Promise<AgentSession[]> {
+    return db
+      .select()
+      .from(agentSessions)
+      .orderBy(desc(agentSessions.lastActiveAt))
+      .limit(limit);
+  }
+
+  async createAgentTrace(trace: InsertAgentTrace): Promise<AgentTrace> {
+    const [created] = await db.insert(agentTraces).values(trace).returning();
+    return created;
+  }
+
+  async listAgentTraces(sessionId?: string, limit = 100): Promise<AgentTrace[]> {
+    if (sessionId) {
+      return db
+        .select()
+        .from(agentTraces)
+        .where(eq(agentTraces.sessionId, sessionId))
+        .orderBy(desc(agentTraces.createdAt))
+        .limit(limit);
+    }
+    return db
+      .select()
+      .from(agentTraces)
+      .orderBy(desc(agentTraces.createdAt))
+      .limit(limit);
   }
 }
 

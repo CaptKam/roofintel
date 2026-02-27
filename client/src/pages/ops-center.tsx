@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { ROIEnginePanel } from "@/components/admin/roi-engine-panel";
 import { AnalyticsKPIsPanel } from "@/components/admin/analytics-kpis-panel";
+import { NaturalLanguageBar } from "@/components/ops/natural-language-bar";
+import { Sparkles } from "lucide-react";
 
 export default function OpsCenter() {
   const { toast } = useToast();
@@ -101,6 +103,15 @@ export default function OpsCenter() {
     queryKey: ["/api/admin/kpis/current"],
   });
 
+  const { data: grokCosts } = useQuery<{
+    last24h: { calls: number; tokens: number; costUsd: number };
+    last7d: { calls: number; tokens: number; costUsd: number };
+    allTime: { calls: number; tokens: number; costUsd: number };
+  }>({
+    queryKey: ["/api/ops/grok-cost-summary"],
+    refetchInterval: 60000,
+  });
+
   const computeZipMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/admin/zip-tiles/compute", {});
@@ -154,6 +165,7 @@ export default function OpsCenter() {
   const zipRunning = zipTileStatus?.running || false;
 
   const cards = [
+    { id: "grok", label: "Grok Intelligence" },
     { id: "budget", label: "Budget" },
     { id: "roi", label: "ROI Engine" },
     { id: "zip", label: "ZIP Tiles" },
@@ -215,6 +227,34 @@ export default function OpsCenter() {
           data-testid="input-ops-search"
         />
       </div>
+
+      {visibleIds.has("grok") && (
+        <Card className="shadow-sm border-l-4 border-l-purple-500" data-testid="card-ops-grok">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-purple-500" />
+              Grok Intelligence Core
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0 space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-muted/30 rounded-lg p-3 text-center">
+                <div className="text-lg font-bold" data-testid="text-grok-calls-24h">{grokCosts?.last24h?.calls ?? 0}</div>
+                <div className="text-[11px] text-muted-foreground">Calls (24h)</div>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-3 text-center">
+                <div className="text-lg font-bold" data-testid="text-grok-tokens-24h">{grokCosts?.last24h?.tokens?.toLocaleString() ?? "0"}</div>
+                <div className="text-[11px] text-muted-foreground">Tokens (24h)</div>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-3 text-center">
+                <div className="text-lg font-bold text-purple-600" data-testid="text-grok-cost-24h">${(grokCosts?.last24h?.costUsd ?? 0).toFixed(4)}</div>
+                <div className="text-[11px] text-muted-foreground">Cost (24h)</div>
+              </div>
+            </div>
+            <NaturalLanguageBar />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {visibleIds.has("budget") && (

@@ -34,6 +34,20 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 - **Enrichment ROI Engine**: Tiered enrichment decision system based on expected lead value, incorporating budget guardrails and ROI threshold gating.
 - **ZIP-Code Tiling & Scoring**: Computes composite scores (0-100) per ZIP code based on storm risk, roof age, data gaps, property value, and lead density, with recommended spend and projected EV.
 - **Hail-Chaser Mode**: Full-screen storm-first UX with real-time map, lead markers by ROI tier, ZIP priority heatmap, active storm threats, and priority response queue.
+- **Grok Intelligence Core (xAI-powered)**: Multi-agent AI system with ReAct supervisor loop, 5 tools (db-query, roi-trigger, zip-compute, pipeline-trigger, web-search), natural language Ops Center bar, and per-lead chat. Uses OpenAI-compatible xAI API with grok-3-fast model, rate limiting (380 RPM), cost tracking ($0.30/M input, $0.50/M output), and budget gating via enrichment_budgets table. Graceful fallback when XAI_API_KEY not configured.
+
+### Grok Intelligence Core Architecture
+- **Proxy**: `server/intelligence/grok-proxy.ts` — OpenAI-compatible client wrapper with rate limiting, cost tracking, budget gating
+- **Supervisor**: `server/intelligence/supervisor.ts` — ReAct loop (max 8 steps), tool calling, session/trace persistence
+- **Tools**: `server/intelligence/tools/` — 5 tool definitions (db-query, roi-trigger, zip-compute, pipeline-trigger, web-search)
+- **Database tables**: `agent_sessions` (conversation state, messages JSONB), `agent_traces` (per-call logging with tokens, cost, latency)
+- **API endpoints**:
+  - `POST /api/ops/grok-ask` — Main prompt endpoint (creates/resumes sessions)
+  - `GET /api/ops/grok-sessions` — List recent sessions
+  - `GET /api/ops/grok-sessions/:sessionId` — Full session with traces
+  - `GET /api/ops/grok-cost-summary` — Aggregate cost stats (24h, 7d, 30d, all-time)
+  - `POST /api/leads/:leadId/grok-ask` — Lead-specific chat with auto-injected lead context
+- **Frontend**: Grok Insights card in Ops Center with NL bar (`client/src/components/ops/natural-language-bar.tsx`), reasoning display (`client/src/components/ops/reasoning-display.tsx`), lead chat panel (`client/src/components/lead/grok-chat-panel.tsx`)
 
 ### Multi-Market Architecture
 The platform supports multi-market expansion through a `markets` table and `market_data_sources` table, mapping markets to configurable data sources via field mapping and filter configurations, allowing new markets to be onboarded without code changes.
@@ -58,7 +72,7 @@ The phone-validation-pipeline wraps Twilio Lookup V2 with TTL-aware validation, 
 
 ### UX Architecture: Ops Center + Admin
 The frontend is split into two focused surfaces:
-- **`/ops` (Operations Center)**: Daily command center with 6 card-based panels — Live Budget Guardrails, ROI Engine (expandable), ZIP Priority Tiles, Pipeline Control, Analytics & KPIs (expandable), Storm & Phone Ops. Search bar for card filtering. File: `client/src/pages/ops-center.tsx`.
+- **`/ops` (Operations Center)**: Daily command center with 7 card-based panels — Grok Intelligence Core (NL bar + cost meter), Live Budget Guardrails, ROI Engine (expandable), ZIP Priority Tiles, Pipeline Control, Analytics & KPIs (expandable), Storm & Phone Ops. Search bar for card filtering. File: `client/src/pages/ops-center.tsx`.
 - **`/admin` (System Config)**: 4-tab admin for rarely-changed settings — Markets & Sources, Data Quality, Compliance, System. File: `client/src/pages/admin.tsx`.
 - **Extracted panel components**: `client/src/components/admin/roi-engine-panel.tsx`, `analytics-kpis-panel.tsx`, `compliance-panel.tsx` — shared between Ops Center and Admin.
 - **Sidebar**: Ops Center prominently featured in Navigation group (first item, Zap icon). Admin in System group.
@@ -89,3 +103,4 @@ Key features include a comprehensive Dashboard with KPI cards (conversion rate, 
 - **Microsoft Planetary Computer STAC API**: NAIP aerial imagery.
 - **EmailMX verification services**: Email validation.
 - **Various public record APIs/databases**: Including TREC, TDLR, HUD, BBB, WHOIS/RDAP.
+- **xAI (Grok API)**: AI-powered intelligence core via OpenAI-compatible API.

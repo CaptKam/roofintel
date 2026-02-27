@@ -5167,6 +5167,126 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  // === Grok Intelligence Core ===
+
+  app.post("/api/ops/grok-ask", async (req, res) => {
+    try {
+      const { runSupervisor } = await import("./intelligence/supervisor");
+      const { prompt, marketId, sessionId, leadId } = req.body;
+      if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+        return res.status(400).json({ message: "prompt is required" });
+      }
+      const sid = sessionId || `ops-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const result = await runSupervisor(prompt.trim(), {
+        marketId: marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da",
+        sessionId: sid,
+        leadId: leadId || undefined,
+        sessionType: "ops_chat",
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Grok Core] Error:", error);
+      res.status(500).json({ message: "Grok Core error", error: error.message });
+    }
+  });
+
+  app.get("/api/ops/grok-sessions", async (_req, res) => {
+    try {
+      const sessions = await storage.listAgentSessions(50);
+      res.json(sessions);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to list sessions", error: error.message });
+    }
+  });
+
+  app.get("/api/ops/grok-sessions/:sessionId", async (req, res) => {
+    try {
+      const session = await storage.getAgentSession(req.params.sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      const traces = await storage.listAgentTraces(req.params.sessionId, 50);
+      res.json({ session, traces });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get session", error: error.message });
+    }
+  });
+
+  app.get("/api/ops/grok-cost-summary", async (_req, res) => {
+    try {
+      const traces = await storage.listAgentTraces(undefined, 1000);
+      const now = Date.now();
+      const h24 = now - 86400000;
+      const d7 = now - 604800000;
+      const d30 = now - 2592000000;
+
+      const summarize = (cutoff: number) => {
+        const filtered = traces.filter(t => t.createdAt && new Date(t.createdAt).getTime() > cutoff);
+        return {
+          calls: filtered.length,
+          tokens: filtered.reduce((s, t) => s + (t.tokensUsed || 0), 0),
+          costUsd: filtered.reduce((s, t) => s + parseFloat(t.costUsd || "0"), 0),
+        };
+      };
+
+      res.json({
+        last24h: summarize(h24),
+        last7d: summarize(d7),
+        last30d: summarize(d30),
+        allTime: summarize(0),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get cost summary", error: error.message });
+    }
+  });
+
+  app.post("/api/leads/:leadId/grok-ask", async (req, res) => {
+    try {
+      const { runSupervisor } = await import("./intelligence/supervisor");
+      const { prompt, sessionId } = req.body;
+      const leadId = req.params.leadId;
+
+      if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
+        return res.status(400).json({ message: "prompt is required" });
+      }
+
+      const lead = await storage.getLeadById(leadId);
+      if (!lead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+
+      const leadContext = {
+        address: lead.address,
+        city: lead.city,
+        county: lead.county,
+        zipCode: lead.zipCode,
+        ownerName: lead.ownerName,
+        contactName: lead.contactName,
+        phone: lead.phone,
+        leadScore: lead.leadScore,
+        totalValue: lead.totalValue,
+        hailEvents: lead.hailEvents,
+        lastHailDate: lead.lastHailDate,
+        yearBuilt: lead.yearBuilt,
+        buildingArea: lead.buildingArea,
+        dataConfidence: lead.dataConfidence,
+      };
+
+      const sid = sessionId || `lead-${leadId}-${Date.now()}`;
+      const result = await runSupervisor(prompt.trim(), {
+        marketId: lead.marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da",
+        sessionId: sid,
+        leadId,
+        sessionType: "lead_chat",
+        leadContext,
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Grok Core] Lead chat error:", error);
+      res.status(500).json({ message: "Grok Core error", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

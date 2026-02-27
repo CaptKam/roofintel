@@ -1176,4 +1176,38 @@ export const insertKpiSnapshotSchema = createInsertSchema(kpiSnapshots).omit({ i
 export type InsertKpiSnapshot = z.infer<typeof insertKpiSnapshotSchema>;
 export type KpiSnapshot = typeof kpiSnapshots.$inferSelect;
 
+export const agentSessions = pgTable("agent_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().unique(),
+  marketId: varchar("market_id").notNull(),
+  leadId: varchar("lead_id"),
+  sessionType: varchar("session_type").notNull().default("ops_chat"),
+  title: varchar("title"),
+  messages: jsonb("messages").notNull().default([]),
+  metadata: jsonb("metadata").notNull().default({}),
+  lastActiveAt: timestamp("last_active_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const agentTraces = pgTable("agent_traces", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  agentName: varchar("agent_name").notNull(),
+  prompt: text("prompt"),
+  response: jsonb("response"),
+  toolCalls: jsonb("tool_calls"),
+  tokensUsed: integer("tokens_used"),
+  costUsd: varchar("cost_usd"),
+  latencyMs: integer("latency_ms"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentSessionSchema = createInsertSchema(agentSessions).omit({ id: true, createdAt: true, lastActiveAt: true });
+export type InsertAgentSession = z.infer<typeof insertAgentSessionSchema>;
+export type AgentSession = typeof agentSessions.$inferSelect;
+
+export const insertAgentTraceSchema = createInsertSchema(agentTraces).omit({ id: true, createdAt: true });
+export type InsertAgentTrace = z.infer<typeof insertAgentTraceSchema>;
+export type AgentTrace = typeof agentTraces.$inferSelect;
+
 export * from "./models/chat";

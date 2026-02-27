@@ -78,6 +78,8 @@ import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob, LeadOutcome, Sk
 import { NetworkIntelligence } from "@/components/network-intelligence";
 import { RoofIntelligence } from "@/components/roof-intelligence";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { GrokChatPanel } from "@/components/lead/grok-chat-panel";
+import { Sparkles } from "lucide-react";
 
 interface RoofRiskBreakdownPillar {
   score: number;
@@ -783,6 +785,7 @@ export default function LeadDetail() {
   });
 
   const [notes, setNotes] = useState("");
+  const [showGrokChat, setShowGrokChat] = useState(false);
 
   const enrichMutation = useMutation({
     mutationFn: async () => {
@@ -864,7 +867,8 @@ export default function LeadDetail() {
   const daysSinceHail = lead.lastHailDate ? Math.floor((new Date().getTime() - new Date(lead.lastHailDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
-    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/50 pb-12">
+    <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950/50 pb-12 flex">
+      <div className={`flex-1 min-w-0 ${showGrokChat ? 'pr-[380px]' : ''} transition-all duration-300`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
@@ -900,6 +904,16 @@ export default function LeadDetail() {
             )}
           </div>
           <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant={showGrokChat ? "default" : "outline"}
+              onClick={() => setShowGrokChat(!showGrokChat)}
+              className={showGrokChat ? "bg-purple-600 hover:bg-purple-700" : ""}
+              data-testid="button-ask-grok"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Ask Grok
+            </Button>
             <HunterPDLButtons leadId={id!} />
             <Button
               size="sm"
@@ -1418,6 +1432,17 @@ export default function LeadDetail() {
           </div>
         </div>
       </div>
+      </div>
+
+      {showGrokChat && (
+        <div className="fixed right-0 top-0 bottom-0 w-[380px] z-40 shadow-xl" data-testid="grok-chat-sidebar">
+          <GrokChatPanel
+            leadId={id!}
+            leadAddress={lead.address || ""}
+            onClose={() => setShowGrokChat(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
