@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMarket } from "@/hooks/use-market";
 import {
   Select,
   SelectContent,
@@ -56,6 +57,7 @@ interface LeadsResponse {
 
 export default function Leads() {
   const { toast } = useToast();
+  const { activeMarket } = useMarket();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
 
@@ -125,6 +127,7 @@ export default function Leads() {
   }, [debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure, roofType, riskTier, sortBy]);
 
   const params = new URLSearchParams();
+  if (activeMarket?.id) params.set("marketId", activeMarket.id);
   if (debouncedSearch) params.set("search", debouncedSearch);
   if (county) params.set("county", county);
   if (minScore) params.set("minScore", minScore);

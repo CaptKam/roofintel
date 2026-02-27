@@ -13,8 +13,10 @@ export interface OpsAlert {
   icon: string;
 }
 
-export async function generateOpsAlerts(): Promise<OpsAlert[]> {
+export async function generateOpsAlerts(marketId?: string): Promise<OpsAlert[]> {
   const alerts: OpsAlert[] = [];
+  const mf = marketId ? sql`AND market_id = ${marketId}` : sql``;
+  const lmf = marketId ? sql`AND l.market_id = ${marketId}` : sql``;
 
   const [
     claimWindowResult,
@@ -29,7 +31,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
       SELECT COUNT(*)::int AS total,
         json_agg(json_build_object('id', id, 'city', city, 'zip', zip_code, 'value', total_value) ORDER BY total_value DESC NULLS LAST) FILTER (WHERE TRUE) AS details
       FROM leads
-      WHERE claim_window_open = true
+      WHERE claim_window_open = true ${mf}
     `),
 
     db.execute(sql`
@@ -40,7 +42,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
           'has_phone', CASE WHEN owner_phone IS NOT NULL OR contact_phone IS NOT NULL THEN true ELSE false END
         ) ORDER BY total_value DESC NULLS LAST) FILTER (WHERE TRUE) AS details
       FROM leads
-      WHERE hail_events >= 15 AND total_value >= 5000000
+      WHERE hail_events >= 15 AND total_value >= 5000000 ${mf}
     `),
 
     db.execute(sql`
@@ -49,16 +51,17 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
         COUNT(*) FILTER (WHERE owner_email IS NOT NULL OR contact_email IS NOT NULL OR managing_member_email IS NOT NULL)::int AS with_email,
         json_agg(json_build_object('id', id, 'address', address, 'score', lead_score) ORDER BY lead_score DESC) FILTER (WHERE TRUE) AS details
       FROM leads
-      WHERE lead_score >= 60
+      WHERE lead_score >= 60 ${mf}
     `),
 
     db.execute(sql`
-      SELECT normalized_name, COUNT(DISTINCT lead_id)::int AS prop_count,
-        json_agg(DISTINCT lead_id) AS lead_ids
-      FROM rooftop_owners
-      GROUP BY normalized_name
-      HAVING COUNT(DISTINCT lead_id) >= 3
-      ORDER BY COUNT(DISTINCT lead_id) DESC
+      SELECT ro.normalized_name, COUNT(DISTINCT ro.lead_id)::int AS prop_count,
+        json_agg(DISTINCT ro.lead_id) AS lead_ids
+      FROM rooftop_owners ro
+      ${marketId ? sql`JOIN leads l ON l.id = ro.lead_id WHERE l.market_id = ${marketId}` : sql`WHERE 1=1`}
+      GROUP BY ro.normalized_name
+      HAVING COUNT(DISTINCT ro.lead_id) >= 3
+      ORDER BY COUNT(DISTINCT ro.lead_id) DESC
       LIMIT 20
     `),
 
@@ -68,13 +71,14 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
         json_agg(json_build_object('id', id, 'address', address, 'contractor', contractor, 'work', work_description, 'date', issued_date)
           ORDER BY issued_date DESC NULLS LAST) FILTER (WHERE UPPER(work_description) LIKE '%ROOF%') AS roof_permits
       FROM building_permits
+      ${marketId ? sql`WHERE market_id = ${marketId}` : sql``}
     `),
 
     db.execute(sql`
-      SELECT source_name, COUNT(*)::int AS cnt
-      FROM contact_evidence
-      WHERE is_active = true
-      GROUP BY source_name
+      SELECT ce.source_name, COUNT(*)::int AS cnt
+      FROM contact_evidence ce
+      ${marketId ? sql`JOIN leads l ON l.id = ce.lead_id WHERE ce.is_active = true AND l.market_id = ${marketId}` : sql`WHERE ce.is_active = true`}
+      GROUP BY ce.source_name
       ORDER BY cnt DESC
     `),
 
@@ -86,7 +90,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
         COUNT(*) FILTER (WHERE owner_phone IS NULL AND contact_phone IS NULL AND managing_member_phone IS NULL)::int AS no_phone,
         COUNT(*) FILTER (WHERE owner_email IS NULL AND contact_email IS NULL AND managing_member_email IS NULL)::int AS no_email,
         json_agg(json_build_object('id', id, 'address', address, 'score', lead_score) ORDER BY lead_score DESC) FILTER (WHERE enrichment_status = 'pending' OR enrichment_status IS NULL) AS pending_details
-      FROM leads
+      FROM leads WHERE 1=1 ${mf}
     `),
   ]);
 

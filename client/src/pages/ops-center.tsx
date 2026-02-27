@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useMarket } from "@/hooks/use-market";
 import { ScoreBadge } from "@/components/score-badge";
 import {
   Zap,
@@ -219,17 +220,22 @@ export default function OpsCenter() {
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const { activeMarket } = useMarket();
+  const mq = activeMarket?.id ? `?marketId=${activeMarket.id}` : "";
 
   const { data: commandCenter, isLoading: commandCenterLoading } = useQuery<CommandCenter>({
-    queryKey: ["/api/dashboard/command-center"],
+    queryKey: ["/api/dashboard/command-center", activeMarket?.id],
+    queryFn: () => fetch(`/api/dashboard/command-center${mq}`).then(r => r.json()),
   });
 
   const { data: qualityData } = useQuery<QualitySummary>({
-    queryKey: ["/api/data/quality-summary"],
+    queryKey: ["/api/data/quality-summary", activeMarket?.id],
+    queryFn: () => fetch(`/api/data/quality-summary${mq}`).then(r => r.json()),
   });
 
   const { data: roofRiskData } = useQuery<RoofRiskSummary>({
-    queryKey: ["/api/dashboard/roof-risk-summary"],
+    queryKey: ["/api/dashboard/roof-risk-summary", activeMarket?.id],
+    queryFn: () => fetch(`/api/dashboard/roof-risk-summary${mq}`).then(r => r.json()),
   });
 
   const { data: funnelData } = useQuery<FunnelData>({
@@ -271,7 +277,8 @@ export default function OpsCenter() {
     withEmail: number;
     fullyEnriched: number;
   }>({
-    queryKey: ["/api/enrichment/pipeline-stats"],
+    queryKey: ["/api/enrichment/pipeline-stats", activeMarket?.id],
+    queryFn: () => fetch(`/api/enrichment/pipeline-stats${mq}`).then(r => r.json()),
     refetchInterval: 15000,
   });
 
@@ -518,9 +525,9 @@ export default function OpsCenter() {
         </div>
       )}
 
-      <AlertsFeed />
+      <AlertsFeed marketId={activeMarket?.id} />
 
-      {visibleIds.has("intel-briefing") && <IntelBriefing />}
+      {visibleIds.has("intel-briefing") && <IntelBriefing marketId={activeMarket?.id} />}
 
       {visibleIds.has("performance") && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="card-performance-metrics">

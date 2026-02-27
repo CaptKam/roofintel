@@ -70,12 +70,14 @@ const severityConfig = {
   },
 };
 
-export function AlertsFeed() {
+export function AlertsFeed({ marketId }: { marketId?: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const [expandedAlert, setExpandedAlert] = useState<string | null>(null);
+  const mq = marketId ? `?marketId=${marketId}` : "";
 
   const { data: alerts, isLoading } = useQuery<OpsAlert[]>({
-    queryKey: ["/api/ops/alerts"],
+    queryKey: ["/api/ops/alerts", marketId],
+    queryFn: () => fetch(`/api/ops/alerts${mq}`).then(r => r.json()),
   });
 
   if (isLoading) {

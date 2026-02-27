@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useMarket } from "@/hooks/use-market";
 import {
   Database,
   CloudLightning,
@@ -1815,6 +1816,8 @@ function RunAllPipelineCard() {
 
 export default function Admin() {
   const { toast } = useToast();
+  const { activeMarket } = useMarket();
+  const adminMq = activeMarket?.id ? `?marketId=${activeMarket.id}` : "";
   const [dcadMinValue, setDcadMinValue] = useState("100000");
   const [dcadMinSqft, setDcadMinSqft] = useState("0");
   const [dcadMaxRecords, setDcadMaxRecords] = useState("5000");
@@ -1869,7 +1872,8 @@ export default function Admin() {
     fullyEnriched: number;
     contactConfidence: { high: number; medium: number; low: number; none: number };
   }>({
-    queryKey: ["/api/enrichment/pipeline-stats"],
+    queryKey: ["/api/enrichment/pipeline-stats", activeMarket?.id],
+    queryFn: () => fetch(`/api/enrichment/pipeline-stats${adminMq}`).then(r => r.json()),
     refetchInterval: 10000,
   });
 

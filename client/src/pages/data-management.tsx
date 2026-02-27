@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useMarket } from "@/hooks/use-market";
 import {
   Database,
   CloudLightning,
@@ -53,6 +54,8 @@ function StatusIcon({ status }: { status: string }) {
 
 export default function DataManagement() {
   const { toast } = useToast();
+  const { activeMarket } = useMarket();
+  const dmMq = activeMarket?.id ? `?marketId=${activeMarket.id}` : "";
   const [dcadMinValue, setDcadMinValue] = useState("100000");
   const [dcadMinSqft, setDcadMinSqft] = useState("0");
   const [dcadMaxRecords, setDcadMaxRecords] = useState("5000");
@@ -284,7 +287,8 @@ export default function DataManagement() {
     fullyEnriched: number;
     contactConfidence: { high: number; medium: number; low: number; none: number };
   }>({
-    queryKey: ["/api/enrichment/pipeline-stats"],
+    queryKey: ["/api/enrichment/pipeline-stats", activeMarket?.id],
+    queryFn: () => fetch(`/api/enrichment/pipeline-stats${dmMq}`).then(r => r.json()),
     refetchInterval: 10000,
   });
 

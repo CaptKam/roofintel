@@ -141,12 +141,16 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
-  app.get("/api/dashboard/command-center", async (_req, res) => {
+  app.get("/api/dashboard/command-center", async (req, res) => {
     try {
       const currentYear = new Date().getFullYear();
       const now = new Date();
       const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const marketId = req.query.marketId as string | undefined;
+      const mFilter = marketId ? sql`AND market_id = ${marketId}` : sql``;
+      const mWhere = marketId ? sql`WHERE market_id = ${marketId}` : sql``;
+      const lmFilter = marketId ? sql`AND l.market_id = ${marketId}` : sql``;
 
       const [
         heroResult,
@@ -166,7 +170,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             COUNT(*) FILTER (WHERE hail_events > 0 AND lead_score >= 60 AND (owner_phone IS NOT NULL OR contact_phone IS NOT NULL))::int AS actionable_leads,
             COALESCE(ROUND(AVG(lead_score)::numeric, 1), 0)::float AS avg_score,
             COUNT(*) FILTER (WHERE lead_score >= 80)::int AS hot_leads
-          FROM leads
+          FROM leads WHERE 1=1 ${mFilter}
         `),
         db.execute(sql`
           SELECT
@@ -175,7 +179,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             COUNT(*) FILTER (WHERE status = 'qualified')::int AS qualified,
             COUNT(*) FILTER (WHERE status = 'proposal')::int AS proposal,
             COUNT(*) FILTER (WHERE status = 'closed')::int AS closed
-          FROM leads
+          FROM leads WHERE 1=1 ${mFilter}
         `),
         db.execute(sql`
           SELECT
@@ -186,7 +190,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             COUNT(*) FILTER (WHERE ownership_structure IS NOT NULL)::int AS has_ownership_classified,
             COUNT(*) FILTER (WHERE enrichment_status = 'complete')::int AS enriched,
             COUNT(*) FILTER (WHERE permit_contractors IS NOT NULL)::int AS has_permit_data
-          FROM leads
+          FROM leads WHERE 1=1 ${mFilter}
         `),
         db.execute(sql`
           SELECT
@@ -206,6 +210,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           FROM leads l
           WHERE l.lead_score >= 50
             AND (l.owner_phone IS NOT NULL OR l.contact_phone IS NOT NULL OR l.managing_member_phone IS NOT NULL)
+            ${lmFilter}
           ORDER BY l.lead_score DESC, l.hail_events DESC
           LIMIT 10
         `),
@@ -214,12 +219,12 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             COUNT(*) FILTER (WHERE event_date >= ${d30})::int AS recent_30d,
             COUNT(*) FILTER (WHERE event_date >= ${d7})::int AS recent_7d,
             AVG(hail_size) FILTER (WHERE event_date >= ${d30})::float AS avg_hail_size_30d
-          FROM hail_events
+          FROM hail_events ${marketId ? sql`WHERE market_id = ${marketId}` : sql``}
         `),
         db.execute(sql`
           SELECT COUNT(*)::int AS affected
           FROM leads
-          WHERE last_hail_date >= ${d30}
+          WHERE last_hail_date >= ${d30} ${mFilter}
         `),
         db.execute(sql`
           SELECT
@@ -231,21 +236,21 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
               WHEN lead_score BETWEEN 81 AND 100 THEN '81-100'
             END AS range,
             COUNT(*)::int AS count
-          FROM leads
+          FROM leads WHERE 1=1 ${mFilter}
           GROUP BY 1
           ORDER BY 1
         `),
         db.execute(sql`
           SELECT id, address, total_value, lead_score, owner_name
           FROM leads
-          WHERE total_value IS NOT NULL
+          WHERE total_value IS NOT NULL ${mFilter}
           ORDER BY total_value DESC
           LIMIT 5
         `),
         db.execute(sql`
           SELECT permit_contractors
           FROM leads
-          WHERE permit_contractors IS NOT NULL
+          WHERE permit_contractors IS NOT NULL ${mFilter}
         `),
       ]);
 
@@ -3649,8 +3654,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     res.json(batchReprocessStatus);
   });
 
-  app.get("/api/data/quality-summary", async (_req, res) => {
+  app.get("/api/data/quality-summary", async (req, res) => {
     try {
+      const marketId = req.query.marketId as string | undefined;
+      const mf = marketId ? sql`AND market_id = ${marketId}` : sql``;
       const [tierResult, metricsResult, gapsResult] = await Promise.all([
         db.execute(sql`
           SELECT
@@ -3682,7 +3689,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
               (CASE WHEN dm_review_status IN ('auto_approved', 'auto_publish', 'approved') THEN 1 ELSE 0 END)
               = 0
             )::int AS low_count
-          FROM leads
+          FROM leads WHERE 1=1 ${mf}
         `),
         db.execute(sql`
           SELECT
@@ -3693,7 +3700,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             COUNT(*) FILTER (WHERE enrichment_status = 'complete')::int AS enriched,
             COUNT(*) FILTER (WHERE owner_email IS NOT NULL OR contact_email IS NOT NULL)::int AS has_email,
             COUNT(*) FILTER (WHERE ownership_structure IS NOT NULL)::int AS has_ownership
-          FROM leads
+          FROM leads WHERE 1=1 ${mf}
         `),
         db.execute(sql`
           SELECT
@@ -3704,7 +3711,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             COUNT(*) FILTER (WHERE decision_makers IS NULL AND managing_member IS NULL)::int AS missing_decision_maker,
             COUNT(*) FILTER (WHERE enrichment_status != 'complete' OR enrichment_status IS NULL)::int AS missing_enrichment,
             COUNT(*)::int AS total
-          FROM leads
+          FROM leads WHERE 1=1 ${mf}
         `),
       ]);
 
@@ -3844,8 +3851,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
-  app.get("/api/dashboard/roof-risk-summary", async (_req, res) => {
+  app.get("/api/dashboard/roof-risk-summary", async (req, res) => {
     try {
+      const marketId = req.query.marketId as string | undefined;
+      const mf = marketId ? sql`AND market_id = ${marketId}` : sql``;
       const distribution = (await db.execute(sql`
         SELECT
           COUNT(CASE WHEN roof_risk_index >= 81 THEN 1 END) as critical,
@@ -3854,7 +3863,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           COUNT(CASE WHEN roof_risk_index < 31 THEN 1 END) as low,
           COUNT(roof_risk_index) as total,
           ROUND(AVG(roof_risk_index)::numeric, 1) as avg_score
-        FROM leads WHERE roof_risk_index IS NOT NULL
+        FROM leads WHERE roof_risk_index IS NOT NULL ${mf}
       `)) as any;
 
       const topRisk = (await db.execute(sql`
@@ -3862,7 +3871,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
                (roof_risk_breakdown->>'tier') as tier,
                (roof_risk_breakdown->>'exposureWindow') as exposure_window
         FROM leads
-        WHERE roof_risk_index IS NOT NULL
+        WHERE roof_risk_index IS NOT NULL ${mf}
         ORDER BY roof_risk_index DESC
         LIMIT 10
       `)) as any;
@@ -5363,10 +5372,11 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
-  app.get("/api/ops/alerts", async (_req, res) => {
+  app.get("/api/ops/alerts", async (req, res) => {
     try {
       const { generateOpsAlerts } = await import("./intelligence/alerts-engine");
-      const alerts = await generateOpsAlerts();
+      const marketId = req.query.marketId as string | undefined;
+      const alerts = await generateOpsAlerts(marketId);
       res.json(alerts);
     } catch (error: any) {
       console.error("Ops alerts error:", error);
@@ -5374,8 +5384,11 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
-  app.get("/api/ops/intel-briefing", async (_req, res) => {
+  app.get("/api/ops/intel-briefing", async (req, res) => {
     try {
+      const marketId = req.query.marketId as string | undefined;
+      const mf = marketId ? sql`AND market_id = ${marketId}` : sql``;
+
       const [
         claimWindowResult,
         permitsResult,
@@ -5386,28 +5399,35 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
         coverageResult,
         graphResult,
       ] = await Promise.all([
-        db.execute(sql`SELECT COUNT(*)::int AS count FROM leads WHERE claim_window_open = true`),
+        db.execute(sql`SELECT COUNT(*)::int AS count FROM leads WHERE claim_window_open = true ${mf}`),
         db.execute(sql`
           SELECT COUNT(*)::int AS total,
             COUNT(*) FILTER (WHERE source = 'dallas_open_data')::int AS dallas,
             COUNT(*) FILTER (WHERE source = 'fort_worth_open_data')::int AS fort_worth,
             COUNT(*) FILTER (WHERE source NOT IN ('dallas_open_data', 'fort_worth_open_data'))::int AS other
           FROM building_permits
+          ${marketId ? sql`WHERE market_id = ${marketId}` : sql``}
         `),
-        db.execute(sql`SELECT COUNT(*)::int AS total FROM contact_evidence WHERE is_active = true`),
         db.execute(sql`
-          SELECT source_name, COUNT(*)::int AS count
-          FROM contact_evidence
-          WHERE is_active = true
-          GROUP BY source_name
+          SELECT COUNT(*)::int AS total FROM contact_evidence ce
+          ${marketId ? sql`JOIN leads l ON l.id = ce.lead_id WHERE ce.is_active = true AND l.market_id = ${marketId}` : sql`WHERE ce.is_active = true`}
+        `),
+        db.execute(sql`
+          SELECT ce.source_name, COUNT(*)::int AS count
+          FROM contact_evidence ce
+          ${marketId ? sql`JOIN leads l ON l.id = ce.lead_id WHERE ce.is_active = true AND l.market_id = ${marketId}` : sql`WHERE ce.is_active = true`}
+          GROUP BY ce.source_name
           ORDER BY count DESC
           LIMIT 5
         `),
-        db.execute(sql`SELECT COUNT(DISTINCT normalized_name)::int AS count FROM rooftop_owners`),
         db.execute(sql`
-          SELECT COUNT(DISTINCT normalized_name)::int AS count
-          FROM rooftop_owners
-          WHERE property_count >= 3
+          SELECT COUNT(DISTINCT ro.normalized_name)::int AS count FROM rooftop_owners ro
+          ${marketId ? sql`JOIN leads l ON l.id = ro.lead_id WHERE l.market_id = ${marketId}` : sql``}
+        `),
+        db.execute(sql`
+          SELECT COUNT(DISTINCT ro.normalized_name)::int AS count
+          FROM rooftop_owners ro
+          ${marketId ? sql`JOIN leads l ON l.id = ro.lead_id WHERE ro.property_count >= 3 AND l.market_id = ${marketId}` : sql`WHERE ro.property_count >= 3`}
         `),
         db.execute(sql`
           SELECT
@@ -5416,7 +5436,7 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
             COUNT(*) FILTER (WHERE owner_email IS NOT NULL OR contact_email IS NOT NULL)::int AS has_email,
             COUNT(*) FILTER (WHERE managing_member IS NOT NULL)::int AS has_decision_maker,
             COUNT(*) FILTER (WHERE ownership_structure IS NOT NULL)::int AS has_ownership
-          FROM leads
+          FROM leads WHERE 1=1 ${mf}
         `),
         db.execute(sql`
           SELECT

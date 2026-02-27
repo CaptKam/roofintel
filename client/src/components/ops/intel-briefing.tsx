@@ -92,9 +92,11 @@ function MetricRow({
   return content;
 }
 
-export function IntelBriefing() {
+export function IntelBriefing({ marketId }: { marketId?: string }) {
+  const mq = marketId ? `?marketId=${marketId}` : "";
   const { data, isLoading } = useQuery<IntelBriefingData>({
-    queryKey: ["/api/ops/intel-briefing"],
+    queryKey: ["/api/ops/intel-briefing", marketId],
+    queryFn: () => fetch(`/api/ops/intel-briefing${mq}`).then(r => r.json()),
   });
 
   if (isLoading) {
