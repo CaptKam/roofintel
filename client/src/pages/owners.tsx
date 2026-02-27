@@ -1152,7 +1152,7 @@ function NetworkTab({ initialSearchQuery }: { initialSearchQuery: string }) {
             <div className="flex items-center gap-6">
               <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Top Connected</h4>
               <div className="flex items-center gap-3 flex-1 overflow-x-auto">
-                {stats.topConnected.slice(0, 8).map((node) => {
+                {(stats.topConnected || []).slice(0, 8).map((node) => {
                   const Icon = NODE_ICONS[node.nodeType] || Share2;
                   return (
                     <button
