@@ -42,6 +42,7 @@ import {
   CircleAlert,
   ShieldAlert,
   ArrowUpDown,
+  Flame,
 } from "lucide-react";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
 import type { Lead } from "@shared/schema";
@@ -281,6 +282,21 @@ export default function Leads() {
             data-testid="input-search-leads"
           />
         </div>
+        <Button
+          variant={minScore === "80" ? "default" : "outline"}
+          onClick={() => {
+            if (minScore === "80") {
+              applyFilterPreset({});
+            } else {
+              applyFilterPreset({ minScore: "80" });
+            }
+          }}
+          data-testid="button-hot-leads"
+          className={minScore === "80" ? "bg-orange-600 hover:bg-orange-700 text-white" : ""}
+        >
+          <Flame className="w-4 h-4 mr-1.5" />
+          Hot Leads
+        </Button>
         <Button
           variant={showFilters ? "secondary" : "outline"}
           onClick={() => setShowFilters(!showFilters)}

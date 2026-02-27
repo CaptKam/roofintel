@@ -64,7 +64,7 @@ export function NetworkIntelligence({ leadId }: { leadId: string }) {
           <p className="text-xs text-muted-foreground mt-1 mb-4">
             Build the relationship graph in Network Explorer to unlock cross-entity intelligence.
           </p>
-          <Link href="/network-explorer">
+          <Link href="/owners?tab=network">
             <Button variant="outline" size="sm" className="h-8 text-xs">
               Go to Network Explorer
             </Button>

@@ -70,15 +70,25 @@ The `consent_tokens` table stores TrustedForm/Jornaya/manual consent tokens with
 ### Phone Validation Pipeline
 The phone-validation-pipeline wraps Twilio Lookup V2 with TTL-aware validation, logging results to contact_evidence and skip_trace_log. Batch validation supports rate limiting. The ROI agent uses phone line type (mobile/landline/voip) in contactability scoring.
 
-### UX Architecture: Ops Center + Admin
-The frontend is split into two focused surfaces:
-- **`/ops` (Operations Center)**: Daily command center with 7 card-based panels — Grok Intelligence Core (NL bar + cost meter), Live Budget Guardrails, ROI Engine (expandable), ZIP Priority Tiles, Pipeline Control, Analytics & KPIs (expandable), Storm & Phone Ops. Search bar for card filtering. File: `client/src/pages/ops-center.tsx`.
-- **`/admin` (System Config)**: 4-tab admin for rarely-changed settings — Markets & Sources, Data Quality, Compliance, System. File: `client/src/pages/admin.tsx`.
+### UX Architecture: 5-Item Navigation
+The frontend uses a streamlined 5-item sidebar navigation (down from 9), consolidated for storm-day speed and operator focus:
+
+**Sidebar Navigation (4 main + 1 system):**
+1. **Hail Chaser** (`/hail-chaser`, CloudLightning icon, LIVE badge during active storms) — Unified full-screen storm map with all layers: Xweather threats, NOAA radar, NWS alerts, storm swaths, building footprints, ZIP heatmap. Includes monitor controls, response queue with call/skip actions, alert config. Absorbs former Map & Storms page. File: `client/src/pages/hail-chaser.tsx`.
+2. **Ops Center** (`/ops`, Gauge icon, default landing page) — Daily cockpit with 14+ cards: KPI hero row (Pipeline Value, Actionable Now, Avg Score, Storm Pulse), Performance Metrics, Grok Intelligence (NL bar + cost meter), Budget Guardrails, ROI Engine, ZIP Priority, Pipeline Control, Priority Actions, Pipeline & Coverage, Market Intelligence, Data Quality, Roof Risk, Analytics & KPIs, Storm & Phone Ops. Absorbs former Dashboard page. File: `client/src/pages/ops-center.tsx`.
+3. **Leads** (`/leads`, List icon) — Filterable lead list with "Hot Leads" quick filter button (Flame icon, minScore=80 toggle), saved filters, CSV export. File: `client/src/pages/leads.tsx`.
+4. **Owners** (`/owners`, Users icon) — 3-tab page combining Portfolios (owner list, risk cards), Network (ForceGraph2D entity relationships), and Contractors (permit directory). Cross-tab "View in Network" navigation. File: `client/src/pages/owners.tsx`.
+5. **Admin** (`/admin`, Settings icon, System group) — 4-tab system config. File: `client/src/pages/admin.tsx`.
+
+**Redirects (14-day compatibility):** `/` → `/ops`, `/portfolios` → `/owners`, `/network` → `/owners`, `/contractors` → `/owners`, `/map` → `/hail-chaser`.
+
+**Removed pages:** Dashboard (→ Ops Center), Map & Storms (→ Hail Chaser), Portfolios (→ Owners tab), Network Explorer (→ Owners tab), Contractors (→ Owners tab), Hot Leads nav item (→ button on Leads page).
+
 - **Extracted panel components**: `client/src/components/admin/roi-engine-panel.tsx`, `analytics-kpis-panel.tsx`, `compliance-panel.tsx` — shared between Ops Center and Admin.
-- **Sidebar**: Ops Center prominently featured in Navigation group (first item, Zap icon). Admin in System group.
+- **Sidebar footer**: NOAA/Storm Watch/Prediction status indicators + Grok Intelligence Core status.
 
 ### Feature Specifications
-Key features include a comprehensive Dashboard with KPI cards (conversion rate, cost/lead, ROI), filterable Leads & Lead Detail pages with ROI decision cards and outcome recording, an interactive Map & Storms view with ZIP priority heatmap, a Hail Chaser mode, Portfolios & Network Explorer, Data Management tools, an Operations Center for daily ROI/pipeline/budget/storm management, and an Admin interface with 4 system config tabs (Markets & Sources, Data Quality, Compliance, System). A Contractors Directory and CSV export functionality are also included.
+Key features include the Hail Chaser unified storm map (all weather layers, monitor controls, response queue, alert config), the Ops Center daily cockpit (KPIs, pipeline, priority actions, Grok NL bar, budget, ROI, ZIP tiles, data quality, roof risk, analytics), filterable Leads with Hot Leads quick filter and outcome recording, the Owners hub (Portfolios + Network graph + Contractors directory as tabs), and Admin with 4 system config tabs (Markets & Sources, Data Quality, Compliance, System). CSV export functionality is also included.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database.

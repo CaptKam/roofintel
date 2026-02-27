@@ -500,7 +500,7 @@ export default function DataManagement() {
               the DFW region. View live data on the Map View page.
             </p>
             <div className="flex items-center gap-2 flex-wrap">
-              <Link href="/map">
+              <Link href="/hail-chaser">
                 <Button size="sm" data-testid="button-open-hail-map">
                   <Radar className="w-3 h-3 mr-1" />
                   Open Map with Hail Tracker

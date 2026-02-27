@@ -1,6 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Building2, MapPin, Flame, Zap, Radio, Settings, ChevronRight, Network, Share2, HardHat, CloudLightning } from "lucide-react";
+import { Building2, CloudLightning, Gauge, List, Users, Settings, Sparkles } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -24,18 +24,13 @@ import {
 import { useMarket } from "@/hooks/use-market";
 
 const mainNav = [
-  { title: "Ops Center", url: "/ops", icon: Zap },
   { title: "Hail Chaser", url: "/hail-chaser", icon: CloudLightning },
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Leads", url: "/leads", icon: Building2 },
-  { title: "Portfolios", url: "/portfolios", icon: Network },
-  { title: "Network", url: "/network", icon: Share2 },
-  { title: "Contractors", url: "/contractors", icon: HardHat },
-  { title: "Hot Leads", url: "/leads?minScore=80", icon: Flame },
-  { title: "Map & Storms", url: "/map", icon: MapPin },
+  { title: "Ops Center", url: "/ops", icon: Gauge },
+  { title: "Leads", url: "/leads", icon: List },
+  { title: "Owners", url: "/owners", icon: Users },
 ];
 
-const toolsNav = [
+const systemNav = [
   { title: "Admin", url: "/admin", icon: Settings },
 ];
 
@@ -53,10 +48,12 @@ export function AppSidebar() {
     refetchInterval: 30000,
   });
 
+  const hasActiveThreats = (xweatherStatus?.activeThreats || 0) > 0;
+
   return (
     <Sidebar>
       <SidebarHeader className="px-5 pt-6 pb-4">
-        <Link href="/">
+        <Link href="/ops">
           <div className="flex items-center gap-3 cursor-pointer group">
             <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-sm transition-transform group-hover:scale-105">
               <Building2 className="w-[18px] h-[18px] text-primary-foreground" />
@@ -90,11 +87,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNav.map((item) => {
-                const isActive = item.url === "/"
-                  ? location === "/"
-                  : item.url.includes("?")
-                    ? location === item.url.split("?")[0] && window.location.search === "?" + item.url.split("?")[1]
-                    : location.startsWith(item.url) && !window.location.search;
+                const isActive = location.startsWith(item.url);
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
@@ -105,6 +98,11 @@ export function AppSidebar() {
                       <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s/g, "-")}`}>
                         <item.icon className="w-[18px] h-[18px]" />
                         <span className="text-[13px] font-medium">{item.title}</span>
+                        {item.title === "Hail Chaser" && hasActiveThreats && (
+                          <Badge variant="destructive" className="ml-auto text-[9px] px-1.5 py-0 h-4 animate-pulse">
+                            LIVE
+                          </Badge>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -117,7 +115,7 @@ export function AppSidebar() {
           <SidebarGroupLabel className="text-sidebar-foreground/35 text-[10px] font-semibold uppercase tracking-[0.1em] px-2 mb-1">System</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {toolsNav.map((item) => (
+              {systemNav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
@@ -152,10 +150,14 @@ export function AppSidebar() {
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
                 <span className="text-[11px] font-medium text-sidebar-foreground/60">
-                  Prediction{(xweatherStatus?.activeThreats || 0) > 0 && ` (${xweatherStatus?.activeThreats})`}
+                  Prediction{hasActiveThreats && ` (${xweatherStatus?.activeThreats})`}
                 </span>
               </div>
             )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3 text-sidebar-foreground/40" />
+            <span className="text-[10px] text-sidebar-foreground/40 font-medium">Grok Intelligence Core</span>
           </div>
           {activeMarket && (
             <p className="text-[10px] text-sidebar-foreground/35 font-medium">{activeMarket.name}</p>

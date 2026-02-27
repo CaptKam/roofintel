@@ -3051,7 +3051,7 @@ export default function Admin() {
                   the DFW region. View live data on the Map View page.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <Link href="/map">
+                  <Link href="/hail-chaser">
                     <Button size="sm" data-testid="button-open-hail-map">
                       <Radar className="w-3 h-3" />
                       Open Map with Hail Tracker
@@ -3627,7 +3627,7 @@ export default function Admin() {
                     )}
                     Analyze Portfolio Network
                   </Button>
-                  <Link href="/portfolios">
+                  <Link href="/owners">
                     <Button size="sm" variant="ghost" data-testid="button-view-portfolios">
                       <Network className="w-3 h-3" />
                       View Portfolios
