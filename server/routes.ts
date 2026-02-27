@@ -42,6 +42,8 @@ import { enrichLeadFromTXSOS } from "./tx-sos";
 import { enrichLeadFromCountyClerk } from "./county-clerk";
 import { db } from "./storage";
 import { sql, eq } from "drizzle-orm";
+import { fetchAllYearsForProperty, getCachedSnapshots, naipBatchProgress, type NAIPBatchProgress } from "./naip-imagery-agent";
+import { analyzePropertyRoof } from "./roof-change-detector";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -4392,6 +4394,260 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       res.json({ propertyId: id, roof, owner, riskSignals: risk, contacts, intelligence: intel });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get satellite data", error: error.message });
+    }
+  });
+
+  // ── NAIP Satellite Imagery Endpoints ──
+
+  app.get("/api/leads/:id/naip-history", async (req, res) => {
+    try {
+      const leadId = req.params.id;
+      const snapshots = (await db.execute(sql`
+        SELECT * FROM naip_roof_snapshots WHERE lead_id = ${leadId} ORDER BY capture_year ASC
+      `)) as any;
+      const changes = (await db.execute(sql`
+        SELECT * FROM naip_roof_changes WHERE lead_id = ${leadId} ORDER BY confidence DESC
+      `)) as any;
+      res.json({
+        leadId,
+        snapshots: snapshots.rows || [],
+        changes: changes.rows || [],
+        hasData: (snapshots.rows || []).length > 0,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get NAIP history", error: error.message });
+    }
+  });
+
+  app.post("/api/leads/:id/naip-analyze", async (req, res) => {
+    try {
+      const leadId = req.params.id;
+      const lead = await storage.getLeadById(leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const lat = lead.latitude;
+      const lon = lead.longitude;
+      if (!lat || !lon) return res.status(400).json({ message: "Lead has no coordinates" });
+
+      const crops = await fetchAllYearsForProperty(lat, lon);
+      if (crops.length === 0) return res.json({ message: "No NAIP imagery available", snapshots: 0, change: null });
+
+      const result = await analyzePropertyRoof(leadId, crops);
+
+      if (result.estimatedYear && result.confidence >= 70) {
+        await db.execute(sql`
+          UPDATE leads SET roof_last_replaced = ${result.estimatedYear}, roof_age_source = 'naip_change_detection'
+          WHERE id = ${leadId}
+        `);
+        try {
+          await db.execute(sql`
+            INSERT INTO property_roof (property_id, roof_last_replaced, source, updated_at)
+            VALUES (${leadId}, ${result.estimatedYear}, 'naip_change_detection', NOW())
+            ON CONFLICT (property_id) DO UPDATE SET
+              roof_last_replaced = EXCLUDED.roof_last_replaced,
+              source = 'naip_change_detection',
+              updated_at = NOW()
+          `);
+        } catch {}
+      }
+
+      res.json({
+        message: "Analysis complete",
+        snapshotsAnalyzed: crops.length,
+        yearsAvailable: crops.map(c => c.year),
+        result,
+      });
+    } catch (error: any) {
+      console.error(`[NAIP] Error analyzing lead:`, error.message);
+      res.status(500).json({ message: "NAIP analysis failed", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/naip/analyze", async (_req, res) => {
+    if (naipBatchProgress.running) {
+      return res.status(409).json({ message: "NAIP batch analysis already running", progress: naipBatchProgress });
+    }
+
+    const { naipBatchProgress: progress } = await import("./naip-imagery-agent");
+    Object.assign(progress, {
+      running: true,
+      phase: "querying",
+      processed: 0,
+      total: 0,
+      detected: 0,
+      applied: 0,
+      errors: 0,
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+    });
+
+    res.json({ message: "NAIP batch analysis started", progress });
+
+    (async () => {
+      try {
+        const candidateResult = (await db.execute(sql`
+          SELECT id, latitude, longitude, year_built, roof_last_replaced
+          FROM leads
+          WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            AND (roof_last_replaced IS NULL OR roof_last_replaced = year_built)
+          ORDER BY year_built ASC NULLS FIRST
+          LIMIT 5000
+        `)) as any;
+        const candidates = candidateResult.rows || [];
+        progress.total = candidates.length;
+        progress.phase = "processing";
+        console.log(`[NAIP] Starting batch analysis of ${candidates.length} leads`);
+
+        for (let i = 0; i < candidates.length; i++) {
+          if (!progress.running) break;
+          const lead = candidates[i];
+
+          try {
+            const cached = await getCachedSnapshots(lead.id);
+            if (cached.length >= 2) {
+              progress.processed++;
+              continue;
+            }
+
+            const crops = await fetchAllYearsForProperty(lead.latitude, lead.longitude);
+            if (crops.length < 2) {
+              progress.processed++;
+              continue;
+            }
+
+            const result = await analyzePropertyRoof(lead.id, crops);
+
+            if (result.estimatedYear && result.confidence >= 70) {
+              progress.detected++;
+              await db.execute(sql`
+                UPDATE leads SET roof_last_replaced = ${result.estimatedYear}, roof_age_source = 'naip_change_detection'
+                WHERE id = ${lead.id}
+              `);
+              try {
+                await db.execute(sql`
+                  INSERT INTO property_roof (property_id, roof_last_replaced, source, updated_at)
+                  VALUES (${lead.id}, ${result.estimatedYear}, 'naip_change_detection', NOW())
+                  ON CONFLICT (property_id) DO UPDATE SET
+                    roof_last_replaced = EXCLUDED.roof_last_replaced,
+                    source = 'naip_change_detection',
+                    updated_at = NOW()
+                `);
+              } catch {}
+              progress.applied++;
+            }
+          } catch (err: any) {
+            progress.errors++;
+            if (progress.errors <= 5) {
+              console.error(`[NAIP] Error on lead ${lead.id}:`, err.message);
+            }
+          }
+
+          progress.processed++;
+          if (progress.processed % 50 === 0) {
+            console.log(`[NAIP] Progress: ${progress.processed}/${progress.total}, detected: ${progress.detected}, applied: ${progress.applied}, errors: ${progress.errors}`);
+          }
+        }
+
+        progress.running = false;
+        progress.phase = "complete";
+        progress.completedAt = new Date().toISOString();
+        console.log(`[NAIP] Batch complete: ${progress.processed} processed, ${progress.detected} detected, ${progress.applied} applied, ${progress.errors} errors`);
+      } catch (error: any) {
+        console.error(`[NAIP] Fatal batch error:`, error.message);
+        progress.running = false;
+        progress.phase = "error";
+        progress.completedAt = new Date().toISOString();
+      }
+    })();
+  });
+
+  app.get("/api/admin/naip/status", async (_req, res) => {
+    res.json(naipBatchProgress);
+  });
+
+  app.post("/api/admin/naip/cancel", async (_req, res) => {
+    if (!naipBatchProgress.running) {
+      return res.json({ message: "No batch running" });
+    }
+    naipBatchProgress.running = false;
+    naipBatchProgress.phase = "cancelled";
+    res.json({ message: "Batch cancelled", progress: naipBatchProgress });
+  });
+
+  app.get("/api/admin/naip/results", async (req, res) => {
+    try {
+      const minConfidence = parseInt(req.query.minConfidence as string) || 0;
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const results = (await db.execute(sql`
+        SELECT nc.*, l.property_name, l.address, l.year_built, l.roof_type
+        FROM naip_roof_changes nc
+        JOIN leads l ON l.id = nc.lead_id
+        WHERE nc.confidence >= ${minConfidence}
+        ORDER BY nc.confidence DESC, nc.analyzed_at DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `)) as any;
+
+      const countResult = (await db.execute(sql`
+        SELECT COUNT(*) as total FROM naip_roof_changes WHERE confidence >= ${minConfidence}
+      `)) as any;
+
+      const stats = (await db.execute(sql`
+        SELECT
+          COUNT(*) as total_changes,
+          COUNT(*) FILTER (WHERE confidence >= 70) as high_confidence,
+          COUNT(*) FILTER (WHERE confidence >= 30 AND confidence < 70) as medium_confidence,
+          COUNT(*) FILTER (WHERE confidence < 30) as low_confidence,
+          COUNT(*) FILTER (WHERE applied = true) as applied,
+          AVG(confidence) as avg_confidence
+        FROM naip_roof_changes
+      `)) as any;
+
+      res.json({
+        results: results.rows || [],
+        total: parseInt(countResult.rows?.[0]?.total || "0"),
+        stats: stats.rows?.[0] || {},
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get NAIP results", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/naip/stats", async (_req, res) => {
+    try {
+      const snapshotStats = (await db.execute(sql`
+        SELECT
+          COUNT(DISTINCT lead_id) as leads_with_snapshots,
+          COUNT(*) as total_snapshots,
+          MIN(capture_year) as earliest_year,
+          MAX(capture_year) as latest_year
+        FROM naip_roof_snapshots
+      `)) as any;
+
+      const changeStats = (await db.execute(sql`
+        SELECT
+          COUNT(*) as total_changes,
+          COUNT(*) FILTER (WHERE confidence >= 70) as high_confidence,
+          COUNT(*) FILTER (WHERE applied = true) as applied_count,
+          AVG(confidence) as avg_confidence
+        FROM naip_roof_changes
+      `)) as any;
+
+      const byYear = (await db.execute(sql`
+        SELECT capture_year, COUNT(DISTINCT lead_id) as lead_count, AVG(mean_brightness) as avg_brightness
+        FROM naip_roof_snapshots
+        GROUP BY capture_year ORDER BY capture_year
+      `)) as any;
+
+      res.json({
+        snapshots: snapshotStats.rows?.[0] || {},
+        changes: changeStats.rows?.[0] || {},
+        byYear: byYear.rows || [],
+        batchProgress: naipBatchProgress,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get NAIP stats", error: error.message });
     }
   });
 

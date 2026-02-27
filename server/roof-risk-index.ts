@@ -30,6 +30,7 @@ export interface RoofRiskResult {
   score: number;
   tier: "Low" | "Moderate" | "High" | "Critical";
   exposureWindow: string;
+  roofAgeSource?: "record" | "permit" | "naip_imagery" | "year_built" | "default";
   breakdown: {
     ageRisk: { score: number; max: number; detail: string };
     stormRisk: { score: number; max: number; detail: string };
@@ -74,25 +75,42 @@ export function calculateRoofRiskIndex(lead: any, portfolioInfo?: PortfolioInfo)
 
   let bestRoofYear: number | null = null;
   let roofYearSource = "";
+  let roofAgeSource: "record" | "permit" | "naip_imagery" | "year_built" | "default" = "default";
 
   const roofLastReplaced = lead.roofLastReplaced || lead.roof_last_replaced;
   const lastRoofingPermitDate = lead.lastRoofingPermitDate || lead.last_roofing_permit_date;
   const yearBuilt = lead.yearBuilt || lead.year_built;
+  const roofAgeSourceField = lead.roofAgeSource || lead.roof_age_source;
+  const naipEstimatedYear = lead.naipEstimatedYear || lead.naip_estimated_year;
 
   if (roofLastReplaced) {
     bestRoofYear = roofLastReplaced;
-    roofYearSource = "roof replacement record";
+    if (roofAgeSourceField === "naip_imagery" || roofAgeSourceField === "naip_change_detection") {
+      roofYearSource = "NAIP satellite imagery detection";
+      roofAgeSource = "naip_imagery";
+    } else {
+      roofYearSource = "roof replacement record";
+      roofAgeSource = "record";
+    }
   } else if (lastRoofingPermitDate) {
     const permitYear = parseInt(lastRoofingPermitDate.substring(0, 4));
     if (permitYear > 1950) {
       bestRoofYear = permitYear;
       roofYearSource = "roofing permit";
+      roofAgeSource = "permit";
     }
+  }
+
+  if (!bestRoofYear && naipEstimatedYear) {
+    bestRoofYear = naipEstimatedYear;
+    roofYearSource = "NAIP satellite imagery detection";
+    roofAgeSource = "naip_imagery";
   }
 
   if (!bestRoofYear && yearBuilt) {
     bestRoofYear = yearBuilt;
     roofYearSource = "year built (no replacement record)";
+    roofAgeSource = "year_built";
   }
 
   const estimatedAge = bestRoofYear ? currentYear - bestRoofYear : 25;
@@ -254,6 +272,7 @@ export function calculateRoofRiskIndex(lead: any, portfolioInfo?: PortfolioInfo)
     score: totalScore,
     tier,
     exposureWindow,
+    roofAgeSource,
     breakdown: {
       ageRisk: { score: ageRiskScore, max: 25, detail: ageDetail },
       stormRisk: { score: stormScore, max: 25, detail: stormDetail },

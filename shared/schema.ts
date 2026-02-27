@@ -966,4 +966,44 @@ export type InsertPropertyIntelligence = z.infer<typeof insertPropertyIntelligen
 export type DataQualityMetric = typeof dataQualityMetrics.$inferSelect;
 export type InsertDataQualityMetric = z.infer<typeof insertDataQualityMetricsSchema>;
 
+export const naipRoofSnapshots = pgTable("naip_roof_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  captureYear: integer("capture_year").notNull(),
+  captureDate: text("capture_date"),
+  naipItemId: text("naip_item_id"),
+  imageUrl: text("image_url"),
+  meanBrightness: real("mean_brightness"),
+  meanR: real("mean_r"),
+  meanG: real("mean_g"),
+  meanB: real("mean_b"),
+  stdBrightness: real("std_brightness"),
+  colorClass: text("color_class"),
+  colorStats: jsonb("color_stats"),
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+});
+
+export const naipRoofChanges = pgTable("naip_roof_changes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").notNull(),
+  estimatedYear: integer("estimated_year"),
+  confidence: integer("confidence").default(0),
+  changeType: text("change_type"),
+  brightnessDelta: real("brightness_delta"),
+  fromColor: text("from_color"),
+  toColor: text("to_color"),
+  fromYear: integer("from_year"),
+  toYear: integer("to_year"),
+  details: jsonb("details"),
+  applied: boolean("applied").default(false),
+  analyzedAt: timestamp("analyzed_at").defaultNow(),
+});
+
+export const insertNaipRoofSnapshotSchema = createInsertSchema(naipRoofSnapshots).omit({ id: true, fetchedAt: true });
+export const insertNaipRoofChangeSchema = createInsertSchema(naipRoofChanges).omit({ id: true, analyzedAt: true });
+export type NaipRoofSnapshot = typeof naipRoofSnapshots.$inferSelect;
+export type InsertNaipRoofSnapshot = z.infer<typeof insertNaipRoofSnapshotSchema>;
+export type NaipRoofChange = typeof naipRoofChanges.$inferSelect;
+export type InsertNaipRoofChange = z.infer<typeof insertNaipRoofChangeSchema>;
+
 export * from "./models/chat";

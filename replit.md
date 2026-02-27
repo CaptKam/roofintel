@@ -29,6 +29,7 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 - **DM Confidence Scoring**: Recalibrated thresholds and an "insufficient_data" tier for leads lacking sufficient enrichment signals.
 - **Reverse Address Enrichment**: Uses Google Places API to identify management companies and corporate offices via mailing addresses.
 - **GIS Roof Intelligence**: Utilizes OpenStreetMap Overpass API for building footprints, computes roof area, and integrates satellite imagery with roof age/material/type.
+- **NAIP Roof Change Detection**: Fetches USDA NAIP aerial imagery (2012–2022) via Microsoft Planetary Computer STAC API. Computes per-year color statistics (brightness, R/G/B, uniformity) using `sharp`. Detects roof replacement events by analyzing brightness/color transitions between capture years (e.g., dark→white = BUR→TPO). High-confidence detections (≥70%) update `roofLastReplaced` with source "naip_change_detection". Tables: `naip_roof_snapshots`, `naip_roof_changes`. Files: `server/naip-imagery-agent.ts`, `server/roof-change-detector.ts`.
 - **Lead Scoring (v3)**: An advanced algorithm incorporating various property and contact attributes for a comprehensive lead score (0-100).
 - **Pipeline Orchestrator**: Manages a 9-phase automated data processing pipeline with configurable filtering and progress tracking.
 - **Batch Reprocess**: Admin endpoint to re-run ownership classification, management attribution, role inference, and confidence scoring.
@@ -84,5 +85,6 @@ Key features include a comprehensive **Dashboard**, filterable **Leads & Lead De
 - **FEMA Flood Zone API**: Flood risk assessment.
 - **OpenStreetMap Overpass API**: Building footprint polygons.
 - **Esri World Imagery**: Satellite imagery.
+- **Microsoft Planetary Computer STAC API**: NAIP aerial imagery (2012–2022) for roof change detection.
 - **EmailMX verification services**: Email validation.
 - **Various public record APIs/databases**: Including TREC, TDLR, HUD, BBB, WHOIS/RDAP.
