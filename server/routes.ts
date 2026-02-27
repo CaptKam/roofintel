@@ -4726,6 +4726,34 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  // PropStream CSV Import endpoints
+  app.post("/api/import/propstream-csv", upload.single("file"), async (req, res) => {
+    try {
+      const { importPropStreamCsv, getPropStreamImportProgress } = await import("./propstream-importer");
+      const progress = getPropStreamImportProgress();
+      if (progress.status === "running") {
+        return res.status(409).json({ message: "Import already in progress", progress });
+      }
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      const csvContent = req.file.buffer.toString("utf-8");
+      importPropStreamCsv(csvContent);
+      res.json({ message: "PropStream import started", progress: getPropStreamImportProgress() });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start PropStream import", error: error.message });
+    }
+  });
+
+  app.get("/api/import/propstream-csv/status", async (_req, res) => {
+    try {
+      const { getPropStreamImportProgress } = await import("./propstream-importer");
+      res.json(getPropStreamImportProgress());
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get import status", error: error.message });
+    }
+  });
+
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);

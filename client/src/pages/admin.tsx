@@ -485,7 +485,203 @@ function PropertyScannerPanel() {
           </CardContent>
         </Card>
       )}
+
+      <PropStreamImportCard />
     </div>
+  );
+}
+
+function PropStreamImportCard() {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: importStatus, refetch: refetchImport } = useQuery<{
+    status: string;
+    totalRows: number;
+    processed: number;
+    matched: number;
+    updated: number;
+    skipped: number;
+    unmatched: number;
+    fieldsUpdated: Record<string, number>;
+    errors: number;
+    errorMessages: string[];
+    startedAt: string | null;
+    completedAt: string | null;
+  }>({
+    queryKey: ["/api/import/propstream-csv/status"],
+    refetchInterval: (query) => query.state.data?.status === "running" ? 2000 : false,
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/import/propstream-csv", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Upload failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "PropStream import started" });
+      refetchImport();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/property-scan/gaps"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const isRunning = importStatus?.status === "running";
+  const isComplete = importStatus?.status === "completed";
+  const isFailed = importStatus?.status === "failed";
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      uploadMutation.mutate(file);
+      e.target.value = "";
+    }
+  };
+
+  const FIELD_LABELS: Record<string, string> = {
+    yearBuilt: "Year Built",
+    lastDeedDate: "Last Sale Date",
+    previousMarketValue: "Sale Amount",
+    landAcreage: "Lot Acres",
+    landSqft: "Lot SqFt",
+    subdivisionName: "Subdivision",
+    schoolDistrict: "School District",
+    propertyUseDescription: "Land Use",
+    sqft: "Building SqFt",
+  };
+
+  return (
+    <Card className="shadow-sm" data-testid="card-propstream-import">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Upload className="w-4 h-4" />
+          PropStream CSV Import
+        </CardTitle>
+        {isRunning && <Badge variant="secondary" className="animate-pulse">Importing...</Badge>}
+        {isComplete && <Badge variant="default">Complete</Badge>}
+      </CardHeader>
+      <CardContent className="p-6 pt-0 space-y-4">
+        <p className="text-xs text-muted-foreground">
+          Upload a CSV export from PropStream to enrich existing leads with missing data (year built, sale dates, lot size, school district, etc.). Only fills in empty fields — never overwrites existing data.
+        </p>
+
+        <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-300 space-y-1">
+          <div className="font-medium">How to export from PropStream:</div>
+          <ol className="list-decimal list-inside space-y-0.5 text-[11px]">
+            <li>Go to app.propstream.com and search DFW commercial properties</li>
+            <li>Select all results and click "Export to CSV"</li>
+            <li>Include: Year Built, Last Sale Date, Lot Size, School District, Subdivision</li>
+            <li>Upload the exported CSV file here</li>
+          </ol>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={handleFileSelect}
+          data-testid="input-propstream-file"
+        />
+
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isRunning || uploadMutation.isPending}
+          className="w-full"
+          data-testid="btn-upload-propstream"
+        >
+          {isRunning ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Upload className="w-4 h-4 mr-2" />
+          )}
+          {isRunning ? "Importing..." : "Upload PropStream CSV"}
+        </Button>
+
+        {importStatus && importStatus.status !== "idle" && (
+          <div className="space-y-3 pt-3 border-t">
+            <div className="flex justify-between text-xs">
+              <span>Status</span>
+              <Badge variant={isComplete ? "default" : isRunning ? "secondary" : isFailed ? "destructive" : "outline"}>
+                {importStatus.status}
+              </Badge>
+            </div>
+
+            {importStatus.totalRows > 0 && (
+              <>
+                <div className="flex justify-between text-xs">
+                  <span>Progress</span>
+                  <span>{importStatus.processed} / {importStatus.totalRows} rows</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${Math.round((importStatus.processed / importStatus.totalRows) * 100)}%` }}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded p-2 text-center">
+                <div className="text-lg font-bold text-emerald-600" data-testid="stat-propstream-matched">{importStatus.matched}</div>
+                <div className="text-[10px] text-muted-foreground">Matched</div>
+              </div>
+              <div className="bg-blue-50 dark:bg-blue-950/30 rounded p-2 text-center">
+                <div className="text-lg font-bold text-blue-600" data-testid="stat-propstream-updated">{importStatus.updated}</div>
+                <div className="text-[10px] text-muted-foreground">Updated</div>
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-950/30 rounded p-2 text-center">
+                <div className="text-lg font-bold text-amber-600">{importStatus.unmatched}</div>
+                <div className="text-[10px] text-muted-foreground">Unmatched</div>
+              </div>
+              <div className="bg-muted/50 rounded p-2 text-center">
+                <div className="text-lg font-bold">{importStatus.skipped}</div>
+                <div className="text-[10px] text-muted-foreground">Skipped</div>
+              </div>
+            </div>
+
+            {Object.keys(importStatus.fieldsUpdated).length > 0 && (
+              <div className="space-y-1 pt-2 border-t">
+                <div className="text-xs font-medium">Fields Enriched</div>
+                {Object.entries(importStatus.fieldsUpdated)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([field, count]) => (
+                    <div key={field} className="flex justify-between text-xs bg-muted/30 rounded px-2 py-1">
+                      <span>{FIELD_LABELS[field] || field}</span>
+                      <span className="font-medium text-emerald-600">+{count}</span>
+                    </div>
+                  ))}
+              </div>
+            )}
+
+            {importStatus.errors > 0 && (
+              <div className="text-xs text-red-500">
+                {importStatus.errors} errors
+                {importStatus.errorMessages.length > 0 && (
+                  <div className="mt-1 text-[10px] max-h-[100px] overflow-y-auto bg-red-50 dark:bg-red-950/30 rounded p-2">
+                    {importStatus.errorMessages.slice(0, 5).map((msg, i) => (
+                      <div key={i}>{msg}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
