@@ -1,0 +1,292 @@
+Roofing Lead-Gen Algorithms – Executive Summary
+Designing a data-driven roofing lead system requires careful data selection, scoring logic, and workflows to ensure we only buy contacts likely to convert. Key components: (1) Data Schema – build a unified schema incorporating property info (parcel, building, permits), hazard data, and skip-trace outputs. (2) Scoring Algorithms – compute ZIP/event-level priorities and per-building scores using weighted factors (storm hits, roof age, permit signals, ownership type, etc.). (3) Decision Rules/Workflow – pseudocode-driven pipelines: ingest → validate/enrich → score → decide buy-skiptrace vs skip → verify contact → route lead → feedback loop. (4) Data Quality – fuzzy dedup, canonicalization, and TTL-driven re-tracing ensure freshness. (5) Cost Optimization – decide batch vs individual buys, sampling, and sensitivity models (e.g. simulate cost per sale). (6) Compliance – automatic DNC scrubbing, TCPA consent checks (TrustedForm), and audit logging. (7) Monitoring – define KPIs (contact %, conversion %, cost per acquisition) and triggers for model retraining. (8) Implementation – we suggest a modern tech stack (Python/Twilio/CRM/API integration, SQL/NoSQL DB) with effort estimates per module.
+
+The following sections detail each part, with example data fields, scoring formulas, and pseudocode. Tables compare current practices vs recommended, and a Mermaid flowchart illustrates the improved pipeline. Actionable checklist concludes the report.
+
+Data Schema (Fields)
+We combine multiple data sources into one record per building address. Core fields:
+
+Parcel/Assessor: address, zip, parcelID, ownerName, ownerMailingAddress, landUse, propertyType (e.g. SFR, MF), yearBuilt, effectiveYearBuilt, stories, buildingSquareFeet, lotSize, roofMaterial (if available), assessedValue, taxDelinquent (Y/N)
+.
+Building Permits: recentPermitFlag (roof/repair permit in last N years), permitDate, permitType, permitCost (if available). e.g. from ATTOM API
+.
+Hazard/Storm: lastHailDate (zip), hailSeverity, recentHailFlag from NOAA Storm Events. Flood zone flags (FEMA), historical storm count in ZIP. [Assumption: unspecified unless vendor provides].
+Imagery/Features: roofConditionEstimate (if using EagleView or ML on images), numberStories, presence of features (pool, solar, etc.) from property data. (If unavailable, mark as unspecified.)
+Tax & Ownership: ownerOccupied (Y/N), ownerType (individual vs LLC), mortgageStatus, phoneNumber, emailAddress, mobileFlag, ageOfOwner from skip-trace.
+Skip-Trace Output: matchedPhone, matchedEmail, carrierType (mobile/landline), contactRiskScore, confidenceFlag, and date of last contact update.
+Unspecified fields: exact storm intensity at location, actual roof age (we only have year built), insurance claim count (unless purchased), etc. These remain “unspecified” if not in source.
+
+Scoring Algorithms
+We compute both a ZIP/event priority and per-building score. Below is a simplified pseudocode outline.
+
+(a) ZIP-Tile and Event Scoring
+python
+Copy
+# Example weights (to tune via pilot)
+wStorm = 0.4
+wPermitActivity = 0.3
+wValue = 0.2
+wRoofAge = 0.1
+
+# Compute scores for each zip
+for zip in all_zip_codes:
+    stormScore = getStormIntensity(zip)  # e.g. max hail size in last X weeks (normalized 0-1)
+    permitScore = recentRoofPermits(zip) / maxPermits  # normalized permit count
+    valueScore = averageAssessValue(zip) / maxValue  # normalized by top zip
+    ageScore = olderBuildingRatio(zip)  # fraction of houses >25 yrs old
+    zip.priorityScore = (wStorm*stormScore + wPermitActivity*permitScore
+                         + wValue*valueScore + wRoofAge*ageScore)
+# Rank ZIPs by priorityScore descending
+Weights tuning: Start with rough values. After pilot, adjust to maximize appointment rate. Use regression on features vs outcomes to re-fit weights.
+
+(b) Building Lead Score
+python
+Copy
+# Example field weights
+wYearBuilt = 1.5
+wPermit = 2.0
+wValue = 0.5
+wOwnerType = 1.0
+wVintageRoof = 1.0  # if inferred roof >15y
+
+for building in selectedAddresses:
+    # Normalize/encode factors
+    age = currentYear - building.yearBuilt
+    ageFeat = 1 if age >= 25 else 0
+    permitFeat = 1 if building.recentRoofPermit else 0
+    highValue = 1 if building.assessedValue > thresholdValue else 0
+    absentee = 1 if building.ownerOccupied == False else 0
+
+    building.leadScore = (wYearBuilt * ageFeat +
+                          wPermit * permitFeat +
+                          wValue * highValue +
+                          wOwnerType * absentee)
+    # Optionally include storm flag or roof condition estimate
+Score normalization: Scale raw score to [0–100] if helpful for thresholds.
+
+(c) Buy vs Skip/Trace Decision & Tiering
+python
+Copy
+# Define thresholds
+FULL_TRACE_THRESHOLD = 5.0
+EMAIL_ONLY_THRESHOLD = 2.5
+
+for building in addresses:
+    if building.leadScore >= FULL_TRACE_THRESHOLD:
+        # purchase full skip-trace (phone/email) and mark as high-tier
+        building.purchaseLevel = 'full'
+    elif building.leadScore >= EMAIL_ONLY_THRESHOLD:
+        # purchase email-only or minimal data, lower tier
+        building.purchaseLevel = 'email'
+    else:
+        # do not buy contact (maybe add to nurture list)
+        building.purchaseLevel = 'none'
+Exclusive vs Shared: Tier 1 (score>=8): exclusive sale; Tier 2 (5–8): limited resale; Tier 3 (2.5–5): shared at low price.
+(d) Weighting & Normalization
+Weights (wYearBuilt, wPermit, etc.) should reflect ROI impact. Initially set via expert judgment (e.g. building permits often signal immediate need, so high weight).
+After pilot, re-calculate weights by fitting a simple model (e.g. logistic regression) on features vs closed/won label.
+Decision Workflow Pseudocode
+python
+Copy
+def process_leads(input_addresses):
+    # 1. Ingest data
+    parcels = getParcelData(input_addresses)         # calls ATTOM API or local DB
+    permits = getPermitData(input_addresses)         # ATTOM Building Permits API【98†L308-L311】
+    storms = getStormData(input_addresses)           # NOAA Hail/Storm DB
+    
+    # 2. Merge/validate
+    leads = mergeData(parcels, permits, storms)
+    leads = dedupeAndNormalize(leads)               # see section 4
+
+    # 3. Score
+    scored = []
+    for lead in leads:
+        lead.score = computeLeadScore(lead)          # as above
+        scored.append(lead)
+
+    # 4. Buy-skip-trace decision
+    for lead in scored:
+        if lead.score >= FULL_TRACE_THRESHOLD:
+            lead.needsFullTrace = True
+        elif lead.score >= EMAIL_ONLY_THRESHOLD:
+            lead.needsFullTrace = False   # but might still pay minimal
+        else:
+            continue  # skip this lead
+
+    # 5. Enrich contacts
+    for lead in scored:
+        if lead.needsFullTrace:
+            contact = skipTraceLookup(lead.address)  # API (BatchData/LexisNexis)
+            lead.phone = contact.phone
+            lead.email = contact.email
+        elif lead.score >= EMAIL_ONLY_THRESHOLD:
+            lead.email = emailAppend(lead.address)  # cheap append
+
+    # 6. Verify contacts (phone/email)
+    for lead in scored:
+        if lead.phone: 
+            lead.phoneValid = twilioLookup(lead.phone)  # phone validation
+        if lead.email:
+            lead.emailValid = emailValidator(lead.email)
+        # filter out leads with no valid contact:
+        if not (lead.phoneValid or lead.emailValid):
+            lead.discard = True
+
+    # 7. Route to Contractors/CRM
+    for lead in scored:
+        if lead.discard: continue
+        contractor = assignContractor(lead.address)  # e.g. ZIP territory map
+        sendToCRM(contractor, lead)                # via API or webhook
+        # Or initiate call transfer if phone number available
+
+    # 8. Feedback loop
+    # After sales calls, get outcome data from CRM
+    updateModel(scored, outcomes)
+    return scored
+Each step involves database and API calls; see section 8 for tech details.
+
+Data Quality & Deduplication
+Normalization: Standardize addresses (use USPS API) and phone formats.
+Dedup: After enrichment, cluster leads by address or phone using fuzzy matching (e.g. Levenshtein, canonicalization). If similarity >80%, treat as same property. Keep record of “last traced” date, ignore retrace within e.g. 30 days (TTL) to avoid waste.
+Validation: Reject unusable data early (e.g. invalid geocode, missing address).
+Pseudocode example:
+
+python
+Copy
+from difflib import SequenceMatcher
+
+def isDuplicate(lead1, lead2):
+    addrSim = SequenceMatcher(None, lead1.address, lead2.address).ratio()
+    phoneSame = lead1.phone == lead2.phone and lead1.phone != None
+    return addrSim > 0.8 or phoneSame
+
+deduped = []
+for lead in leads:
+    dup = False
+    for existing in deduped:
+        if isDuplicate(lead, existing):
+            dup = True
+            break
+    if not dup:
+        deduped.append(lead)
+TTL: Maintain a table of skip-traced records with lastLookedUpDate. Skip retracing if within specified period (e.g. 6 months) unless flagged by complaint.
+Cost Optimization Algorithms
+Optimize between batch buys (e.g. vendor sells bulk) vs individual.
+
+If vendor offers discount for >N records, compute EOQ (economic order quantity).
+If buying per lead, use expected conversion to decide volume.
+Example:
+
+python
+Copy
+# Expected return per lead
+expectedCloseRate = 0.05  # 5% becomes a customer
+avgProfitPerJob = 10000
+costPerLead = 0.50
+
+# Cost per acquired customer:
+costPerSale = costPerLead / expectedCloseRate
+# Sensitivity:
+for rate in [0.03, 0.05, 0.1]:
+    c = costPerLead / rate
+    print(f"Contact rate {rate}: cost/sale = ${c:.2f}")
+Batch vs Per-record: If skip-trace vendor charges $0.50/lead or $500 for 1200 leads, choose batch if your needed volume > 1000.
+Sampling: Initially test small random sample; use uplift on key metrics (contact rate) to decide scale.
+Compliance Modules
+Ingest a DNC list (federal + state); during routing, do:
+
+python
+Copy
+if lead.phone in DNC_list:
+    lead.discard = True
+    log("DNC: " + lead.phone)
+
+if lead.phone and not lead.trustedFormConsent:
+    lead.discard = True
+    log("No consent: " + lead.id)
+Capture consent: embed TrustedForm script on capture forms; store trustedFormToken with each record. On lead submit, call TrustedForm API to validate (pseudocode omitted).
+
+Maintain an audit log table with all lead IDs, timestamp, consent status, DNC status for legal records.
+
+Monitoring & KPIs
+Track metrics like:
+
+Match Rate: % addresses found in skip-trace.
+Contactable Rate: % leads with at least one valid contact.
+Conversion Rate: % leads that become appointments or sales.
+Cost per Lead, Cost per Sale, ROI.
+Set alerts: e.g. if contact rate drops below X%, trigger an investigation or model retrain. If DNC rejections exceed a threshold, halt campaigns.
+
+Model retraining triggers: e.g. every 500 leads or quarterly, use performance data (KPI table) to adjust weights.
+
+Implementation Notes
+Tech Stack: Python for ETL/scoring; PostgreSQL (SQL) for lead storage; Redis cache for TTL; Twilio API for phone verification; TrustedForm/LeadConduit for consent and filtering. CRM (e.g. Salesforce, HubSpot) integration via webhooks. Mapbox or Google Maps API for geocoding.
+APIs:
+ATTOM API for parcel and permits
+.
+EagleView API (if used for roof measurements, ~$25–$75 per report
+).
+TrustedForm API for consent certs (cost ~$0.10–$0.20/lead).
+LeadConduit API for lead quality rules (custom pricing).
+LexisNexis/BatchData API for skip-trace (per-record pricing).
+Twilio Lookup API for phone validity.
+Data Storage: Leads table (SQL) with columns from schema above. NoSQL (e.g. MongoDB) could hold unstructured data (images).
+Integration: Use REST APIs or ETL tools (Fivetran) to bring data. Route leads via REST into CRM or use webhooks.
+Effort Estimates (per module):
+
+Data ingestion & schema: Med ($5k) – integrating ATTOM, NOAA, etc.
+Scoring engine: Med ($5k) – coding formulas, training hooks.
+Skip-trace interface: Low ($2k) – call provider API, parse results.
+Validation/filters: Med ($3k) – DNC checks, TrustedForm integration.
+Routing & CRM: Med ($4k) – API/webhook to CRM, call transfer setup.
+Analytics & retrain: High ($10k) – dashboards, ML model training.
+Tables summarizing vendor APIs/pricing:
+
+Provider	Data/API	Pricing Model	Key Fields (sample)
+ATTOM	Property Data & Permits
+Subscription/API ($$$)	address, yearBuilt, bldgSqFt, permitType
+EagleView	Roof Reports	Per-report (~$25–$75)	roofPitch, area, shingleCount
+TrustedForm	Consent verification	per-certificate ($0.10–$0.20)	token, captureTime, landingURL
+LeadConduit	Lead processing rules	Custom (negotiated)	N/A (platform for filters/routing)
+BatchData	Skip-trace (contact info)	Per-search (e.g. $0.10-0.50)	ownerName, phone, email, ownerOccFlag
+LexisNexis	Skip-trace	Seat + per-search (expensive)	ageOfOwner, propertyVOI, riskScore
+Twilio Lookup	Phone validation	per-call ($0.01–$0.03)	carrier, isMobile, callerName
+
+👉 Pipeline Flowchart: (Mermaid syntax)
+
+mermaid
+Copy
+flowchart TD
+  A[Lead Capture (Web/Ads)] --> B{Consent Check (TrustedForm)}
+  B --> |No| Z[Discard Lead]
+  B --> |Yes| C[LeadConduit Filters: Dedupe, DNC]
+  C --> D[Append Property Data (ATTOM API)]
+  D --> E[Compute Score (Storm, Age, Permits)]
+  E --> F{Score >= Threshold?}
+  F -->|No| Y[Add to Nurture List]
+  F -->|Yes| G[Buy Skip-Trace (BatchData)]
+  G --> H[Validate Contact (Twilio Lookup, Email Verify)]
+  H --> I{Has Contact?}
+  I -->|No| Y
+  I -->|Yes| J[Enrich & Route to Contractor (CRM/API)]
+  J --> K[Sales Follow-up]
+  K --> L[Outcome Feedback (CRM data)]
+  L --> E  <!-- loop: retrain/tune scoring -->
+Next-Step Checklist for Prototyping:
+
+Schema Design: Finalize data schema (tables/fields) using vendor docs as guides.
+Pilot Data Access: Subscribe to ATTOM and BatchData (or similar); get NOAA storm CSVs.
+Initial Ingestion: Build scripts to fetch 500–1000 addresses, pull data, load into DB.
+Scoring Prototype: Code the above scoring function; test on pilot area.
+Skip-Trace API Integration: Connect to a skip-trace provider; retrieve sample contacts.
+Validation Hooks: Implement Twilio Lookup & TrustedForm token capture on lead form.
+Routing Test: Configure a test CRM or stub API; send enriched lead and simulate call transfer.
+Feedback Loop: Set up a simple database log for sales outcomes; manually record pilot results.
+Metrics Dashboard: Create Excel/BI queries for match/contact/conversion rates; set target thresholds.
+Iterate & Tune: After pilot run, adjust weights and thresholds based on results.
+Sources: Vendor documentation (ATTOM
+, EagleView pricing
+, TrustedForm/LeadConduit capabilities
+, Twilio Lookup), contractor forums (Reddit
+) and industry blogs (ActiveProspect
+) informed the field requirements and compliance needs. These guided the algorithm design and best practices.
