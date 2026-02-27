@@ -1,0 +1,50 @@
+To transform RoofIntel into a platform that scales cleanly across dozens of markets, you need to simplify the core data model, make markets a first‑class configuration, and enforce a deterministic ingestion pipeline with strong metadata and provenance. Below are the concrete restructuring steps and improvements, backed by external best‑practices.
+
+1. Slim down the core property record
+
+Your current leads table is doing the work of five or six tables. A monolithic record is easy to prototype but becomes a performance and maintenance tax when you add more cities. Industry guidance for multi‑tenant SaaS recommends a single shared database with a tenant/market identifier on every record ￼—you don’t need a separate database per city. Apply that principle here:
+	•	Create a new properties table keyed on property_id and market_id. Keep only immutable, canonical attributes: address, lat/lon (and geometry), square footage, year built, parcel/assessor ID, etc.
+	•	Offload variable or derived data into domain‑specific tables keyed back to property_id and market_id. Examples:
+	•	property_roof – roof type/material, last replacement date, estimated roof area, risk index.
+	•	property_owner – raw owner names/addresses from CAD, plus a normalized owner_id for entity resolution.
+	•	property_risk_signals – hail events, flood risk, permits, code violations, distress indicators. Each signal can have its own “effective date” and provenance.
+	•	property_contacts – decision‑makers, contact details, role inference, confidence scores, and review status.
+	•	property_intelligence – corporate intelligence (LLC chains, officers), management company attribution, reverse address enrichments, and any AI‑audit findings.
+
+By normalizing the data model, you reduce row width, speed up queries, and make it trivial to add new modules without altering the core table. Don’t be afraid to use JSONB for deeply nested structures (e.g. roof risk breakdowns) as long as they’re scoped to a dedicated table rather than bloating the core record.
+
+2. Make markets configurable
+
+Introduce a market_config table (or JSON config) defining, per city/county:
+	•	Which data sources are enabled and their API endpoints.
+	•	Spatial reference systems and coordinate transforms (e.g., WGS84 vs local state plane).
+	•	Rate limits and refresh cadences.
+	•	Scoring weights or heuristics specific to that region (hail matters more in Texas than in the Northeast).
+
+A new city should be added by creating a new market config entry, not by editing code. Keep your data in a single Postgres/PostGIS instance and partition tables by market_id; use row‑level security to enforce tenant isolation if you expose data externally.
+
+3. Adopt geospatial standards and metadata
+
+Interoperability only works when you adopt recognised geospatial standards ￼. Store geometries in PostGIS using common coordinate systems and export them via formats like GeoJSON or WKT ￼. For each dataset, record metadata: source, license, coordinate system, temporal coverage and update frequency ￼. This provenance should flow through your pipelines so you can trace every field back to its source and legal terms. Document data licenses (public domain, CC‑BY, etc.) and enforce attribution in your UI/exports.
+
+4. Build a deterministic, idempotent ingestion pipeline
+
+Your current “phase‑based” agents work, but they aren’t formalised. A modern pipeline orchestrator (Airflow, Prefect, Dagster) can enforce a clear state machine. Each stage—import CAD parcels, dedupe and normalise, enrich hail events, integrate permits/violations, resolve ownership, infer decision‑makers—should be an idempotent operation with its own checkpoint and retry logic. Idempotent pipelines prevent re‑ingestion of already‑processed data and isolate errors ￼. Use configurable backoff and retries to handle transient API failures ￼. Maintain audit tables recording when each stage started, finished, what records were touched, and any errors encountered.
+
+5. Strengthen data quality and deduplication
+
+Follow the best practices for geospatial data quality: validate geometries, deduplicate records using canonical identifiers (parcel IDs, normalized addresses), and run regular checks for schema compliance and null percentages ￼. Use your existing duplicate_clusters and entity_resolution tables to store candidate duplicates and merges, but move cluster logic out of the leads table. Implement data quality metrics (completeness, duplicate rate, error count) and monitor them per market.
+
+6. Evolve contact and decision‑maker modelling
+
+Instead of embedding arrays of decision‑makers and role evidence in a single row, create a decision_makers table with one record per candidate per property. Include fields for role, confidence, evidence pointer, source, and ranking. Separate out a contact_evidence table (as you already have) to store raw phone/email evidence; link each piece of evidence back to a decision‑maker. This separation allows easier scoring updates and conflict resolution without mutating the property record. Provide UI workflows to review and approve decision‑makers, writing the results to a lightweight decision_maker_status table.
+
+7. Measure coverage and performance
+
+Create a “market readiness” dashboard: percentage of properties with valid geometry, owner mailing address, verified phone number, assigned decision‑maker (confidence ≥ X), conflict rate, and median time from ingestion to decision‑maker identification. This will tell you which markets are ready for sales and which need more data work. Track API usage and costs at the market and source level to ensure you stay within budgets.
+
+8. Don’t chase technology for its own sake
+
+External best practices recommend starting with a single shared database ￼ and using open‑source geospatial tools like PostGIS, QGIS, GeoServer and Leaflet for cost‑effective workflows ￼. Only adopt streaming architectures or cloud data warehouses when you truly need real‑time alerts or massive analytics; otherwise, batch jobs and incremental upserts are sufficient. This disciplined approach lets you invest engineering time where it drives revenue: improving decision‑maker accuracy and speed.
+
+By restructuring your data model around a lean property spine, configurable markets, strong metadata and idempotent ingestion, you position RoofIntel to expand to 50+ markets over the next five years without re‑architecting again. The ten‑year payoff is a platform that can ingest any new public data source, explain exactly how every data point was derived, and deliver high‑confidence decision‑maker leads faster than any competitor.

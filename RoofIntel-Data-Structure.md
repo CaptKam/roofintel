@@ -561,38 +561,5 @@ Roof Risk Engine (SQL-only computation)
   "breakdown": {
     "ageRisk": { "score": 24, "max": 25, "detail": "31yr old, past expected EPDM lifespan..." },
     "stormRisk": { "score": 22, "max": 25, "detail": "2.25\" hail (severe). 29 hail events..." },
-    "permitSilence": { "score": 20, "max": 20, "detail": "No roofing permits on record..." },
-    "climateStress": { "score": 0, "max": 15, "detail": "No financial stress signals..." },
-    "portfolioConcentration": { "score": 15, "max": 15, "detail": "Portfolio: 2993 properties..." }
-  }
-}
-```
 
-### `decision_makers` (on leads)
-```json
-[{
-  "name": "Jane Doe",
-  "role": "property_manager",
-  "tier": "primary",
-  "phone": "(214) 555-1234",
-  "email": "jane@example.com",
-  "title": "Regional Property Manager",
-  "source": "Web Research + TX Comptroller",
-  "confidence": 85,
-  "combinedScore": 78,
-  "titleRelevance": 95
-}]
-```
-
-### `permit_contractors` (on leads)
-```json
-[{
-  "name": "ABC ROOFING CO",
-  "phone": "(972) 555-5678",
-  "email": null,
-  "address": "123 Main St, Dallas, TX 75201",
-  "permitDate": "2019-07-15",
-  "permitType": "Building (BU) Commercial Renovation",
-  "workDescription": "REROOF - REMOVE AND REPLACE EXISTING ROOF"
-}]
-```
+      ``
