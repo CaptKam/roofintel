@@ -17,33 +17,27 @@ interface GraphIntelligence {
   hasData: boolean;
   lastBuilt: string | null;
   sharedOfficers: Array<{
-    officerName: string;
-    connectedEntities: Array<{
+    officer_name: string;
+    connected_entities: Array<{
       name: string;
       type: string;
-      propertyCount: number;
-      properties: Array<{ leadId: string; address: string; city: string; leadScore: number }>;
+      title?: string;
     }>;
   }>;
   sharedAgents: Array<{
-    agentName: string;
-    entityCount: number;
-    entities: Array<{ name: string; type: string }>;
+    agent_name: string;
+    entity_count: number;
+    entities: string[];
   }>;
   mailingClusters: Array<{
     address: string;
-    owners: Array<{
-      name: string;
-      propertyCount: number;
-      properties: Array<{ leadId: string; address: string; city: string }>;
-    }>;
+    owners: Array<{ name: string }>;
   }>;
   networkContacts: Array<{
-    name: string;
-    phone?: string;
-    email?: string;
-    title?: string;
-    relationshipPath: string;
+    type: string;
+    value: string;
+    source: string;
+    relationship_path: string;
     confidence: number;
   }>;
   connectedPropertyCount: number;
@@ -106,30 +100,14 @@ export function NetworkIntelligence({ leadId }: { leadId: string }) {
             {graphIntel.sharedOfficers.map((officer, oi) => (
               <div key={oi} className={`space-y-1 ${oi > 0 ? "pt-2 border-t border-blue-100/50" : ""}`} data-testid={`shared-officer-${oi}`}>
                 <p className="text-sm">
-                  <span className="font-semibold text-blue-800 dark:text-blue-400" data-testid={`text-officer-name-${oi}`}>{officer.officerName}</span>
+                  <span className="font-semibold text-blue-800 dark:text-blue-400" data-testid={`text-officer-name-${oi}`}>{officer.officer_name}</span>
                   <span className="text-muted-foreground"> also controls:</span>
                 </p>
                 <div className="pl-3 space-y-1">
-                  {officer.connectedEntities.map((entity, ei) => (
-                    <div key={ei} className="space-y-0.5" data-testid={`connected-entity-${oi}-${ei}`}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-medium">{entity.name}</span>
-                        <Badge variant="outline" className="text-[9px] h-3.5 px-1">{entity.type}</Badge>
-                      </div>
-                      {entity.properties && entity.properties.length > 0 && (
-                        <div className="pl-2 flex flex-wrap gap-1">
-                          {entity.properties.slice(0, 5).map((prop) => (
-                            <Link key={prop.leadId} href={`/leads/${prop.leadId}`}>
-                              <Badge variant="secondary" className="text-[9px] h-4 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-testid={`link-entity-property-${prop.leadId}`}>
-                                {prop.address} ({prop.leadScore})
-                              </Badge>
-                            </Link>
-                          ))}
-                          {entity.properties.length > 5 && (
-                            <span className="text-[9px] text-muted-foreground">+{entity.properties.length - 5}</span>
-                          )}
-                        </div>
-                      )}
+                  {(officer.connected_entities || []).map((entity, ei) => (
+                    <div key={ei} className="flex items-center gap-2 flex-wrap" data-testid={`connected-entity-${oi}-${ei}`}>
+                      <span className="text-[11px] font-medium">{entity.name}</span>
+                      {entity.title && <Badge variant="outline" className="text-[9px] h-3.5 px-1">{entity.title}</Badge>}
                     </div>
                   ))}
                 </div>
@@ -151,15 +129,9 @@ export function NetworkIntelligence({ leadId }: { leadId: string }) {
                 </p>
                 <div className="pl-3 flex flex-wrap gap-1">
                   {cluster.owners?.map((owner, owi) => (
-                    <div key={owi} className="flex flex-wrap gap-1">
-                      {owner.properties?.map((prop) => (
-                        <Link key={prop.leadId} href={`/leads/${prop.leadId}`}>
-                          <Badge variant="outline" className="text-[9px] h-4 cursor-pointer hover:border-blue-400" data-testid={`link-cluster-property-${prop.leadId}`}>
-                            {owner.name}: {prop.address}
-                          </Badge>
-                        </Link>
-                      ))}
-                    </div>
+                    <Badge key={owi} variant="outline" className="text-[9px] h-4" data-testid={`cluster-owner-${ci}-${owi}`}>
+                      {owner.name}
+                    </Badge>
                   ))}
                 </div>
               </div>
@@ -173,34 +145,37 @@ export function NetworkIntelligence({ leadId }: { leadId: string }) {
               <Zap className="w-3 h-3 text-amber-500" />
               Network-Derived Contacts
             </div>
-            {graphIntel.networkContacts.map((contact, ni) => (
-              <div key={ni} className="p-3 bg-white/50 dark:bg-slate-900/50 rounded-lg border border-blue-100/50 dark:border-blue-900/50 space-y-2" data-testid={`network-contact-${ni}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-sm font-semibold" data-testid={`text-network-contact-name-${ni}`}>{contact.name}</span>
-                    {contact.title && <p className="text-[10px] text-muted-foreground uppercase">{contact.title}</p>}
+            {graphIntel.networkContacts.map((contact, ni) => {
+              const isPhone = contact.type.toUpperCase().includes('PHONE');
+              const isEmail = contact.type.toUpperCase().includes('EMAIL');
+              return (
+                <div key={ni} className="p-3 bg-white/50 dark:bg-slate-900/50 rounded-lg border border-blue-100/50 dark:border-blue-900/50 space-y-2" data-testid={`network-contact-${ni}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {isPhone ? <Phone className="w-3.5 h-3.5 text-green-600" /> : <Mail className="w-3.5 h-3.5 text-blue-600" />}
+                      {isPhone ? (
+                        <a href={`tel:${contact.value}`} className="text-sm font-semibold font-mono text-primary hover:underline" data-testid={`text-network-contact-value-${ni}`}>
+                          {contact.value}
+                        </a>
+                      ) : (
+                        <a href={`mailto:${contact.value}`} className="text-sm font-semibold font-mono text-primary hover:underline" data-testid={`text-network-contact-value-${ni}`}>
+                          {contact.value}
+                        </a>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-[9px] border-blue-200 text-blue-700 bg-blue-50/50" data-testid={`badge-contact-confidence-${ni}`}>
+                      {Math.round(contact.confidence)}% Conf
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="text-[9px] border-blue-200 text-blue-700 bg-blue-50/50" data-testid={`badge-contact-confidence-${ni}`}>
-                    {Math.round(contact.confidence * 100)}% Conf
-                  </Badge>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span className="font-medium">{contact.source}</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic" data-testid={`text-relationship-path-${ni}`}>
+                    {contact.relationship_path}
+                  </p>
                 </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  {contact.phone && (
-                    <a href={`tel:${contact.phone}`} className="text-[11px] font-mono text-primary flex items-center gap-1 hover:underline" data-testid={`link-network-phone-${ni}`}>
-                      <Phone className="w-2.5 h-2.5" /> {contact.phone}
-                    </a>
-                  )}
-                  {contact.email && (
-                    <a href={`mailto:${contact.email}`} className="text-[11px] font-mono text-primary flex items-center gap-1 hover:underline" data-testid={`link-network-email-${ni}`}>
-                      <Mail className="w-2.5 h-2.5" /> {contact.email}
-                    </a>
-                  )}
-                </div>
-                <p className="text-[10px] text-muted-foreground italic" data-testid={`text-relationship-path-${ni}`}>
-                  {contact.relationshipPath}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -212,8 +187,8 @@ export function NetworkIntelligence({ leadId }: { leadId: string }) {
             </div>
             {graphIntel.sharedAgents.map((agent, ai) => (
               <div key={ai} className="text-xs" data-testid={`shared-agent-${ai}`}>
-                <span className="font-medium">{agent.agentName}</span>
-                <span className="text-muted-foreground"> represents {agent.entityCount} other entities in your leads.</span>
+                <span className="font-medium">{agent.agent_name}</span>
+                <span className="text-muted-foreground"> represents {agent.entity_count} other entities in your leads.</span>
               </div>
             ))}
           </div>
