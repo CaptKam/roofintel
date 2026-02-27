@@ -35,6 +35,7 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 - **Hail-Chaser Mode**: Full-screen storm-first UX with real-time map, lead markers by ROI tier, ZIP priority heatmap, active storm threats, and priority response queue.
 - **Grok Intelligence Core (xAI-powered)**: Multi-agent AI system with ReAct supervisor loop and 5 tools (db-query, roi-trigger, zip-compute, pipeline-trigger, web-search) via an OpenAI-compatible API.
 - **Graph Engine**: Builds a relationship network of entities, people, agents, and addresses for advanced intelligence queries.
+- **Intelligence Alerts Engine**: Proactive alert system computing 7 alert types from real DB data (claim windows, high-value storm targets, contactability gaps, portfolio opportunities, permit activity, enrichment sources, data freshness).
 - **Multi-Market Architecture**: Config-driven support for market expansion without code changes.
 - **Normalized Satellite Tables**: Data model designed for flexibility and scalability, decomposing the monolithic `leads` table.
 - **Data Quality System**: Computes `dataConfidence` for each lead and provides quality metrics.

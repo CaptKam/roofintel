@@ -190,15 +190,23 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
         `),
         db.execute(sql`
           SELECT
-            id, address, city, lead_score, roof_last_replaced, hail_events,
-            last_hail_date, claim_window_open, owner_name,
-            COALESCE(contact_name, management_contact) AS contact_name,
-            COALESCE(owner_phone, contact_phone, management_phone, managing_member_phone) AS contact_phone,
-            total_value
-          FROM leads
-          WHERE lead_score >= 50
-            AND (owner_phone IS NOT NULL OR contact_phone IS NOT NULL OR managing_member_phone IS NOT NULL)
-          ORDER BY lead_score DESC, hail_events DESC
+            l.id, l.address, l.city, l.lead_score, l.roof_last_replaced, l.hail_events,
+            l.last_hail_date, l.claim_window_open, l.owner_name,
+            COALESCE(l.contact_name, l.management_contact) AS contact_name,
+            COALESCE(l.owner_phone, l.contact_phone, l.management_phone, l.managing_member_phone) AS contact_phone,
+            l.total_value,
+            COALESCE((SELECT COUNT(*)::int FROM contact_evidence ce WHERE ce.lead_id = l.id), 0) AS evidence_count,
+            COALESCE((SELECT COUNT(*)::int FROM building_permits bp WHERE bp.lead_id = l.id), 0) AS permit_count,
+            CASE
+              WHEN l.claim_window_open = true AND l.last_hail_date IS NOT NULL
+              THEN GREATEST(0, 730 - (CURRENT_DATE - l.last_hail_date::date))::int
+              ELSE NULL
+            END AS claim_window_days,
+            COALESCE((SELECT MAX(ro.property_count) FROM rooftop_owners ro WHERE ro.lead_id = l.id AND ro.is_primary = true), 0) AS portfolio_size
+          FROM leads l
+          WHERE l.lead_score >= 50
+            AND (l.owner_phone IS NOT NULL OR l.contact_phone IS NOT NULL OR l.managing_member_phone IS NOT NULL)
+          ORDER BY l.lead_score DESC, l.hail_events DESC
           LIMIT 10
         `),
         db.execute(sql`
@@ -276,6 +284,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
           contactPhone: r.contact_phone || null,
           totalValue: r.total_value || null,
           reason: reasons.length > 0 ? reasons.join(" + ") : "High score",
+          evidenceCount: r.evidence_count || 0,
+          permitCount: r.permit_count || 0,
+          claimWindowDays: r.claim_window_days ?? null,
+          portfolioSize: r.portfolio_size || 0,
         };
       });
 
@@ -5187,6 +5199,113 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     } catch (error: any) {
       console.error("[Grok Core] Error:", error);
       res.status(500).json({ message: "Grok Core error", error: error.message });
+    }
+  });
+
+  app.get("/api/ops/alerts", async (_req, res) => {
+    try {
+      const { generateOpsAlerts } = await import("./intelligence/alerts-engine");
+      const alerts = await generateOpsAlerts();
+      res.json(alerts);
+    } catch (error: any) {
+      console.error("Ops alerts error:", error);
+      res.status(500).json({ message: "Failed to generate alerts", error: error.message });
+    }
+  });
+
+  app.get("/api/ops/intel-briefing", async (_req, res) => {
+    try {
+      const [
+        claimWindowResult,
+        permitsResult,
+        evidenceResult,
+        evidenceSourcesResult,
+        ownersResult,
+        portfolioOwnersResult,
+        coverageResult,
+        graphResult,
+      ] = await Promise.all([
+        db.execute(sql`SELECT COUNT(*)::int AS count FROM leads WHERE claim_window_open = true`),
+        db.execute(sql`
+          SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE source = 'dallas_open_data')::int AS dallas,
+            COUNT(*) FILTER (WHERE source = 'fort_worth_open_data')::int AS fort_worth,
+            COUNT(*) FILTER (WHERE source NOT IN ('dallas_open_data', 'fort_worth_open_data'))::int AS other
+          FROM building_permits
+        `),
+        db.execute(sql`SELECT COUNT(*)::int AS total FROM contact_evidence WHERE is_active = true`),
+        db.execute(sql`
+          SELECT source_name, COUNT(*)::int AS count
+          FROM contact_evidence
+          WHERE is_active = true
+          GROUP BY source_name
+          ORDER BY count DESC
+          LIMIT 5
+        `),
+        db.execute(sql`SELECT COUNT(DISTINCT normalized_name)::int AS count FROM rooftop_owners`),
+        db.execute(sql`
+          SELECT COUNT(DISTINCT normalized_name)::int AS count
+          FROM rooftop_owners
+          WHERE property_count >= 3
+        `),
+        db.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE owner_phone IS NOT NULL OR contact_phone IS NOT NULL)::int AS has_phone,
+            COUNT(*) FILTER (WHERE owner_email IS NOT NULL OR contact_email IS NOT NULL)::int AS has_email,
+            COUNT(*) FILTER (WHERE managing_member IS NOT NULL)::int AS has_decision_maker,
+            COUNT(*) FILTER (WHERE ownership_structure IS NOT NULL)::int AS has_ownership
+          FROM leads
+        `),
+        db.execute(sql`
+          SELECT
+            (SELECT COUNT(*)::int FROM graph_nodes) AS nodes,
+            (SELECT COUNT(*)::int FROM graph_edges) AS edges
+        `),
+      ]);
+
+      const claimRow = (claimWindowResult as any).rows[0];
+      const permitRow = (permitsResult as any).rows[0];
+      const evidenceRow = (evidenceResult as any).rows[0];
+      const evidenceSources = (evidenceSourcesResult as any).rows;
+      const ownerRow = (ownersResult as any).rows[0];
+      const portfolioRow = (portfolioOwnersResult as any).rows[0];
+      const covRow = (coverageResult as any).rows[0];
+      const graphRow = (graphResult as any).rows[0];
+
+      const total = covRow.total || 1;
+      const pct = (v: number) => Math.round((v / total) * 100);
+
+      res.json({
+        claimWindows: claimRow.count,
+        permits: {
+          total: permitRow.total,
+          dallas: permitRow.dallas,
+          fortWorth: permitRow.fort_worth,
+          other: permitRow.other,
+        },
+        contactEvidence: {
+          total: evidenceRow.total,
+          topSources: evidenceSources.map((r: any) => ({ name: r.source_name, count: r.count })),
+        },
+        owners: {
+          resolved: ownerRow.count,
+          multiProperty: portfolioRow.count,
+        },
+        coverage: {
+          hasPhone: pct(covRow.has_phone),
+          hasEmail: pct(covRow.has_email),
+          hasDecisionMaker: pct(covRow.has_decision_maker),
+          hasOwnership: pct(covRow.has_ownership),
+        },
+        graph: {
+          nodes: graphRow.nodes,
+          edges: graphRow.edges,
+        },
+      });
+    } catch (error: any) {
+      console.error("Intel briefing error:", error);
+      res.status(500).json({ message: "Failed to generate intel briefing", error: error.message });
     }
   });
 

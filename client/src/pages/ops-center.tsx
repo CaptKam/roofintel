@@ -47,11 +47,14 @@ import {
   Database,
   ChevronDown,
   Sparkles,
+  Clock,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ROIEnginePanel } from "@/components/admin/roi-engine-panel";
 import { AnalyticsKPIsPanel } from "@/components/admin/analytics-kpis-panel";
 import { NaturalLanguageBar } from "@/components/ops/natural-language-bar";
+import { IntelBriefing } from "@/components/ops/intel-briefing";
+import { AlertsFeed } from "@/components/ops/alerts-feed";
 
 interface CommandCenter {
   totalLeads: number;
@@ -82,6 +85,10 @@ interface CommandCenter {
     contactPhone: string | null;
     totalValue: number | null;
     reason: string;
+    evidenceCount: number;
+    permitCount: number;
+    claimWindowDays: number | null;
+    portfolioSize: number;
   }>;
   stormPulse: {
     recentEvents30d: number;
@@ -353,6 +360,7 @@ export default function OpsCenter() {
 
   const cards = [
     { id: "kpi-hero", label: "KPI Hero" },
+    { id: "intel-briefing", label: "Intelligence Briefing" },
     { id: "performance", label: "Performance Metrics" },
     { id: "grok", label: "Grok Intelligence" },
     { id: "priority-actions", label: "Priority Actions" },
@@ -509,6 +517,10 @@ export default function OpsCenter() {
           ) : null}
         </div>
       )}
+
+      <AlertsFeed />
+
+      {visibleIds.has("intel-briefing") && <IntelBriefing />}
 
       {visibleIds.has("performance") && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" data-testid="card-performance-metrics">
@@ -674,6 +686,32 @@ export default function OpsCenter() {
                           )}
                           {lead.totalValue && (
                             <span className="text-xs text-muted-foreground">{formatCurrency(lead.totalValue)}</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                          {lead.evidenceCount > 0 && (
+                            <Badge variant="secondary" className="text-[9px] px-1.5 py-0" data-testid={`badge-evidence-${lead.id}`}>
+                              <Database className="w-2.5 h-2.5 mr-0.5" />
+                              {lead.evidenceCount} source{lead.evidenceCount !== 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                          {lead.permitCount > 0 && (
+                            <Badge variant="secondary" className="text-[9px] px-1.5 py-0" data-testid={`badge-permits-${lead.id}`}>
+                              <HardHat className="w-2.5 h-2.5 mr-0.5" />
+                              {lead.permitCount} permit{lead.permitCount !== 1 ? "s" : ""}
+                            </Badge>
+                          )}
+                          {lead.claimWindowDays !== null && lead.claimWindowDays > 0 && (
+                            <Badge variant="default" className="text-[9px] px-1.5 py-0" data-testid={`badge-claim-${lead.id}`}>
+                              <Clock className="w-2.5 h-2.5 mr-0.5" />
+                              Claim Open · {lead.claimWindowDays}d
+                            </Badge>
+                          )}
+                          {lead.portfolioSize > 1 && (
+                            <Badge variant="secondary" className="text-[9px] px-1.5 py-0" data-testid={`badge-portfolio-${lead.id}`}>
+                              <Building2 className="w-2.5 h-2.5 mr-0.5" />
+                              {lead.portfolioSize} properties
+                            </Badge>
                           )}
                         </div>
                         <p className="text-[11px] text-muted-foreground mt-1">{lead.reason}</p>
