@@ -129,7 +129,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
       description: `${highValueStorm.total} properties worth $5M+ with 15+ hail events. ${withContact} have contact info ready.`,
       count: highValueStorm.total,
       leadIds: details.slice(0, 10).map((d: any) => d.id),
-      actionUrl: "/leads?minHailEvents=15&minPropertyValue=5000000",
+      actionUrl: "/leads?minPropertyValue=5000000",
       icon: "Zap",
     });
   }
@@ -149,7 +149,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
         description: `${contactGap.total} high-score leads (60+) but only ${contactGap.with_phone} have phone numbers and ${contactGap.with_email} have email. ${noPhone} leads need phone enrichment.`,
         count: noPhone,
         leadIds: details.slice(0, 10).map((d: any) => d.id),
-        actionUrl: "/leads?minScore=60&hasPhone=false",
+        actionUrl: "/leads?minScore=60",
         icon: "PhoneOff",
       });
     }
@@ -187,7 +187,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
       description: `${permitActivity.total} building permits tracked. ${permitActivity.roof_related} are roof-related, indicating active competitor work or replacement cycles.`,
       count: permitActivity.total,
       leadIds: roofPermits.slice(0, 10).map((p: any) => p.id),
-      actionUrl: "/data-management",
+      actionUrl: "/admin",
       icon: "FileText",
     });
   }
@@ -208,7 +208,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
       description: `${totalEvidence} contact evidence records from ${evidenceRows.length} sources. Top: ${topSources}.`,
       count: totalEvidence,
       leadIds: [],
-      actionUrl: "/data-intelligence",
+      actionUrl: "/admin",
       icon: "Database",
     });
   }
@@ -228,7 +228,7 @@ export async function generateOpsAlerts(): Promise<OpsAlert[]> {
         description: `${pendingCount} leads pending enrichment, ${staleCount} have stale data (>30 days). ${freshness.no_phone} missing phone, ${freshness.no_email} missing email.`,
         count: staleCount + pendingCount,
         leadIds: pendingDetails.slice(0, 10).map((d: any) => d.id),
-        actionUrl: "/data-management",
+        actionUrl: "/leads?status=new",
         icon: "Clock",
       });
     }
