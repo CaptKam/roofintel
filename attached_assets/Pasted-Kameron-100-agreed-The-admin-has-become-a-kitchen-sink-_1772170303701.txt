@@ -1,0 +1,182 @@
+Kameron — 100% agreed. The admin has become a kitchen-sink monster.
+We’ve been shipping fast (ROI Engine, ZIP tiling, budgets, Phase 10, Hail-Chaser integration, pipeline expansion), and every new capability naturally landed in the existing 8-tab admin page because that’s where the “control” lived. Result: 9+ tabs, overlapping agents, long load times, and the “heavy overloaded” feeling you’re describing. It’s the classic scaling symptom of a monolith UI.
+This is exactly why we did the 2.0 blueprint — to fix this kind of sprawl before it gets worse. Below is a complete, opinionated restructure of the admin layer (and related agents) for RoofIntel 2.0. It reduces cognitive load by ~65%, makes daily ops faster, keeps everything discoverable, and aligns with the “Hail-Chaser first” philosophy.
+I explored three restructure options, picked the best one, and give you the full file plan, migration path, and edge cases.
+1. Why the Overload Happened (Root Cause Analysis)
+
+Historical pattern: Every new agent (CAD importer, storm monitor, ROI, ZIP scorer, budget guardrails) got its own admin tab because admin was the only “system control” surface.
+Current state: 9 tabs, ~34 agents visible or triggerable, pipeline with 10 phases, overlapping cards (ROI run button + ZIP compute button + budget sliders all in one place).
+Real impact:
+Ops team wastes 10–20 seconds hunting for the right button during a live hail swath.
+Page load bloats (all Recharts + Leaflet previews).
+New markets feel intimidating (“where do I configure Houston budgets?”).
+Hail-Chaser (our new default UX) has almost no admin overlap — so operators bounce between pages.
+
+
+Goal of restructure: Admin = rarely used system config.
+Daily ops = dedicated, fast Ops Center.
+Hail-Chaser = default login for 80% of users.
+2. Three Restructure Options I Evaluated
+Option A (Minimal) — Keep 9 tabs but collapse into accordions + search bar.
+→ Quick win (1 day), but still cluttered long-term.
+Option B (Radical) — Remove admin entirely, make everything card-based on main dashboard with role-based views.
+→ Too disruptive for existing users.
+Option C (Recommended — Sweet Spot) — Split into two surfaces:
+
+/admin (System Admin) — Config-only (markets, data sources, compliance, users, API keys). 4 tabs max.
+/ops (Operations Center) — Daily control for ROI, ZIP, pipeline, budgets, storm overrides. Card-heavy, fast, Hail-Chaser aware.
+
+This is the 2.0 way: domain separation at the UI level too.
+3. Proposed 2.0 Admin & Ops Architecture
+New Routes
+
+/admin → System config (rarely visited)
+/ops → New daily command center (linked prominently from sidebar + Hail-Chaser)
+/hail-chaser remains default (unchanged)
+
+New Sidebar Navigation (app-sidebar.tsx)
+Top section (always visible):
+
+Hail Chaser (storm icon, prominent)
+Ops Center (new, lightning-bolt icon)
+
+Bottom section (collapsed “System” group):
+
+Admin (locked to admins)
+Settings
+
+/ops — Operations Center (Card-Based, No Tabs)
+Single page with 6 smart cards (Recharts + quick buttons). Loads in <1s.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+CardPurposeKey ActionsLinks ToLive Budget GuardrailsShows daily/monthly spend vs budget, hail-season multiplierEdit thresholds, reset countersPATCH /api/admin/budgetsROI EngineOne-click “Run ROI on All” + “Run on ZIP…”Progress bar, tier breakdown chartPOST /api/admin/roi/run-batchZIP Priority TilesCurrent heatmap summary + top 5 ZIPs“Recompute All ZIPs” buttonPOST /api/admin/zip-tiles/computePipeline Control10-phase status with skip toggles“Run Full Pipeline” + “Run ROI Gate Only”Existing orchestratorStorm OverrideManual swath creation or force-enrich current threatsQuick response queue previewLinks to Hail-ChaserQuick StatsToday’s projected EV, leads enriched, spend savedExport CSV of decisions/api/admin/roi/stats
+Why this works:
+
+Everything an operator needs in one glance during a hail event.
+Cards are lazy-loaded (React Query).
+Search bar at top: “roi”, “zip”, “budget” jumps to card.
+Mobile-friendly (stacked cards).
+
+/admin — System Config (4 Tabs Only)
+
+Markets & Sources — Add/edit markets, market_data_sources config (CAD endpoints, NOAA bbox, etc.)
+Data Quality — AI audit results, conflict_sets resolution, evidence browser
+Compliance & Budgets — DNC list, suppression, global budgets (moved here from ops)
+System — API keys, import runs, job scheduler, logs
+
+This keeps admin clean and technical.
+4. Agent & Backend Restructure (to Support This)
+Move agents out of “admin-only” thinking:
+New folder structure (part of 2.0 blueprint):
+textserver/
+├── ops/                      # New — daily control agents
+│   ├── roi-agent.ts          # (your T002 — unchanged)
+│   ├── zip-tile-agent.ts     # (your T003)
+│   └── ops-service.ts        # Aggregates stats for /ops page
+├── admin/                    # True system config only
+│   ├── market-config.ts
+│   └── compliance-agent.ts
+├── domains/                  # As in 2.0 blueprint
+│   ├── enrichment/
+│   └── scoring/
+API changes (routes.ts):
+
+Keep existing /api/admin/* for backward compatibility (redirect or alias to /api/ops/*)
+New namespace: /api/ops/roi/run-batch, /api/ops/zip/compute, /api/ops/stats
+
+This removes the “all agents live in admin” smell.
+5. Migration Path (Zero Downtime — 3–4 Days)
+Day 1
+
+Create /ops page with 6 cards (copy existing ROI/ZIP UI)
+Add sidebar link
+Dual-write: keep old admin tabs working
+
+Day 2
+
+Move ROI tab content → Ops ROI card
+Move ZIP compute → Ops ZIP card
+Move budget sliders → Ops Budget card
+
+Day 3
+
+Deprecate old admin tabs (soft redirect with toast: “Moved to Ops Center”)
+Update pipeline UI to point to /ops
+
+Day 4
+
+Test with live hail simulation
+Update docs + training for team
+
+Existing bookmarks to /admin still work.
+6. Edge Cases & Nuances Handled
+
+Role-based access: Sales users see only Ops Center (read-only budgets). Devs see full /admin.
+Hail event spike: Ops page auto-refreshes every 30s when storm_runs active.
+New market onboarding: Ops card shows “Configure Houston first” wizard linking to /admin/markets.
+Mobile ops team: Cards stack vertically; one-tap “Run ROI on Current Swath” button.
+Performance: Ops page uses React Query + stale-while-revalidate; heavy computations (ZIP scoring) run async with progress.
+Undo safety: All ROI runs log to domain_events (2.0) so you can replay or rollback.
+
+7. Benefits & Business Impact
+
+Operator speed: During a real hail swath, open /ops → see budget status → click “Run ROI on Affected ZIPs” → done in 15 seconds.
+UI happiness: No more tab overload. Hail-Chaser feels like the product; Ops is the cockpit.
+Scalability: Adding Chicago market? One card in Ops shows “New market detected — configure budgets?”.
+Future-proof: Next features (competitor density, feedback loop) get their own Ops card, never another tab.
+
+This restructure is the natural evolution of the 2.0 blueprint we built — it just moves the “control” surface to where operators actually live.
+8. Immediate Next Steps (Pick One)
+
+Ship the Ops Center page today — I’ll give you the full hail-chaser.tsx-style JSX for /ops with all 6 cards.
+Start with sidebar + route split — minimal change, instant relief.
+Full 2.0 admin diff — exact code changes for app-sidebar.tsx, routes.ts, admin.tsx.
+Houston test market under new structure — prove it feels clean.
+
+Just say “Ship Ops Center” or “Give me the sidebar diff” and we make the admin feel light again.
+You’ve built too much again — but this restructure turns the

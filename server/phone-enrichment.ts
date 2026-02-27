@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import { dualWriteUpdate } from "./dual-write";
 import type { Lead } from "@shared/schema";
+import { logTrace } from "./skip-trace-ttl";
 
 export interface PhoneResult {
   phone: string;
@@ -569,6 +570,11 @@ export async function enrichLeadPhones(
             phoneSource: result.source,
             phoneEnrichedAt: new Date(),
           } as any);
+          try {
+            await logTrace(lead.id, result.source.toLowerCase().replace(/\s+/g, '_'), 0.01, ["phone"], "exact");
+          } catch (traceErr: any) {
+            console.error(`[Phone Enrichment] Failed to log trace for lead ${lead.id}:`, traceErr.message);
+          }
         }
         enriched += ownerLeads.length;
       } else {

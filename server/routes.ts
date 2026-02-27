@@ -33,7 +33,7 @@ import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, ge
 import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats, cleanupContractorData } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
-import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker, savedFilters, insertSavedFilterSchema } from "@shared/schema";
+import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker, savedFilters, insertSavedFilterSchema, suppressionList } from "@shared/schema";
 import { getHunterUsage, searchHunterDomain, findHunterEmail } from "./hunter-io";
 import { runBatchGooglePlaces, getBatchGooglePlacesStatus, cancelBatchGooglePlaces } from "./batch-google-places";
 import { getPDLUsage, enrichPersonPDL, enrichCompanyPDL } from "./pdl-enrichment";
@@ -41,7 +41,7 @@ import { enrichLeadFromEdgar, searchEdgarCompany } from "./sec-edgar";
 import { enrichLeadFromTXSOS } from "./tx-sos";
 import { enrichLeadFromCountyClerk } from "./county-clerk";
 import { db } from "./storage";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
 import { fetchAllYearsForProperty, getCachedSnapshots, naipBatchProgress, type NAIPBatchProgress } from "./naip-imagery-agent";
 import { analyzePropertyRoof } from "./roof-change-detector";
 
@@ -2581,6 +2581,18 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  app.get("/api/suppression/list", async (_req, res) => {
+    try {
+      const items = await db.select().from(suppressionList)
+        .where(eq(suppressionList.isActive, true))
+        .orderBy(desc(suppressionList.addedAt))
+        .limit(500);
+      res.json(items);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to list suppressions", error: error.message });
+    }
+  });
+
   // ============================================================
   // Decision-Maker Confidence & Review Endpoints
   // ============================================================
@@ -4898,6 +4910,260 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update budget", error: error.message });
+    }
+  });
+
+  // ==================== OUTCOME TRACKING ROUTES ====================
+
+  app.post("/api/leads/:id/outcome", async (req, res) => {
+    try {
+      const { recordOutcome } = await import("./outcome-tracker");
+      const result = await recordOutcome(req.params.id, req.body.status, req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to record outcome", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/outcomes", async (req, res) => {
+    try {
+      const { getOutcomesForLead } = await import("./outcome-tracker");
+      const outcomes = await getOutcomesForLead(req.params.id);
+      res.json(outcomes);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get outcomes", error: error.message });
+    }
+  });
+
+  app.patch("/api/leads/:id/outcome/:outcomeId", async (req, res) => {
+    try {
+      const { updateOutcome } = await import("./outcome-tracker");
+      const result = await updateOutcome(req.params.outcomeId, req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update outcome", error: error.message });
+    }
+  });
+
+  // ==================== KPI ROUTES ====================
+
+  app.get("/api/admin/kpis/current", async (req, res) => {
+    try {
+      const { getCurrentKpi } = await import("./outcome-tracker");
+      const marketId = (req.query.marketId as string) || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const kpi = await getCurrentKpi(marketId);
+      res.json(kpi);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get KPI", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/kpis/timeseries", async (req, res) => {
+    try {
+      const { getKpiTimeSeries } = await import("./outcome-tracker");
+      const marketId = (req.query.marketId as string) || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const days = parseInt(req.query.days as string) || 30;
+      const series = await getKpiTimeSeries(marketId, days);
+      res.json(series);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get timeseries", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/kpis/snapshot", async (req, res) => {
+    try {
+      const { computeKpiSnapshot } = await import("./outcome-tracker");
+      const marketId = req.body.marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const snapshot = await computeKpiSnapshot(marketId);
+      res.json(snapshot);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to compute snapshot", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/kpis/funnel", async (req, res) => {
+    try {
+      const { getConversionFunnel } = await import("./outcome-tracker");
+      const marketId = (req.query.marketId as string) || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const funnel = await getConversionFunnel(marketId);
+      res.json(funnel);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get funnel", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/kpis/retrain-weights", async (req, res) => {
+    try {
+      const { retrainWeights } = await import("./outcome-tracker");
+      const marketId = req.body.marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const result = await retrainWeights(marketId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to retrain weights", error: error.message });
+    }
+  });
+
+  // ==================== SKIP-TRACE TTL ROUTES ====================
+
+  app.get("/api/leads/:id/trace-history", async (req, res) => {
+    try {
+      const { getTraceHistory } = await import("./skip-trace-ttl");
+      const history = await getTraceHistory(req.params.id);
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get trace history", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/trace-costs", async (req, res) => {
+    try {
+      const { getTraceCostSummary } = await import("./skip-trace-ttl");
+      const marketId = req.query.marketId as string;
+      const days = parseInt(req.query.days as string) || 30;
+      const summary = await getTraceCostSummary(marketId, days);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get trace costs", error: error.message });
+    }
+  });
+
+  app.post("/api/admin/trace/cleanup", async (req, res) => {
+    try {
+      const { cleanExpiredTraces } = await import("./skip-trace-ttl");
+      const result = await cleanExpiredTraces();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to clean traces", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/trace/batch-economics", async (req, res) => {
+    try {
+      const { computeBatchEconomics } = await import("./skip-trace-ttl");
+      const leadCount = parseInt(req.query.leadCount as string) || 1000;
+      const result = computeBatchEconomics(leadCount);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to compute economics", error: error.message });
+    }
+  });
+
+  // ==================== CONSENT & COMPLIANCE ROUTES ====================
+
+  app.post("/api/leads/:id/consent", async (req, res) => {
+    try {
+      const { recordConsent } = await import("./consent-manager");
+      const result = await recordConsent(
+        req.params.id,
+        req.body.tokenType,
+        req.body.tokenValue,
+        req.body.captureUrl,
+        req.body.ipAddress,
+        req.body.userAgent
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to record consent", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/consent", async (req, res) => {
+    try {
+      const { verifyConsent } = await import("./consent-manager");
+      const result = await verifyConsent(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to verify consent", error: error.message });
+    }
+  });
+
+  app.delete("/api/leads/:id/consent", async (req, res) => {
+    try {
+      const { revokeConsent } = await import("./consent-manager");
+      const result = await revokeConsent(req.params.id, req.body.reason || "User revoked");
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to revoke consent", error: error.message });
+    }
+  });
+
+  app.get("/api/leads/:id/consent/audit", async (req, res) => {
+    try {
+      const { getConsentAuditTrail } = await import("./consent-manager");
+      const trail = await getConsentAuditTrail(req.params.id);
+      res.json(trail);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get audit trail", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/compliance/report", async (req, res) => {
+    try {
+      const { generateComplianceReport } = await import("./consent-manager");
+      const marketId = (req.query.marketId as string) || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const report = await generateComplianceReport(marketId);
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate report", error: error.message });
+    }
+  });
+
+  // ==================== PHONE VALIDATION ROUTES ====================
+
+  app.post("/api/leads/:id/validate-phone", async (req, res) => {
+    try {
+      const { validateAndClassify } = await import("./phone-validation-pipeline");
+      const lead = await db.query.leads.findFirst({ where: eq(leads.id, req.params.id) });
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      const phone = req.body.phone || lead.ownerPhone || lead.contactPhone;
+      if (!phone) return res.status(400).json({ message: "No phone to validate" });
+      const result = await validateAndClassify(phone, req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to validate phone", error: error.message });
+    }
+  });
+
+  let phoneValidationProgress = { processed: 0, total: 0, running: false };
+
+  app.post("/api/admin/phone-validation/batch", async (req, res) => {
+    try {
+      const { batchValidatePhones } = await import("./phone-validation-pipeline");
+      const leadIds = req.body.leadIds;
+      if (!leadIds || !Array.isArray(leadIds)) {
+        const leadsWithPhone = await db.select({ id: leads.id }).from(leads)
+          .where(sql`${leads.ownerPhone} IS NOT NULL`)
+          .limit(req.body.limit || 100);
+        const ids = leadsWithPhone.map(l => l.id);
+        phoneValidationProgress = { processed: 0, total: ids.length, running: true };
+        res.json({ message: "Batch validation started", total: ids.length });
+        batchValidatePhones(ids).then(result => {
+          phoneValidationProgress = { processed: result.validated + result.invalid, total: ids.length, running: false };
+        });
+        return;
+      }
+      phoneValidationProgress = { processed: 0, total: leadIds.length, running: true };
+      res.json({ message: "Batch validation started", total: leadIds.length });
+      batchValidatePhones(leadIds).then(result => {
+        phoneValidationProgress = { processed: result.validated + result.invalid, total: leadIds.length, running: false };
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to start batch", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/phone-validation/status", async (_req, res) => {
+    res.json(phoneValidationProgress);
+  });
+
+  app.get("/api/admin/phone-validation/summary", async (req, res) => {
+    try {
+      const { getValidationSummary } = await import("./phone-validation-pipeline");
+      const marketId = (req.query.marketId as string) || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+      const summary = await getValidationSummary(marketId);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get summary", error: error.message });
     }
   });
 

@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ScoreBadge } from "@/components/score-badge";
 import { StatusBadge } from "@/components/status-badge";
 import {
@@ -64,12 +66,15 @@ import {
   CircleCheck,
   CircleMinus,
   CircleAlert,
+  Plus,
+  Target,
+  ClipboardList,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useRef } from "react";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob } from "@shared/schema";
+import type { Lead, ContactEvidence, ConflictSet, EnrichmentJob, LeadOutcome, SkipTraceLog, ConsentToken } from "@shared/schema";
 import { NetworkIntelligence } from "@/components/network-intelligence";
 import { RoofIntelligence } from "@/components/roof-intelligence";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1317,6 +1322,12 @@ export default function LeadDetail() {
               </CardContent>
             </Card>
 
+            <OutcomeRecordingCard leadId={id!} />
+
+            <ConsentStatusCard leadId={id!} lead={lead} />
+
+            <TraceHistorySection leadId={id!} />
+
             <Card className="shadow-sm" data-testid="card-enrichment-recommendation">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -1408,6 +1419,517 @@ export default function LeadDetail() {
         </div>
       </div>
     </div>
+  );
+}
+
+function OutcomeRecordingCard({ leadId }: { leadId: string }) {
+  const { toast } = useToast();
+  const [outcomeStatus, setOutcomeStatus] = useState("");
+  const [proposalValue, setProposalValue] = useState("");
+  const [closedValue, setClosedValue] = useState("");
+  const [outcomeNotes, setOutcomeNotes] = useState("");
+
+  const { data: outcomes, isLoading: outcomesLoading } = useQuery<LeadOutcome[]>({
+    queryKey: ["/api/leads", leadId, "outcomes"],
+    enabled: !!leadId,
+  });
+
+  const recordOutcomeMutation = useMutation({
+    mutationFn: async () => {
+      const body: any = { status: outcomeStatus, outcomeSource: "manual" };
+      if (proposalValue) body.proposalValue = parseFloat(proposalValue);
+      if (closedValue) body.closedValue = parseFloat(closedValue);
+      if (outcomeNotes) body.notes = outcomeNotes;
+      const res = await apiRequest("POST", `/api/leads/${leadId}/outcome`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "outcomes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      setOutcomeStatus("");
+      setProposalValue("");
+      setClosedValue("");
+      setOutcomeNotes("");
+      toast({ title: "Outcome recorded" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to record outcome", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const getOutcomeColor = (status: string) => {
+    switch (status) {
+      case "closed_won": return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400";
+      case "closed_lost": return "bg-red-500/15 text-red-700 dark:text-red-400";
+      case "proposal_sent": return "bg-blue-500/15 text-blue-700 dark:text-blue-400";
+      case "appointment_set": return "bg-amber-500/15 text-amber-700 dark:text-amber-400";
+      case "no_response": return "bg-muted text-muted-foreground";
+      default: return "bg-muted text-muted-foreground";
+    }
+  };
+
+  const formatOutcomeStatus = (status: string) => {
+    return status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  };
+
+  return (
+    <Card className="shadow-sm" data-testid="card-outcome-recording">
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          <Target className="w-4 h-4 text-muted-foreground" />
+          <CardTitle className="text-base font-semibold">Outcome Tracking</CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="p-6 pt-0 space-y-4">
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Record Outcome</p>
+            <Select value={outcomeStatus} onValueChange={setOutcomeStatus}>
+              <SelectTrigger className="w-full" data-testid="select-outcome-status">
+                <SelectValue placeholder="Select outcome..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="appointment_set">Appointment Set</SelectItem>
+                <SelectItem value="proposal_sent">Proposal Sent</SelectItem>
+                <SelectItem value="closed_won">Closed Won</SelectItem>
+                <SelectItem value="closed_lost">Closed Lost</SelectItem>
+                <SelectItem value="no_response">No Response</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {(outcomeStatus === "proposal_sent" || outcomeStatus === "closed_won") && (
+            <div className="grid grid-cols-2 gap-3">
+              {outcomeStatus === "proposal_sent" && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Proposal Value</p>
+                  <Input
+                    type="number"
+                    placeholder="$0.00"
+                    value={proposalValue}
+                    onChange={(e) => setProposalValue(e.target.value)}
+                    data-testid="input-proposal-value"
+                  />
+                </div>
+              )}
+              {outcomeStatus === "closed_won" && (
+                <div className="space-y-1.5 col-span-2">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Closed Value</p>
+                  <Input
+                    type="number"
+                    placeholder="$0.00"
+                    value={closedValue}
+                    onChange={(e) => setClosedValue(e.target.value)}
+                    data-testid="input-closed-value"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider">Notes</p>
+            <Textarea
+              value={outcomeNotes}
+              onChange={(e) => setOutcomeNotes(e.target.value)}
+              placeholder="Add outcome notes..."
+              className="min-h-[60px] text-sm resize-none"
+              data-testid="textarea-outcome-notes"
+            />
+          </div>
+
+          <Button
+            size="sm"
+            onClick={() => recordOutcomeMutation.mutate()}
+            disabled={!outcomeStatus || recordOutcomeMutation.isPending}
+            className="w-full"
+            data-testid="button-record-outcome"
+          >
+            {recordOutcomeMutation.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+            ) : (
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+            )}
+            Record Outcome
+          </Button>
+        </div>
+
+        {outcomesLoading && (
+          <div className="space-y-2 pt-2 border-t">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        )}
+
+        {outcomes && outcomes.length > 0 && (
+          <div className="space-y-0 pt-2 border-t">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Outcome History</p>
+            <div className="space-y-0">
+              {outcomes.map((outcome: any, i: number) => (
+                <div
+                  key={outcome.id}
+                  className={`flex items-start gap-3 py-2.5 ${i > 0 ? "border-t" : ""}`}
+                  data-testid={`outcome-entry-${i}`}
+                >
+                  <div className="flex flex-col items-center mt-0.5">
+                    <div className={`w-2 h-2 rounded-full ${
+                      outcome.status === "closed_won" ? "bg-emerald-500" :
+                      outcome.status === "closed_lost" ? "bg-red-500" :
+                      outcome.status === "proposal_sent" ? "bg-blue-500" :
+                      outcome.status === "appointment_set" ? "bg-amber-500" :
+                      "bg-muted-foreground"
+                    }`} />
+                    {i < outcomes.length - 1 && <div className="w-px h-full bg-border mt-1" />}
+                  </div>
+                  <div className="flex-1 min-w-0 space-y-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge
+                        variant="secondary"
+                        className={`no-default-hover-elevate no-default-active-elevate text-[10px] ${getOutcomeColor(outcome.status)}`}
+                        data-testid={`badge-outcome-status-${i}`}
+                      >
+                        {formatOutcomeStatus(outcome.status)}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground flex-shrink-0">
+                        {outcome.createdAt ? new Date(outcome.createdAt).toLocaleDateString() : ""}
+                      </span>
+                    </div>
+                    {(outcome.proposalValue || outcome.closedValue) && (
+                      <p className="text-xs font-medium tabular-nums" data-testid={`text-outcome-value-${i}`}>
+                        ${(outcome.closedValue || outcome.proposalValue || 0).toLocaleString()}
+                      </p>
+                    )}
+                    {outcome.notes && (
+                      <p className="text-[11px] text-muted-foreground">{outcome.notes}</p>
+                    )}
+                    <p className="text-[10px] text-muted-foreground">via {outcome.outcomeSource}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {outcomes && outcomes.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-2 border-t" data-testid="text-no-outcomes">No outcomes recorded yet</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ConsentStatusCard({ leadId, lead }: { leadId: string; lead: Lead }) {
+  const { toast } = useToast();
+  const [consentDialogOpen, setConsentDialogOpen] = useState(false);
+  const [tokenType, setTokenType] = useState("manual");
+  const [tokenValue, setTokenValue] = useState("");
+  const [captureUrl, setCaptureUrl] = useState("");
+
+  const { data: consentData } = useQuery<{ hasConsent: boolean; tokenType?: string; verifiedAt?: string; expiresIn?: number }>({
+    queryKey: ["/api/leads", leadId, "consent"],
+    enabled: !!leadId,
+  });
+
+  const { data: consentAudit } = useQuery<any[]>({
+    queryKey: ["/api/leads", leadId, "consent", "audit"],
+    enabled: !!leadId,
+  });
+
+  const recordConsentMutation = useMutation({
+    mutationFn: async () => {
+      const body: any = { tokenType };
+      if (tokenValue) body.tokenValue = tokenValue;
+      if (captureUrl) body.captureUrl = captureUrl;
+      const res = await apiRequest("POST", `/api/leads/${leadId}/consent`, body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "consent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "consent", "audit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      setConsentDialogOpen(false);
+      setTokenType("manual");
+      setTokenValue("");
+      setCaptureUrl("");
+      toast({ title: "Consent recorded" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to record consent", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const revokeConsentMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/leads/${leadId}/consent`, { reason: "Manual revocation" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "consent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "consent", "audit"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+      toast({ title: "Consent revoked" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to revoke consent", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const consentStatus = lead.consentStatus || "unknown";
+  const consentColor = consentStatus === "granted"
+    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+    : consentStatus === "revoked"
+    ? "bg-red-500/15 text-red-700 dark:text-red-400"
+    : "bg-muted text-muted-foreground";
+
+  return (
+    <Card className="shadow-sm" data-testid="card-consent-status">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-base font-semibold">Consent & Compliance</CardTitle>
+          </div>
+          <Badge
+            variant="secondary"
+            className={`no-default-hover-elevate no-default-active-elevate text-xs ${consentColor}`}
+            data-testid="badge-consent-status"
+          >
+            {consentStatus === "granted" && <CheckCircle className="w-3 h-3 mr-1" />}
+            {consentStatus === "revoked" && <XCircle className="w-3 h-3 mr-1" />}
+            {consentStatus === "unknown" && <Clock className="w-3 h-3 mr-1" />}
+            {consentStatus.charAt(0).toUpperCase() + consentStatus.slice(1)}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="p-6 pt-0 space-y-3">
+        {consentData && consentData.hasConsent && (
+          <div className="p-2.5 rounded-md bg-emerald-500/5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Token Type</span>
+              <span className="text-xs font-medium" data-testid="text-consent-token-type">{consentData.tokenType}</span>
+            </div>
+            {consentData.verifiedAt && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Verified</span>
+                <span className="text-xs font-medium">{new Date(consentData.verifiedAt).toLocaleDateString()}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {lead.dncRegistered && (
+          <div className="flex items-center gap-2 p-2.5 rounded-md bg-red-500/5">
+            <Ban className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+            <span className="text-xs text-red-700 dark:text-red-400 font-medium">DNC Registered</span>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Dialog open={consentDialogOpen} onOpenChange={setConsentDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="flex-1" data-testid="button-record-consent">
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Record Consent
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Record Consent Token</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Token Type</p>
+                  <Select value={tokenType} onValueChange={setTokenType}>
+                    <SelectTrigger data-testid="select-consent-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="trustedform">TrustedForm</SelectItem>
+                      <SelectItem value="jornaya">Jornaya</SelectItem>
+                      <SelectItem value="manual">Manual</SelectItem>
+                      <SelectItem value="web_capture">Web Capture</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Token Value</p>
+                  <Input
+                    value={tokenValue}
+                    onChange={(e) => setTokenValue(e.target.value)}
+                    placeholder="Token or certificate ID..."
+                    data-testid="input-consent-token-value"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Capture URL</p>
+                  <Input
+                    value={captureUrl}
+                    onChange={(e) => setCaptureUrl(e.target.value)}
+                    placeholder="https://..."
+                    data-testid="input-consent-capture-url"
+                  />
+                </div>
+                <Button
+                  onClick={() => recordConsentMutation.mutate()}
+                  disabled={recordConsentMutation.isPending}
+                  className="w-full"
+                  data-testid="button-submit-consent"
+                >
+                  {recordConsentMutation.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                  ) : (
+                    <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  Save Consent Token
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {consentStatus === "granted" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => revokeConsentMutation.mutate()}
+              disabled={revokeConsentMutation.isPending}
+              data-testid="button-revoke-consent"
+            >
+              {revokeConsentMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <XCircle className="w-3.5 h-3.5" />
+              )}
+            </Button>
+          )}
+        </div>
+
+        {consentAudit && consentAudit.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full text-xs" data-testid="button-toggle-consent-audit">
+                <ClipboardList className="w-3.5 h-3.5 mr-1.5" />
+                Consent Audit Trail ({consentAudit.length})
+                <ChevronDown className="w-3.5 h-3.5 ml-auto" />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="space-y-2 pt-2">
+                {consentAudit.map((entry: any, i: number) => (
+                  <div key={entry.id || i} className="text-[11px] p-2 rounded-md bg-muted/50 space-y-0.5" data-testid={`consent-audit-entry-${i}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{entry.tokenType}</span>
+                      <span className="text-muted-foreground">
+                        {entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : ""}
+                      </span>
+                    </div>
+                    {entry.verificationResult && (
+                      <span className={`text-[10px] ${
+                        entry.verificationResult === "valid" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                      }`}>
+                        {entry.verificationResult}
+                      </span>
+                    )}
+                    {entry.captureUrl && (
+                      <p className="text-[10px] text-muted-foreground truncate">{entry.captureUrl}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TraceHistorySection({ leadId }: { leadId: string }) {
+  const { data: traceHistory, isLoading } = useQuery<SkipTraceLog[]>({
+    queryKey: ["/api/leads", leadId, "trace-history"],
+    enabled: !!leadId,
+  });
+
+  if (isLoading) return null;
+  if (!traceHistory || traceHistory.length === 0) return null;
+
+  return (
+    <Card className="shadow-sm" data-testid="card-trace-history">
+      <Collapsible>
+        <CardHeader className="pb-2">
+          <CollapsibleTrigger asChild>
+            <div className="flex items-center justify-between gap-2 cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-muted-foreground" />
+                <CardTitle className="text-base font-semibold">Skip-Trace History</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="no-default-hover-elevate no-default-active-elevate text-[10px]">
+                  {traceHistory.length} {traceHistory.length === 1 ? "trace" : "traces"}
+                </Badge>
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              </div>
+            </div>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="p-6 pt-0 space-y-0">
+            {traceHistory.map((trace: any, i: number) => {
+              const isExpired = trace.expiresAt && new Date(trace.expiresAt) < new Date();
+              return (
+                <div
+                  key={trace.id}
+                  className={`py-2.5 ${i > 0 ? "border-t" : ""}`}
+                  data-testid={`trace-entry-${i}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium" data-testid={`text-trace-provider-${i}`}>{trace.provider}</span>
+                      <Badge
+                        variant="secondary"
+                        className={`no-default-hover-elevate no-default-active-elevate text-[10px] ${
+                          trace.matchQuality === "exact" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" :
+                          trace.matchQuality === "partial" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" :
+                          "bg-muted text-muted-foreground"
+                        }`}
+                        data-testid={`badge-trace-quality-${i}`}
+                      >
+                        {trace.matchQuality}
+                      </Badge>
+                    </div>
+                    <span className="text-xs font-mono tabular-nums text-muted-foreground" data-testid={`text-trace-cost-${i}`}>
+                      ${(trace.cost || 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-[10px] text-muted-foreground">
+                      {trace.tracedAt ? new Date(trace.tracedAt).toLocaleDateString() : ""}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {isExpired ? (
+                        <span className="text-[10px] text-red-600 dark:text-red-400">Expired</span>
+                      ) : trace.expiresAt ? (
+                        <span className="text-[10px] text-muted-foreground">
+                          Expires {new Date(trace.expiresAt).toLocaleDateString()}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  {trace.fieldsReturned && trace.fieldsReturned.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {trace.fieldsReturned.map((field: string, fi: number) => (
+                        <span key={fi} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                          {field}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
   );
 }
 

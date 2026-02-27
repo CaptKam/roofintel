@@ -31,9 +31,49 @@ import {
   Layers,
   AlertTriangle,
   ShieldAlert,
+  Percent,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
+
+interface KpiData {
+  id: string;
+  marketId: string;
+  snapshotDate: string;
+  totalLeads: number | null;
+  contactableLeads: number | null;
+  matchRate: number | null;
+  contactableRate: number | null;
+  appointmentsSet: number | null;
+  proposalsSent: number | null;
+  closedWon: number | null;
+  closedLost: number | null;
+  totalRevenue: number | null;
+  totalEnrichmentSpend: number | null;
+  costPerLead: number | null;
+  costPerSale: number | null;
+  conversionRate: number | null;
+  roi: number | null;
+  avgLeadScore: number | null;
+}
+
+interface FunnelStage {
+  stage: string;
+  count: number;
+  conversionFromPrev: number;
+  pctOfTotal: number;
+}
+
+interface FunnelData {
+  stages: FunnelStage[];
+  totalLeads: number;
+  closedWon: number;
+  closedLost: number;
+  winRate: number;
+}
 
 interface CommandCenter {
   totalLeads: number;
@@ -138,23 +178,31 @@ function CoverageGauge({ label, value, icon: Icon }: { label: string; value: num
   );
 }
 
-function PipelineStep({ label, count, total, isLast }: { label: string; count: number; total: number; isLast?: boolean }) {
+function PipelineStep({ label, count, total, conversionRate, isLast }: { label: string; count: number; total: number; conversionRate?: number; isLast?: boolean }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
-    <div className="flex items-center gap-2" data-testid={`pipeline-${label.toLowerCase()}`}>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-xs font-medium">{label}</span>
-          <span className="text-xs text-muted-foreground tabular-nums">{count.toLocaleString()}</span>
+    <div data-testid={`pipeline-${label.toLowerCase()}`}>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-xs font-medium">{label}</span>
+            <span className="text-xs text-muted-foreground tabular-nums">{count.toLocaleString()}</span>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-foreground/60 rounded-full transition-all duration-700"
+              style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }}
+            />
+          </div>
         </div>
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full bg-foreground/60 rounded-full transition-all duration-700"
-            style={{ width: `${Math.max(pct, count > 0 ? 3 : 0)}%` }}
-          />
-        </div>
+        {!isLast && <ChevronRight className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" />}
       </div>
-      {!isLast && <ChevronRight className="w-3 h-3 text-muted-foreground/30 flex-shrink-0" />}
+      {conversionRate !== undefined && !isLast && (
+        <div className="flex items-center gap-1 ml-1 mt-0.5" data-testid={`pipeline-conversion-${label.toLowerCase()}`}>
+          <ArrowDownRight className="w-3 h-3 text-muted-foreground/50" />
+          <span className="text-[10px] text-muted-foreground/70 tabular-nums">{(conversionRate * 100).toFixed(1)}%</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -191,6 +239,14 @@ export default function Dashboard() {
 
   const { data: roofRiskData } = useQuery<RoofRiskSummary>({
     queryKey: ["/api/dashboard/roof-risk-summary"],
+  });
+
+  const { data: kpiData } = useQuery<KpiData | null>({
+    queryKey: ["/api/admin/kpis/current"],
+  });
+
+  const { data: funnelData } = useQuery<FunnelData>({
+    queryKey: ["/api/admin/kpis/funnel"],
   });
 
   const applyDashboardFilter = (filters: Record<string, any>) => {
@@ -299,6 +355,101 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Conversion Rate</p>
+                {kpiData ? (
+                  <>
+                    <p className="text-3xl font-bold mt-2 tracking-tight" data-testid="stat-conversion-rate">
+                      {((kpiData.conversionRate ?? 0) * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {kpiData.closedWon ?? 0} won / {(kpiData.closedWon ?? 0) + (kpiData.closedLost ?? 0)} decided
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-medium mt-2 text-muted-foreground" data-testid="stat-conversion-rate">No data yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Record outcomes to track</p>
+                  </>
+                )}
+              </div>
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                <Percent className="w-5 h-5 text-muted-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Cost per Lead / Sale</p>
+                {kpiData ? (
+                  <>
+                    <p className="text-3xl font-bold mt-2 tracking-tight" data-testid="stat-cost-per-lead">
+                      {formatCurrency(kpiData.costPerLead ?? 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1" data-testid="stat-cost-per-sale">
+                      {formatCurrency(kpiData.costPerSale ?? 0)} per sale
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-medium mt-2 text-muted-foreground" data-testid="stat-cost-per-lead">No data yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Enrichment costs will appear here</p>
+                  </>
+                )}
+              </div>
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-muted-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Enrichment ROI</p>
+                {kpiData ? (
+                  <>
+                    <div className="flex items-center gap-2 mt-2">
+                      <p className="text-3xl font-bold tracking-tight" data-testid="stat-roi">
+                        {((kpiData.roi ?? 0) * 100).toFixed(0)}%
+                      </p>
+                      {(kpiData.roi ?? 0) > 0 ? (
+                        <ArrowUpRight className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                      ) : (kpiData.roi ?? 0) < 0 ? (
+                        <ArrowDownRight className="w-5 h-5 text-red-600 dark:text-red-400" />
+                      ) : (
+                        <Minus className="w-5 h-5 text-muted-foreground" />
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {formatCurrency(kpiData.totalRevenue ?? 0)} rev / {formatCurrency(kpiData.totalEnrichmentSpend ?? 0)} spend
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-medium mt-2 text-muted-foreground" data-testid="stat-roi">No data yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">Revenue vs enrichment spend</p>
+                  </>
+                )}
+              </div>
+              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                <BarChart3 className="w-5 h-5 text-muted-foreground" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -377,11 +528,33 @@ export default function Dashboard() {
               <CardTitle className="text-base font-semibold">Pipeline</CardTitle>
             </CardHeader>
             <CardContent className="p-6 pt-0 space-y-3">
-              <PipelineStep label="New" count={data.pipeline.new} total={totalPipeline} />
-              <PipelineStep label="Contacted" count={data.pipeline.contacted} total={totalPipeline} />
-              <PipelineStep label="Qualified" count={data.pipeline.qualified} total={totalPipeline} />
-              <PipelineStep label="Proposal" count={data.pipeline.proposal} total={totalPipeline} />
-              <PipelineStep label="Closed" count={data.pipeline.closed} total={totalPipeline} isLast />
+              {(() => {
+                const stageNames = ["new", "contacted", "qualified", "proposal", "closed"];
+                const stageLabelMap: Record<string, string> = { new: "New", contacted: "Contacted", qualified: "Qualified", proposal: "Proposal", closed: "Closed" };
+                const funnelMap: Record<string, number> = {};
+                if (funnelData?.stages) {
+                  for (const s of funnelData.stages) {
+                    funnelMap[s.stage] = s.conversionFromPrev;
+                  }
+                }
+                const pipelineCounts: Record<string, number> = data.pipeline;
+                return stageNames.map((stage, idx) => (
+                  <PipelineStep
+                    key={stage}
+                    label={stageLabelMap[stage]}
+                    count={pipelineCounts[stage] || 0}
+                    total={totalPipeline}
+                    conversionRate={idx > 0 ? funnelMap[stage] : undefined}
+                    isLast={idx === stageNames.length - 1}
+                  />
+                ));
+              })()}
+              {funnelData && funnelData.winRate > 0 && (
+                <div className="flex items-center justify-between pt-2 border-t border-border" data-testid="stat-win-rate">
+                  <span className="text-xs font-medium text-muted-foreground">Win Rate</span>
+                  <span className="text-xs font-semibold tabular-nums">{(funnelData.winRate * 100).toFixed(1)}%</span>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

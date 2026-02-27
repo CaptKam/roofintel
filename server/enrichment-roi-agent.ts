@@ -1,7 +1,23 @@
 import { db } from "./storage";
-import { leads, enrichmentDecisions, enrichmentBudgets } from "@shared/schema";
+import { leads, enrichmentDecisions, enrichmentBudgets, contactEvidence } from "@shared/schema";
 import { eq, and, gte, inArray, desc, sql } from "drizzle-orm";
 import type { Lead, EnrichmentBudget } from "@shared/schema";
+import { canRetrace } from "./skip-trace-ttl";
+
+async function getPhoneLineType(leadId: string): Promise<string | null> {
+  const rows = await db
+    .select({ phoneLineType: contactEvidence.phoneLineType })
+    .from(contactEvidence)
+    .where(
+      and(
+        eq(contactEvidence.leadId, leadId),
+        eq(contactEvidence.contactType, "PHONE"),
+        eq(contactEvidence.isActive, true)
+      )
+    )
+    .limit(1);
+  return rows[0]?.phoneLineType || null;
+}
 
 let batchProgress = { processed: 0, total: 0, running: false };
 
@@ -39,6 +55,11 @@ export async function processOneLead(lead: Lead, marketConfig: EnrichmentBudget)
     ? Math.floor((now.getTime() - new Date(lead.lastHailDate).getTime()) / 86400000)
     : 999;
 
+  const ttlCheck = await canRetrace(lead.id);
+  if (!ttlCheck.allowed) {
+    return { decisionType: "skip", roiScore: 0, expectedValue: 0, cost: 0, recommendedApis: [], reason: `TTL cooldown active until ${ttlCheck.expiresAt?.toISOString()?.split('T')[0] || 'unknown'} (provider: ${ttlCheck.provider || 'unknown'})`, confidence: 95 };
+  }
+
   if (lead.dncRegistered) {
     return { decisionType: "skip", roiScore: 0, expectedValue: 0, cost: 0, recommendedApis: [], reason: "DNC registered", confidence: 95 };
   }
@@ -47,11 +68,24 @@ export async function processOneLead(lead: Lead, marketConfig: EnrichmentBudget)
     return { decisionType: "skip", roiScore: 0, expectedValue: 0, cost: 0, recommendedApis: [], reason: `Non-target owner: ${structure}`, confidence: 95 };
   }
 
-  const contactability =
+  const phoneLineType = await getPhoneLineType(lead.id);
+  const phoneLineTypeBonus = (() => {
+    if (!lead.ownerPhone && !lead.contactPhone && !lead.managingMemberPhone) return 0;
+    const lt = (phoneLineType || "").toLowerCase();
+    if (lt === "mobile") return 2;
+    if (lt === "landline") return 1;
+    if (lt === "voip") return 1;
+    if (lt === "" || lt === "unknown" || !phoneLineType) return 1;
+    return 0;
+  })();
+
+  const baseContactability =
     (lead.ownerPhone ? 1 : 0) +
     (lead.ownerEmail ? 1 : 0) +
     (lead.contactName ? 1 : 0) +
     (lead.managingMemberPhone ? 1 : 0);
+
+  const contactability = baseContactability + (phoneLineTypeBonus > 1 ? 1 : 0);
 
   if (contactability >= 3 && (lead.intelligenceScore || 0) > 92) {
     return { decisionType: "free_only", roiScore: 0, expectedValue: 0, cost: 0, recommendedApis: [], reason: "High intelligence + full contacts", confidence: 90 };
@@ -72,7 +106,8 @@ export async function processOneLead(lead: Lead, marketConfig: EnrichmentBudget)
   ].filter(Boolean).length;
   const uplift = Math.min(0.45, missingHighValue * 0.12);
 
-  const contactMultiplier = contactability >= 3 ? 1.0 : contactability === 2 ? 0.75 : 0.4;
+  const invalidPhonePenalty = phoneLineTypeBonus === 0 && (lead.ownerPhone || lead.contactPhone || lead.managingMemberPhone) ? 0.5 : 1.0;
+  const contactMultiplier = (contactability >= 3 ? 1.0 : contactability === 2 ? 0.75 : 0.4) * invalidPhonePenalty;
   const marketFactor = 1 + ((lead.hailEvents || 0) / 20) + (lead.isFloodHighRisk ? 0.3 : 0);
   const seasonal = isHailSeason ? (marketConfig.hailSeasonMultiplier || 1.8) : 1.0;
 

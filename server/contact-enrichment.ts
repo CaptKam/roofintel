@@ -2,6 +2,7 @@ import { storage } from "./storage";
 import { dualWriteUpdate } from "./dual-write";
 import type { Lead } from "@shared/schema";
 import { recordEvidence } from "./evidence-recorder";
+import { logTrace } from "./skip-trace-ttl";
 
 const TX_OPEN_DATA_API = "https://data.texas.gov/resource/9cir-efmm.json";
 
@@ -260,6 +261,18 @@ export async function enrichLeadContacts(
           } catch (evErr: any) {
             console.error(`[Contact Enrichment] Failed to record outlet address evidence for lead ${lead.id}:`, evErr.message);
           }
+        }
+      }
+      for (const lead of ownerLeads) {
+        try {
+          const fieldsFound: string[] = [];
+          if (match.taxpayer_number) fieldsFound.push("taxpayer_id");
+          if (sosFileNum) fieldsFound.push("sos_file_number");
+          if (outletPhone) fieldsFound.push("phone");
+          if (outletAddr) fieldsFound.push("address");
+          await logTrace(lead.id, "tx_comptroller", 0, fieldsFound, fieldsFound.length > 0 ? "exact" : "none");
+        } catch (traceErr: any) {
+          console.error(`[Contact Enrichment] Failed to log trace for lead ${lead.id}:`, traceErr.message);
         }
       }
       enriched += ownerLeads.length;

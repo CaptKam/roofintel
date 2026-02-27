@@ -44,8 +44,20 @@ The monolithic `leads` table is being decomposed into five domain-specific satel
 ### Data Quality System
 Each lead has a computed `dataConfidence` (High, Medium, Low) based on multiple indicators. A quality summary and dashboard card provide metrics, and admin endpoints are available for cleanup and evidence verification. Market readiness scores are computed from weighted field coverage.
 
+### Outcome Tracking & KPI Engine
+The `lead_outcomes` table records deal outcomes (appointment_set, proposal_sent, closed_won, closed_lost, no_response). The `kpi_snapshots` table captures periodic metrics (match rate, contactable rate, conversion rate, cost/lead, cost/sale, ROI). A weight retraining system analyzes won vs lost outcomes to recommend scoring weight adjustments for admin review.
+
+### Skip-Trace TTL & Cost Optimization
+The `skip_trace_log` table tracks every enrichment API call with provider, cost, fields returned, match quality, and a cooldown expiry (default 180 days). The enrichment-roi-agent and phone-validation-pipeline check TTL before re-tracing. Batch economics computation recommends optimal provider mix based on lead count and historical match rates.
+
+### Consent & Compliance Module
+The `consent_tokens` table stores TrustedForm/Jornaya/manual consent tokens with verification status and expiry. The consent-manager integrates with the existing compliance-gate to verify consent before contact. Compliance reports aggregate consent, DNC, and suppression metrics per market.
+
+### Phone Validation Pipeline
+The phone-validation-pipeline wraps Twilio Lookup V2 with TTL-aware validation, logging results to contact_evidence and skip_trace_log. Batch validation supports rate limiting. The ROI agent uses phone line type (mobile/landline/voip) in contactability scoring.
+
 ### Feature Specifications
-Key features include a comprehensive Dashboard, filterable Leads & Lead Detail pages with ROI decision cards, an interactive Map & Storms view with ZIP priority heatmap, a Hail Chaser mode, Portfolios & Network Explorer, Data Management tools, and an Admin interface for system control (including ROI Engine). A Contractors Directory and CSV export functionality are also included.
+Key features include a comprehensive Dashboard with KPI cards (conversion rate, cost/lead, ROI), filterable Leads & Lead Detail pages with ROI decision cards and outcome recording, an interactive Map & Storms view with ZIP priority heatmap, a Hail Chaser mode, Portfolios & Network Explorer, Data Management tools, and an Admin interface with 11 tabs (including ROI Engine, Analytics & KPIs, and Compliance). A Contractors Directory and CSV export functionality are also included.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database.

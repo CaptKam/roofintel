@@ -63,7 +63,7 @@ import {
   TrendingUp,
   Gauge,
 } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid, Legend, FunnelChart, Funnel, LabelList, PieChart, Pie } from "recharts";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -1870,6 +1870,1127 @@ const TIER_COLORS: Record<string, string> = {
   free_only: "#f87171",
 };
 
+const FUNNEL_COLORS = ["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#22c55e"];
+const KPI_CHART_COLORS = {
+  contactableRate: "#3b82f6",
+  conversionRate: "#22c55e",
+  costPerLead: "#f59e0b",
+  roi: "#8b5cf6",
+};
+
+function AnalyticsKPIsPanel({ marketId }: { marketId?: string }) {
+  const { toast } = useToast();
+  const DFW_MARKET_ID = marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+
+  const { data: currentKpi, isLoading: kpiLoading } = useQuery<any>({
+    queryKey: ["/api/admin/kpis/current", DFW_MARKET_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/kpis/current?marketId=${DFW_MARKET_ID}`);
+      if (!res.ok) throw new Error("Failed to fetch KPI");
+      return res.json();
+    },
+  });
+
+  const { data: timeSeries, isLoading: timeSeriesLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/kpis/timeseries", DFW_MARKET_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/kpis/timeseries?marketId=${DFW_MARKET_ID}&days=90`);
+      if (!res.ok) throw new Error("Failed to fetch timeseries");
+      return res.json();
+    },
+  });
+
+  const { data: funnel, isLoading: funnelLoading } = useQuery<any>({
+    queryKey: ["/api/admin/kpis/funnel", DFW_MARKET_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/kpis/funnel?marketId=${DFW_MARKET_ID}`);
+      if (!res.ok) throw new Error("Failed to fetch funnel");
+      return res.json();
+    },
+  });
+
+  const { data: traceCosts, isLoading: traceCostsLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/trace-costs", DFW_MARKET_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/trace-costs?marketId=${DFW_MARKET_ID}&days=90`);
+      if (!res.ok) throw new Error("Failed to fetch trace costs");
+      return res.json();
+    },
+  });
+
+  const snapshotMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/kpis/snapshot", { marketId: DFW_MARKET_ID });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "KPI snapshot computed" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/kpis/current"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/kpis/timeseries"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/kpis/funnel"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to compute snapshot", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const retrainMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/kpis/retrain-weights", { marketId: DFW_MARKET_ID });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Weight analysis complete" });
+      setRetrainResult(data);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to retrain", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const [retrainResult, setRetrainResult] = useState<any>(null);
+
+  const funnelData = funnel?.stages?.map((s: any, i: number) => ({
+    name: s.stage.charAt(0).toUpperCase() + s.stage.slice(1),
+    value: s.count,
+    fill: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
+    conversionFromPrev: s.conversionFromPrev,
+    pctOfTotal: s.pctOfTotal,
+  })) || [];
+
+  const trendData = (timeSeries || []).map((s: any) => ({
+    date: new Date(s.snapshotDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    contactableRate: Math.round((s.contactableRate || 0) * 100),
+    conversionRate: Math.round((s.conversionRate || 0) * 10000) / 100,
+    costPerLead: Math.round((s.costPerLead || 0) * 100) / 100,
+    roi: Math.round((s.roi || 0) * 100) / 100,
+  })).reverse();
+
+  const costData = (traceCosts || []).map((t: any) => ({
+    provider: t.provider,
+    totalSpend: t.totalSpend,
+    traceCount: t.traceCount,
+    matchCount: t.matchCount,
+    matchRate: Math.round((t.matchRate || 0) * 100),
+    avgCostPerMatch: t.avgCostPerMatch,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <Card className="shadow-sm" data-testid="card-snapshot-controls">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Gauge className="w-4 h-4" />
+            Snapshot Controls
+          </CardTitle>
+          {currentKpi && (
+            <Badge variant="outline" className="text-xs" data-testid="badge-last-snapshot">
+              <Clock className="w-3 h-3 mr-1" />
+              Last: {formatDate(currentKpi.createdAt)}
+            </Badge>
+          )}
+        </CardHeader>
+        <CardContent className="p-6 pt-0 space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              onClick={() => snapshotMutation.mutate()}
+              disabled={snapshotMutation.isPending}
+              data-testid="button-compute-snapshot"
+            >
+              {snapshotMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Activity className="w-4 h-4 mr-2" />
+              )}
+              Compute Snapshot Now
+            </Button>
+            {currentKpi && (
+              <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
+                <span data-testid="text-kpi-total-leads">Leads: <span className="font-medium text-foreground">{currentKpi.totalLeads?.toLocaleString()}</span></span>
+                <span data-testid="text-kpi-contactable">Contactable: <span className="font-medium text-foreground">{Math.round((currentKpi.contactableRate || 0) * 100)}%</span></span>
+                <span data-testid="text-kpi-conversion">Conversion: <span className="font-medium text-foreground">{Math.round((currentKpi.conversionRate || 0) * 10000) / 100}%</span></span>
+                <span data-testid="text-kpi-roi">ROI: <span className="font-medium text-foreground">{(currentKpi.roi || 0).toFixed(2)}x</span></span>
+              </div>
+            )}
+          </div>
+          {!currentKpi && !kpiLoading && (
+            <p className="text-sm text-muted-foreground">No snapshots yet. Click "Compute Snapshot Now" to generate your first KPI snapshot.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm" data-testid="card-conversion-funnel">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
+            Conversion Funnel
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 pt-0">
+          {funnelLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : funnelData.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex items-end gap-2" style={{ height: 200 }}>
+                {funnelData.map((stage: any, i: number) => {
+                  const maxVal = Math.max(...funnelData.map((d: any) => d.value), 1);
+                  const barHeight = Math.max(10, (stage.value / maxVal) * 180);
+                  return (
+                    <div key={stage.name} className="flex-1 flex flex-col items-center gap-1" data-testid={`funnel-stage-${stage.name.toLowerCase()}`}>
+                      <span className="text-xs font-medium">{stage.value.toLocaleString()}</span>
+                      <div
+                        className="w-full rounded-md transition-all"
+                        style={{ height: barHeight, backgroundColor: stage.fill }}
+                      />
+                      <span className="text-[11px] text-muted-foreground text-center">{stage.name}</span>
+                      {i > 0 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {Math.round(stage.conversionFromPrev * 100)}%
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {funnel && (
+                <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
+                  <span>Total: <span className="font-medium text-foreground">{funnel.totalLeads?.toLocaleString()}</span></span>
+                  <span>Won: <span className="font-medium text-emerald-600">{funnel.closedWon}</span></span>
+                  <span>Lost: <span className="font-medium text-red-500">{funnel.closedLost}</span></span>
+                  <span>Win Rate: <span className="font-medium text-foreground">{Math.round((funnel.winRate || 0) * 100)}%</span></span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">No funnel data available. Record outcomes to populate the funnel.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm" data-testid="card-kpi-trends">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            KPI Trends
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 pt-0">
+          {timeSeriesLoading ? (
+            <Skeleton className="h-64 w-full" />
+          ) : trendData.length > 1 ? (
+            <div className="space-y-6">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Contactable Rate & Conversion Rate (%)</p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="contactableRate" stroke={KPI_CHART_COLORS.contactableRate} name="Contactable %" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="conversionRate" stroke={KPI_CHART_COLORS.conversionRate} name="Conversion %" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Cost per Lead ($) & ROI (x)</p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip contentStyle={{ fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="costPerLead" stroke={KPI_CHART_COLORS.costPerLead} name="Cost/Lead $" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="roi" stroke={KPI_CHART_COLORS.roi} name="ROI x" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              {trendData.length === 1 ? "Only 1 snapshot. Compute more snapshots over time to see trends." : "No trend data yet. Compute snapshots to generate trend charts."}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="shadow-sm" data-testid="card-cost-breakdown">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Cost Breakdown by Provider
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            {traceCostsLoading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : costData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={costData}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis dataKey="provider" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" height={50} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip contentStyle={{ fontSize: 12 }} formatter={(val: number) => `$${val.toFixed(2)}`} />
+                  <Bar dataKey="totalSpend" name="Total Spend" radius={[4, 4, 0, 0]}>
+                    {costData.map((_: any, i: number) => (
+                      <Cell key={i} fill={FUNNEL_COLORS[i % FUNNEL_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No trace cost data available.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm" data-testid="card-match-rate-table">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Target className="w-4 h-4" />
+              Match Rate by Provider
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            {traceCostsLoading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : costData.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2 px-2">Provider</th>
+                      <th className="text-right py-2 px-2">Traces</th>
+                      <th className="text-right py-2 px-2">Matches</th>
+                      <th className="text-right py-2 px-2">Match %</th>
+                      <th className="text-right py-2 px-2">Avg $/Match</th>
+                      <th className="text-right py-2 px-2">Total $</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {costData.map((row: any) => (
+                      <tr key={row.provider} className="border-b border-muted/50" data-testid={`provider-row-${row.provider}`}>
+                        <td className="py-2 px-2 font-medium">{row.provider}</td>
+                        <td className="py-2 px-2 text-right">{row.traceCount.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right">{row.matchCount.toLocaleString()}</td>
+                        <td className="py-2 px-2 text-right">
+                          <Badge variant={row.matchRate >= 50 ? "default" : row.matchRate >= 20 ? "secondary" : "outline"} className="text-[10px]">
+                            {row.matchRate}%
+                          </Badge>
+                        </td>
+                        <td className="py-2 px-2 text-right">${row.avgCostPerMatch.toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right font-medium">${row.totalSpend.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No provider data available.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="shadow-sm" data-testid="card-weight-retraining">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            Weight Retraining
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 pt-0 space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Analyze closed-won vs closed-lost outcomes to identify which lead attributes correlate with wins. Results are recommendations for admin review, not auto-applied.
+          </p>
+          <Button
+            onClick={() => retrainMutation.mutate()}
+            disabled={retrainMutation.isPending}
+            data-testid="button-retrain-weights"
+          >
+            {retrainMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-2" />
+            )}
+            Run Weight Analysis
+          </Button>
+
+          {retrainResult && (
+            <div className="space-y-3 pt-3 border-t" data-testid="retrain-results">
+              <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
+                <span>Won samples: <span className="font-medium text-foreground">{retrainResult.sampleSize?.won}</span></span>
+                <span>Lost samples: <span className="font-medium text-foreground">{retrainResult.sampleSize?.lost}</span></span>
+                <span>Generated: <span className="font-medium text-foreground">{formatDate(retrainResult.generatedAt)}</span></span>
+              </div>
+              {retrainResult.note && (
+                <div className="text-xs p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300" data-testid="text-retrain-note">
+                  {retrainResult.note}
+                </div>
+              )}
+              {retrainResult.recommendations && Object.keys(retrainResult.recommendations).length > 0 && (
+                <div className="space-y-2">
+                  {Object.entries(retrainResult.recommendations).map(([attr, rec]: [string, any]) => (
+                    <div key={attr} className="border rounded-md p-3 space-y-1" data-testid={`retrain-attr-${attr}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{attr.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase())}</span>
+                        {rec.suggestion && rec.suggestion !== "review_manually" && (
+                          <Badge
+                            variant={rec.suggestion === "increase_weight" ? "default" : rec.suggestion === "decrease_weight" ? "destructive" : "secondary"}
+                            className="text-[10px]"
+                          >
+                            {rec.suggestion === "increase_weight" ? "Increase" : rec.suggestion === "decrease_weight" ? "Decrease" : "No Change"}
+                          </Badge>
+                        )}
+                        {rec.suggestion === "review_manually" && (
+                          <Badge variant="outline" className="text-[10px]">Manual Review</Badge>
+                        )}
+                      </div>
+                      {rec.wonAvg !== undefined && (
+                        <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
+                          <span>Won avg: <span className="font-medium text-foreground">{rec.wonAvg}</span></span>
+                          <span>Lost avg: <span className="font-medium text-foreground">{rec.lostAvg}</span></span>
+                          <span>Impact: <span className="font-medium text-foreground">{rec.impact}</span></span>
+                          {rec.recommendedMultiplier && (
+                            <span>Multiplier: <span className="font-medium text-foreground">{rec.recommendedMultiplier}x</span></span>
+                          )}
+                        </div>
+                      )}
+                      {rec.wonBreakdown && (
+                        <div className="grid grid-cols-2 gap-2 text-xs mt-1">
+                          <div>
+                            <span className="text-muted-foreground">Won breakdown:</span>
+                            {Object.entries(rec.wonBreakdown).map(([k, v]: [string, any]) => (
+                              <span key={k} className="ml-2">{k}: {v}</span>
+                            ))}
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Lost breakdown:</span>
+                            {Object.entries(rec.lostBreakdown || {}).map(([k, v]: [string, any]) => (
+                              <span key={k} className="ml-2">{k}: {v}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function CompliancePanel() {
+  const { toast } = useToast();
+  const DFW_MARKET_ID = "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
+  const [consentSearchQuery, setConsentSearchQuery] = useState("");
+  const [consentSearchResult, setConsentSearchResult] = useState<any>(null);
+  const [consentSearchLoading, setConsentSearchLoading] = useState(false);
+
+  const [newSuppression, setNewSuppression] = useState({
+    entityName: "",
+    phone: "",
+    email: "",
+    channel: "all",
+    reason: "",
+    expiresInDays: 0,
+  });
+
+  const { data: complianceReport, isLoading: reportLoading } = useQuery<{
+    totalLeads: number;
+    consented: number;
+    unconsented: number;
+    revoked: number;
+    denied: number;
+    dncRegistered: number;
+    suppressed: number;
+    withValidTokens: number;
+    withExpiredTokens: number;
+    byTokenType: Record<string, number>;
+    byChannel: Record<string, number>;
+    consentRate: number;
+    complianceScore: number;
+  }>({
+    queryKey: ["/api/admin/compliance/report", DFW_MARKET_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/compliance/report?marketId=${DFW_MARKET_ID}`);
+      if (!res.ok) throw new Error("Failed to fetch compliance report");
+      return res.json();
+    },
+  });
+
+  const { data: suppressionStats, isLoading: suppressionStatsLoading } = useQuery<{
+    totalActive: number;
+    byChannel: Record<string, number>;
+    bySource: Record<string, number>;
+    byReason: Record<string, number>;
+  }>({
+    queryKey: ["/api/suppression/stats"],
+  });
+
+  const { data: suppressionItems, isLoading: suppressionListLoading } = useQuery<Array<{
+    id: string;
+    leadId: string | null;
+    entityName: string | null;
+    phone: string | null;
+    email: string | null;
+    channel: string;
+    reason: string;
+    source: string;
+    addedAt: string;
+    expiresAt: string | null;
+    isActive: boolean;
+  }>>({
+    queryKey: ["/api/suppression/list"],
+  });
+
+  const { data: phoneValidationSummary, isLoading: phoneLoading } = useQuery<{
+    totalPhones: number;
+    validatedCount: number;
+    invalidCount: number;
+    mobileCount: number;
+    landlineCount: number;
+    voipCount: number;
+    unknownCount: number;
+    validatedPct: number;
+    mobilePct: number;
+    landlinePct: number;
+    voipPct: number;
+    invalidPct: number;
+  }>({
+    queryKey: ["/api/admin/phone-validation/summary", DFW_MARKET_ID],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/phone-validation/summary?marketId=${DFW_MARKET_ID}`);
+      if (!res.ok) throw new Error("Failed to fetch phone validation summary");
+      return res.json();
+    },
+  });
+
+  const { data: batchValidationStatus } = useQuery<{
+    processed: number;
+    total: number;
+    running: boolean;
+  }>({
+    queryKey: ["/api/admin/phone-validation/status"],
+    refetchInterval: (query) => {
+      const d = query.state.data as { running: boolean } | undefined;
+      return d?.running ? 2000 : false;
+    },
+  });
+
+  const addSuppressionMutation = useMutation({
+    mutationFn: async (entry: typeof newSuppression) => {
+      const body: any = {
+        channel: entry.channel,
+        reason: entry.reason,
+        source: "manual",
+      };
+      if (entry.entityName) body.entityName = entry.entityName;
+      if (entry.phone) body.phone = entry.phone;
+      if (entry.email) body.email = entry.email;
+      if (entry.expiresInDays > 0) {
+        body.expiresAt = new Date(Date.now() + entry.expiresInDays * 86400000).toISOString();
+      }
+      const res = await apiRequest("POST", "/api/suppression/add", body);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Added to suppression list" });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppression/list"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppression/stats"] });
+      setNewSuppression({ entityName: "", phone: "", email: "", channel: "all", reason: "", expiresInDays: 0 });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to add suppression", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeSuppressionMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/suppression/${id}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Removed from suppression list" });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppression/list"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppression/stats"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to remove", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const startBatchValidationMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/phone-validation/batch", { limit: 100 });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Batch phone validation started" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/phone-validation/status"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to start batch validation", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleConsentSearch = async () => {
+    if (!consentSearchQuery.trim()) return;
+    setConsentSearchLoading(true);
+    setConsentSearchResult(null);
+    try {
+      const searchRes = await fetch(`/api/leads?search=${encodeURIComponent(consentSearchQuery.trim())}&limit=1`);
+      if (!searchRes.ok) throw new Error("Search failed");
+      const searchData = await searchRes.json();
+      const leads = searchData.leads || searchData;
+      if (!leads || leads.length === 0) {
+        setConsentSearchResult({ error: "No lead found matching that query" });
+        return;
+      }
+      const leadId = leads[0].id;
+      const auditRes = await fetch(`/api/leads/${leadId}/consent/audit`);
+      if (!auditRes.ok) throw new Error("Failed to fetch audit trail");
+      const audit = await auditRes.json();
+      setConsentSearchResult({ lead: leads[0], audit });
+    } catch (err: any) {
+      setConsentSearchResult({ error: err.message });
+    } finally {
+      setConsentSearchLoading(false);
+    }
+  };
+
+  const pieData = complianceReport ? [
+    { name: "Consented", value: complianceReport.consented, fill: "#10b981" },
+    { name: "Unconsented", value: complianceReport.unconsented, fill: "#94a3b8" },
+    { name: "DNC", value: complianceReport.dncRegistered, fill: "#ef4444" },
+    { name: "Suppressed", value: complianceReport.suppressed, fill: "#f59e0b" },
+    { name: "Revoked", value: complianceReport.revoked, fill: "#8b5cf6" },
+  ].filter(d => d.value > 0) : [];
+
+  const batchRunning = batchValidationStatus?.running || false;
+  const batchPct = batchValidationStatus && batchValidationStatus.total > 0
+    ? Math.round((batchValidationStatus.processed / batchValidationStatus.total) * 100) : 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="shadow-sm" data-testid="card-compliance-overview">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Shield className="w-4 h-4" />
+              Compliance Overview
+            </CardTitle>
+            <Badge variant="outline" data-testid="badge-compliance-score">
+              Score: {complianceReport?.complianceScore ?? 0}%
+            </Badge>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            {reportLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-40 w-full" />
+              </div>
+            ) : complianceReport ? (
+              <div className="flex flex-col items-center gap-4">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs w-full">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Leads</span>
+                    <span className="font-medium" data-testid="text-compliance-total">{complianceReport.totalLeads.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Consent Rate</span>
+                    <span className="font-medium" data-testid="text-consent-rate">{(complianceReport.consentRate * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-emerald-600">Consented</span>
+                    <span className="font-medium" data-testid="text-consented">{complianceReport.consented.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Unconsented</span>
+                    <span className="font-medium" data-testid="text-unconsented">{complianceReport.unconsented.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-red-500">DNC Registered</span>
+                    <span className="font-medium" data-testid="text-dnc">{complianceReport.dncRegistered.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-500">Suppressed</span>
+                    <span className="font-medium" data-testid="text-suppressed">{complianceReport.suppressed.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-500">Revoked</span>
+                    <span className="font-medium" data-testid="text-revoked">{complianceReport.revoked.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Valid Tokens</span>
+                    <span className="font-medium" data-testid="text-valid-tokens">{complianceReport.withValidTokens.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No compliance data available</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm" data-testid="card-compliance-report">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Compliance Report
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0">
+            {reportLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : complianceReport ? (
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <CoverageBar
+                    label="Consented"
+                    value={complianceReport.consented}
+                    total={complianceReport.totalLeads}
+                    icon={<ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />}
+                  />
+                  <CoverageBar
+                    label="DNC Registered"
+                    value={complianceReport.dncRegistered}
+                    total={complianceReport.totalLeads}
+                    icon={<Ban className="w-3.5 h-3.5 text-red-500" />}
+                  />
+                  <CoverageBar
+                    label="Suppressed"
+                    value={complianceReport.suppressed}
+                    total={complianceReport.totalLeads}
+                    icon={<ShieldOff className="w-3.5 h-3.5 text-amber-500" />}
+                  />
+                </div>
+
+                {Object.keys(complianceReport.byChannel).length > 0 && (
+                  <div className="pt-3 border-t">
+                    <p className="text-xs font-medium mb-2 text-muted-foreground">By Channel</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {Object.entries(complianceReport.byChannel).map(([channel, count]) => (
+                        <div key={channel} className="flex justify-between bg-muted/30 rounded-md p-2" data-testid={`channel-${channel}`}>
+                          <span>{channel}</span>
+                          <span className="font-medium">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {Object.keys(complianceReport.byTokenType).length > 0 && (
+                  <div className="pt-3 border-t">
+                    <p className="text-xs font-medium mb-2 text-muted-foreground">By Token Type</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {Object.entries(complianceReport.byTokenType).map(([type, count]) => (
+                        <div key={type} className="flex justify-between bg-muted/30 rounded-md p-2" data-testid={`token-type-${type}`}>
+                          <span>{type}</span>
+                          <span className="font-medium">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No data available</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="shadow-sm" data-testid="card-consent-search">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Search className="w-4 h-4" />
+            Consent Search
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6 pt-0 space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Input
+              placeholder="Search by address or lead ID..."
+              value={consentSearchQuery}
+              onChange={(e) => setConsentSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleConsentSearch()}
+              data-testid="input-consent-search"
+            />
+            <Button
+              onClick={handleConsentSearch}
+              disabled={consentSearchLoading || !consentSearchQuery.trim()}
+              data-testid="button-consent-search"
+            >
+              {consentSearchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              Search
+            </Button>
+          </div>
+
+          {consentSearchResult && (
+            <div className="space-y-3" data-testid="consent-search-results">
+              {consentSearchResult.error ? (
+                <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                  {consentSearchResult.error}
+                </div>
+              ) : (
+                <>
+                  <div className="p-3 rounded-md bg-muted/50 space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div>
+                        <p className="text-sm font-medium" data-testid="text-search-lead-address">{consentSearchResult.lead.address}</p>
+                        <p className="text-xs text-muted-foreground">{consentSearchResult.lead.city}, {consentSearchResult.lead.state} {consentSearchResult.lead.zipCode}</p>
+                      </div>
+                      <Badge
+                        variant={consentSearchResult.audit.currentStatus === "granted" ? "default" : "secondary"}
+                        data-testid="badge-consent-status"
+                      >
+                        {consentSearchResult.audit.currentStatus}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Consent Date:</span>{" "}
+                        <span>{consentSearchResult.audit.consentDate ? new Date(consentSearchResult.audit.consentDate).toLocaleDateString() : "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Channel:</span>{" "}
+                        <span>{consentSearchResult.audit.consentChannel || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">DNC:</span>{" "}
+                        <span>{consentSearchResult.audit.dncRegistered ? "Yes" : "No"}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {consentSearchResult.audit.tokens && consentSearchResult.audit.tokens.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Consent Tokens</p>
+                      {consentSearchResult.audit.tokens.map((token: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-xs p-2 rounded-md bg-muted/30" data-testid={`consent-token-${i}`}>
+                          <div className="flex items-center gap-2">
+                            <Fingerprint className="w-3 h-3 text-muted-foreground" />
+                            <span className="font-medium">{token.tokenType}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Badge
+                              variant={token.verificationResult === "valid" ? "default" : "destructive"}
+                              className="text-[10px]"
+                            >
+                              {token.verificationResult}
+                            </Badge>
+                            <span className="text-muted-foreground">{token.createdAt ? new Date(token.createdAt).toLocaleDateString() : ""}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {consentSearchResult.audit.consentRecords && consentSearchResult.audit.consentRecords.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Consent Records</p>
+                      {consentSearchResult.audit.consentRecords.map((rec: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-xs p-2 rounded-md bg-muted/30" data-testid={`consent-record-${i}`}>
+                          <div className="flex items-center gap-2">
+                            <span>{rec.channel}</span>
+                            <Badge variant="outline" className="text-[10px]">{rec.consentStatus}</Badge>
+                          </div>
+                          <span className="text-muted-foreground">{rec.consentDate ? new Date(rec.consentDate).toLocaleDateString() : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm" data-testid="card-suppression-manager">
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <ShieldOff className="w-4 h-4" />
+            Suppression List Manager
+          </CardTitle>
+          <Badge variant="secondary" data-testid="badge-suppression-count">
+            {suppressionStats?.totalActive ?? 0} active
+          </Badge>
+        </CardHeader>
+        <CardContent className="p-6 pt-0 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs">Entity Name</Label>
+              <Input
+                placeholder="Name..."
+                value={newSuppression.entityName}
+                onChange={(e) => setNewSuppression(p => ({ ...p, entityName: e.target.value }))}
+                data-testid="input-suppression-entity"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Phone</Label>
+              <Input
+                placeholder="Phone..."
+                value={newSuppression.phone}
+                onChange={(e) => setNewSuppression(p => ({ ...p, phone: e.target.value }))}
+                data-testid="input-suppression-phone"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Email</Label>
+              <Input
+                placeholder="Email..."
+                value={newSuppression.email}
+                onChange={(e) => setNewSuppression(p => ({ ...p, email: e.target.value }))}
+                data-testid="input-suppression-email"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Channel</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={newSuppression.channel}
+                onChange={(e) => setNewSuppression(p => ({ ...p, channel: e.target.value }))}
+                data-testid="select-suppression-channel"
+              >
+                <option value="all">All</option>
+                <option value="phone">Phone</option>
+                <option value="email">Email</option>
+                <option value="sms">SMS</option>
+                <option value="mail">Mail</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Reason</Label>
+              <Input
+                placeholder="Reason..."
+                value={newSuppression.reason}
+                onChange={(e) => setNewSuppression(p => ({ ...p, reason: e.target.value }))}
+                data-testid="input-suppression-reason"
+              />
+            </div>
+            <Button
+              onClick={() => addSuppressionMutation.mutate(newSuppression)}
+              disabled={addSuppressionMutation.isPending || !newSuppression.reason}
+              data-testid="button-add-suppression"
+            >
+              {addSuppressionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+              Add
+            </Button>
+          </div>
+
+          {suppressionListLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : suppressionItems && suppressionItems.length > 0 ? (
+            <div className="max-h-[300px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-background">
+                  <tr className="border-b">
+                    <th className="text-left py-2 px-1">Entity / ID</th>
+                    <th className="text-left py-2 px-1">Phone</th>
+                    <th className="text-left py-2 px-1">Email</th>
+                    <th className="text-left py-2 px-1">Channel</th>
+                    <th className="text-left py-2 px-1">Reason</th>
+                    <th className="text-left py-2 px-1">Added</th>
+                    <th className="text-left py-2 px-1">Expires</th>
+                    <th className="text-right py-2 px-1"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppressionItems.map((item) => (
+                    <tr key={item.id} className="border-b border-muted/50" data-testid={`suppression-row-${item.id}`}>
+                      <td className="py-1.5 px-1 truncate max-w-[120px]">{item.entityName || item.leadId || "-"}</td>
+                      <td className="py-1.5 px-1">{item.phone || "-"}</td>
+                      <td className="py-1.5 px-1 truncate max-w-[140px]">{item.email || "-"}</td>
+                      <td className="py-1.5 px-1">
+                        <Badge variant="outline" className="text-[10px]">{item.channel}</Badge>
+                      </td>
+                      <td className="py-1.5 px-1 truncate max-w-[120px]">{item.reason}</td>
+                      <td className="py-1.5 px-1 text-muted-foreground">{item.addedAt ? new Date(item.addedAt).toLocaleDateString() : "-"}</td>
+                      <td className="py-1.5 px-1 text-muted-foreground">{item.expiresAt ? new Date(item.expiresAt).toLocaleDateString() : "Never"}</td>
+                      <td className="py-1.5 px-1 text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeSuppressionMutation.mutate(item.id)}
+                          disabled={removeSuppressionMutation.isPending}
+                          data-testid={`button-remove-suppression-${item.id}`}
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">No active suppressions</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card className="shadow-sm" data-testid="card-phone-validation-summary">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Phone className="w-4 h-4" />
+              Phone Validation Summary
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0 space-y-4">
+            {phoneLoading ? (
+              <Skeleton className="h-40 w-full" />
+            ) : phoneValidationSummary ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3 text-center mb-4">
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3" data-testid="stat-validated-phones">
+                    <div className="text-xl font-bold text-emerald-600">{phoneValidationSummary.validatedPct}%</div>
+                    <div className="text-[11px] text-muted-foreground">Validated</div>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3" data-testid="stat-mobile-phones">
+                    <div className="text-xl font-bold text-blue-600">{phoneValidationSummary.mobilePct}%</div>
+                    <div className="text-[11px] text-muted-foreground">Mobile</div>
+                  </div>
+                  <div className="bg-red-50 dark:bg-red-950/30 rounded-lg p-3" data-testid="stat-invalid-phones">
+                    <div className="text-xl font-bold text-red-600">{phoneValidationSummary.invalidPct}%</div>
+                    <div className="text-[11px] text-muted-foreground">Invalid</div>
+                  </div>
+                </div>
+
+                <CoverageBar
+                  label="Validated"
+                  value={phoneValidationSummary.validatedCount}
+                  total={phoneValidationSummary.totalPhones}
+                  icon={<CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
+                />
+                <CoverageBar
+                  label="Mobile"
+                  value={phoneValidationSummary.mobileCount}
+                  total={phoneValidationSummary.totalPhones}
+                  icon={<Phone className="w-3.5 h-3.5 text-blue-500" />}
+                />
+                <CoverageBar
+                  label="Landline"
+                  value={phoneValidationSummary.landlineCount}
+                  total={phoneValidationSummary.totalPhones}
+                  icon={<Phone className="w-3.5 h-3.5 text-amber-500" />}
+                />
+                <CoverageBar
+                  label="VoIP"
+                  value={phoneValidationSummary.voipCount}
+                  total={phoneValidationSummary.totalPhones}
+                  icon={<Globe className="w-3.5 h-3.5 text-purple-500" />}
+                />
+                <CoverageBar
+                  label="Invalid"
+                  value={phoneValidationSummary.invalidCount}
+                  total={phoneValidationSummary.totalPhones}
+                  icon={<XCircle className="w-3.5 h-3.5 text-red-500" />}
+                />
+
+                <div className="pt-2 text-xs text-muted-foreground">
+                  Total phones: {phoneValidationSummary.totalPhones.toLocaleString()}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">No phone validation data</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm" data-testid="card-batch-validation">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Batch Phone Validation
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6 pt-0 space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Validate phone numbers via Twilio Lookup API. Determines line type (mobile/landline/VoIP), carrier, and validity.
+            </p>
+
+            <Button
+              onClick={() => startBatchValidationMutation.mutate()}
+              disabled={batchRunning || startBatchValidationMutation.isPending}
+              data-testid="button-start-batch-validation"
+            >
+              {batchRunning || startBatchValidationMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Phone className="w-4 h-4" />
+              )}
+              {batchRunning ? "Validating..." : "Start Batch Validation"}
+            </Button>
+
+            {batchRunning && batchValidationStatus && (
+              <div className="space-y-2" data-testid="batch-validation-progress">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    <span className="font-medium">Validating phones...</span>
+                  </span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {batchValidationStatus.processed} / {batchValidationStatus.total}
+                  </span>
+                </div>
+                <div className="h-3 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${batchPct}%` }}
+                    data-testid="progress-batch-validation"
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground text-right">{batchPct}% complete</div>
+              </div>
+            )}
+
+            {!batchRunning && batchValidationStatus && batchValidationStatus.total > 0 && batchValidationStatus.processed > 0 && (
+              <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="batch-validation-complete">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  Last batch complete
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {batchValidationStatus.processed} phones processed out of {batchValidationStatus.total}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function ROIEnginePanel() {
   const { toast } = useToast();
   const [batchMarketId, setBatchMarketId] = useState("");
@@ -3192,6 +4313,8 @@ export default function Admin() {
           <TabsTrigger value="property-scanner" className="rounded-lg text-[13px] font-medium" data-testid="tab-property-scanner">Property Scanner</TabsTrigger>
           <TabsTrigger value="system" className="rounded-lg text-[13px] font-medium" data-testid="tab-system">System</TabsTrigger>
           <TabsTrigger value="roi" className="rounded-lg text-[13px] font-medium" data-testid="tab-roi">ROI Engine</TabsTrigger>
+          <TabsTrigger value="analytics" className="rounded-lg text-[13px] font-medium" data-testid="tab-analytics">Analytics & KPIs</TabsTrigger>
+          <TabsTrigger value="compliance" className="rounded-lg text-[13px] font-medium" data-testid="tab-compliance">Compliance</TabsTrigger>
         </TabsList>
 
         <TabsContent value="data-coverage" className="space-y-6">
@@ -5109,6 +6232,14 @@ export default function Admin() {
 
         <TabsContent value="roi" className="space-y-6">
           <ROIEnginePanel />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          <AnalyticsKPIsPanel marketId={marketId} />
+        </TabsContent>
+
+        <TabsContent value="compliance" className="space-y-6">
+          <CompliancePanel />
         </TabsContent>
       </Tabs>
     </div>

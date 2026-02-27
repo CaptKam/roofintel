@@ -1095,4 +1095,85 @@ export const insertEnrichmentBudgetSchema = createInsertSchema(enrichmentBudgets
 export type InsertEnrichmentBudget = z.infer<typeof insertEnrichmentBudgetSchema>;
 export type EnrichmentBudget = typeof enrichmentBudgets.$inferSelect;
 
+export const leadOutcomes = pgTable("lead_outcomes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").references(() => leads.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").notNull(),
+  appointmentDate: timestamp("appointment_date"),
+  proposalValue: real("proposal_value"),
+  closedValue: real("closed_value"),
+  closedDate: timestamp("closed_date"),
+  contractorId: varchar("contractor_id"),
+  outcomeSource: text("outcome_source").notNull().default("manual"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const skipTraceLog = pgTable("skip_trace_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").references(() => leads.id, { onDelete: "cascade" }).notNull(),
+  provider: text("provider").notNull(),
+  cost: real("cost").notNull().default(0),
+  fieldsReturned: text("fields_returned").array(),
+  matchQuality: text("match_quality").notNull().default("none"),
+  tracedAt: timestamp("traced_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  cooldownDays: integer("cooldown_days").default(180),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const consentTokens = pgTable("consent_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  leadId: varchar("lead_id").references(() => leads.id, { onDelete: "cascade" }).notNull(),
+  tokenType: text("token_type").notNull(),
+  tokenValue: text("token_value"),
+  captureUrl: text("capture_url"),
+  captureTimestamp: timestamp("capture_timestamp"),
+  verifiedAt: timestamp("verified_at"),
+  verificationResult: text("verification_result"),
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const kpiSnapshots = pgTable("kpi_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketId: varchar("market_id").notNull(),
+  snapshotDate: timestamp("snapshot_date").defaultNow(),
+  totalLeads: integer("total_leads"),
+  contactableLeads: integer("contactable_leads"),
+  matchRate: real("match_rate"),
+  contactableRate: real("contactable_rate"),
+  appointmentsSet: integer("appointments_set"),
+  proposalsSent: integer("proposals_sent"),
+  closedWon: integer("closed_won"),
+  closedLost: integer("closed_lost"),
+  totalRevenue: real("total_revenue"),
+  totalEnrichmentSpend: real("total_enrichment_spend"),
+  costPerLead: real("cost_per_lead"),
+  costPerSale: real("cost_per_sale"),
+  conversionRate: real("conversion_rate"),
+  roi: real("roi"),
+  avgLeadScore: real("avg_lead_score"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLeadOutcomeSchema = createInsertSchema(leadOutcomes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertLeadOutcome = z.infer<typeof insertLeadOutcomeSchema>;
+export type LeadOutcome = typeof leadOutcomes.$inferSelect;
+
+export const insertSkipTraceLogSchema = createInsertSchema(skipTraceLog).omit({ id: true, createdAt: true });
+export type InsertSkipTraceLog = z.infer<typeof insertSkipTraceLogSchema>;
+export type SkipTraceLog = typeof skipTraceLog.$inferSelect;
+
+export const insertConsentTokenSchema = createInsertSchema(consentTokens).omit({ id: true, createdAt: true });
+export type InsertConsentToken = z.infer<typeof insertConsentTokenSchema>;
+export type ConsentToken = typeof consentTokens.$inferSelect;
+
+export const insertKpiSnapshotSchema = createInsertSchema(kpiSnapshots).omit({ id: true, createdAt: true });
+export type InsertKpiSnapshot = z.infer<typeof insertKpiSnapshotSchema>;
+export type KpiSnapshot = typeof kpiSnapshots.$inferSelect;
+
 export * from "./models/chat";

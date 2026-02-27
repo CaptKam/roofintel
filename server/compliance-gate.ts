@@ -1,7 +1,8 @@
 import { db } from "./storage";
-import { leads, suppressionList, complianceConsent, decisionMakerReviews } from "@shared/schema";
+import { leads, suppressionList, complianceConsent, consentTokens, decisionMakerReviews } from "@shared/schema";
 import type { Lead } from "@shared/schema";
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and, or, sql, desc } from "drizzle-orm";
+import { verifyConsent } from "./consent-manager";
 
 interface ComplianceCheckResult {
   allowed: boolean;
@@ -57,6 +58,15 @@ export async function checkLeadCompliance(leadId: string): Promise<ComplianceChe
     emailAllowed = false;
     emailReason = "Consent revoked";
     flags.push("consent_revoked");
+  }
+
+  const consentCheck = await verifyConsent(leadId);
+  if (consentCheck.hasConsent) {
+    flags.push("consent_token_valid");
+  } else {
+    if (lead.consentStatus !== "granted") {
+      flags.push("no_valid_consent_token");
+    }
   }
 
   const suppressions = await db.select().from(suppressionList)
