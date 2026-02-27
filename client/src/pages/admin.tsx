@@ -65,6 +65,9 @@ import {
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid, Legend, FunnelChart, Funnel, LabelList, PieChart, Pie } from "recharts";
 import type { Market, ImportRun, Job, DataSource } from "@shared/schema";
+import { ROIEnginePanel } from "@/components/admin/roi-engine-panel";
+import { AnalyticsKPIsPanel } from "@/components/admin/analytics-kpis-panel";
+import { CompliancePanel } from "@/components/admin/compliance-panel";
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "Never";
@@ -1815,1589 +1818,6 @@ function RunAllPipelineCard() {
   );
 }
 
-interface RoiDecisionRow {
-  id: string;
-  leadId: string;
-  marketId: string;
-  decisionType: string;
-  roiScore: number | null;
-  expectedValue: number | null;
-  enrichmentCost: number | null;
-  recommendedApis: string[] | null;
-  confidence: number | null;
-  reasonSummary: string | null;
-  createdAt: string | null;
-  address: string | null;
-  leadScore: number | null;
-}
-
-interface RoiTierStat {
-  tier: string;
-  count: number;
-  totalEv: number;
-  totalCost: number;
-  avgRoi: number;
-}
-
-interface RoiStatsResponse {
-  stats: RoiTierStat[];
-  budget: {
-    dailyBudgetUsd: number;
-    monthlyBudgetUsd: number;
-    spentTodayUsd: number;
-    spentThisMonthUsd: number;
-    dailyRemaining: number;
-  };
-}
-
-interface BudgetConfig {
-  dailyBudgetUsd: number;
-  monthlyBudgetUsd: number;
-  hailSeasonMultiplier: number;
-  minRoiThreshold: number;
-  avgDealSize: number;
-  baseCloseRate: number;
-  spentTodayUsd: number;
-  spentThisMonthUsd: number;
-}
-
-const TIER_COLORS: Record<string, string> = {
-  skip: "#94a3b8",
-  tier1: "#60a5fa",
-  tier2: "#34d399",
-  tier3: "#fbbf24",
-  premium: "#a78bfa",
-  free_only: "#f87171",
-};
-
-const FUNNEL_COLORS = ["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#22c55e"];
-const KPI_CHART_COLORS = {
-  contactableRate: "#3b82f6",
-  conversionRate: "#22c55e",
-  costPerLead: "#f59e0b",
-  roi: "#8b5cf6",
-};
-
-function AnalyticsKPIsPanel({ marketId }: { marketId?: string }) {
-  const { toast } = useToast();
-  const DFW_MARKET_ID = marketId || "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
-
-  const { data: currentKpi, isLoading: kpiLoading } = useQuery<any>({
-    queryKey: ["/api/admin/kpis/current", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/kpis/current?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch KPI");
-      return res.json();
-    },
-  });
-
-  const { data: timeSeries, isLoading: timeSeriesLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/kpis/timeseries", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/kpis/timeseries?marketId=${DFW_MARKET_ID}&days=90`);
-      if (!res.ok) throw new Error("Failed to fetch timeseries");
-      return res.json();
-    },
-  });
-
-  const { data: funnel, isLoading: funnelLoading } = useQuery<any>({
-    queryKey: ["/api/admin/kpis/funnel", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/kpis/funnel?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch funnel");
-      return res.json();
-    },
-  });
-
-  const { data: traceCosts, isLoading: traceCostsLoading } = useQuery<any[]>({
-    queryKey: ["/api/admin/trace-costs", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/trace-costs?marketId=${DFW_MARKET_ID}&days=90`);
-      if (!res.ok) throw new Error("Failed to fetch trace costs");
-      return res.json();
-    },
-  });
-
-  const snapshotMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/kpis/snapshot", { marketId: DFW_MARKET_ID });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "KPI snapshot computed" });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/kpis/current"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/kpis/timeseries"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/kpis/funnel"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to compute snapshot", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const retrainMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/kpis/retrain-weights", { marketId: DFW_MARKET_ID });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      toast({ title: "Weight analysis complete" });
-      setRetrainResult(data);
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to retrain", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const [retrainResult, setRetrainResult] = useState<any>(null);
-
-  const funnelData = funnel?.stages?.map((s: any, i: number) => ({
-    name: s.stage.charAt(0).toUpperCase() + s.stage.slice(1),
-    value: s.count,
-    fill: FUNNEL_COLORS[i % FUNNEL_COLORS.length],
-    conversionFromPrev: s.conversionFromPrev,
-    pctOfTotal: s.pctOfTotal,
-  })) || [];
-
-  const trendData = (timeSeries || []).map((s: any) => ({
-    date: new Date(s.snapshotDate).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    contactableRate: Math.round((s.contactableRate || 0) * 100),
-    conversionRate: Math.round((s.conversionRate || 0) * 10000) / 100,
-    costPerLead: Math.round((s.costPerLead || 0) * 100) / 100,
-    roi: Math.round((s.roi || 0) * 100) / 100,
-  })).reverse();
-
-  const costData = (traceCosts || []).map((t: any) => ({
-    provider: t.provider,
-    totalSpend: t.totalSpend,
-    traceCount: t.traceCount,
-    matchCount: t.matchCount,
-    matchRate: Math.round((t.matchRate || 0) * 100),
-    avgCostPerMatch: t.avgCostPerMatch,
-  }));
-
-  return (
-    <div className="space-y-6">
-      <Card className="shadow-sm" data-testid="card-snapshot-controls">
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Gauge className="w-4 h-4" />
-            Snapshot Controls
-          </CardTitle>
-          {currentKpi && (
-            <Badge variant="outline" className="text-xs" data-testid="badge-last-snapshot">
-              <Clock className="w-3 h-3 mr-1" />
-              Last: {formatDate(currentKpi.createdAt)}
-            </Badge>
-          )}
-        </CardHeader>
-        <CardContent className="p-6 pt-0 space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Button
-              onClick={() => snapshotMutation.mutate()}
-              disabled={snapshotMutation.isPending}
-              data-testid="button-compute-snapshot"
-            >
-              {snapshotMutation.isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Activity className="w-4 h-4 mr-2" />
-              )}
-              Compute Snapshot Now
-            </Button>
-            {currentKpi && (
-              <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
-                <span data-testid="text-kpi-total-leads">Leads: <span className="font-medium text-foreground">{currentKpi.totalLeads?.toLocaleString()}</span></span>
-                <span data-testid="text-kpi-contactable">Contactable: <span className="font-medium text-foreground">{Math.round((currentKpi.contactableRate || 0) * 100)}%</span></span>
-                <span data-testid="text-kpi-conversion">Conversion: <span className="font-medium text-foreground">{Math.round((currentKpi.conversionRate || 0) * 10000) / 100}%</span></span>
-                <span data-testid="text-kpi-roi">ROI: <span className="font-medium text-foreground">{(currentKpi.roi || 0).toFixed(2)}x</span></span>
-              </div>
-            )}
-          </div>
-          {!currentKpi && !kpiLoading && (
-            <p className="text-sm text-muted-foreground">No snapshots yet. Click "Compute Snapshot Now" to generate your first KPI snapshot.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-sm" data-testid="card-conversion-funnel">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
-            Conversion Funnel
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6 pt-0">
-          {funnelLoading ? (
-            <Skeleton className="h-48 w-full" />
-          ) : funnelData.length > 0 ? (
-            <div className="space-y-4">
-              <div className="flex items-end gap-2" style={{ height: 200 }}>
-                {funnelData.map((stage: any, i: number) => {
-                  const maxVal = Math.max(...funnelData.map((d: any) => d.value), 1);
-                  const barHeight = Math.max(10, (stage.value / maxVal) * 180);
-                  return (
-                    <div key={stage.name} className="flex-1 flex flex-col items-center gap-1" data-testid={`funnel-stage-${stage.name.toLowerCase()}`}>
-                      <span className="text-xs font-medium">{stage.value.toLocaleString()}</span>
-                      <div
-                        className="w-full rounded-md transition-all"
-                        style={{ height: barHeight, backgroundColor: stage.fill }}
-                      />
-                      <span className="text-[11px] text-muted-foreground text-center">{stage.name}</span>
-                      {i > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {Math.round(stage.conversionFromPrev * 100)}%
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {funnel && (
-                <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
-                  <span>Total: <span className="font-medium text-foreground">{funnel.totalLeads?.toLocaleString()}</span></span>
-                  <span>Won: <span className="font-medium text-emerald-600">{funnel.closedWon}</span></span>
-                  <span>Lost: <span className="font-medium text-red-500">{funnel.closedLost}</span></span>
-                  <span>Win Rate: <span className="font-medium text-foreground">{Math.round((funnel.winRate || 0) * 100)}%</span></span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-6">No funnel data available. Record outcomes to populate the funnel.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-sm" data-testid="card-kpi-trends">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" />
-            KPI Trends
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6 pt-0">
-          {timeSeriesLoading ? (
-            <Skeleton className="h-64 w-full" />
-          ) : trendData.length > 1 ? (
-            <div className="space-y-6">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Contactable Rate & Conversion Rate (%)</p>
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ fontSize: 12 }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Line type="monotone" dataKey="contactableRate" stroke={KPI_CHART_COLORS.contactableRate} name="Contactable %" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="conversionRate" stroke={KPI_CHART_COLORS.conversionRate} name="Conversion %" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-              <div>
-                <p className="text-xs font-medium text-muted-foreground mb-2">Cost per Lead ($) & ROI (x)</p>
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ fontSize: 12 }} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Line type="monotone" dataKey="costPerLead" stroke={KPI_CHART_COLORS.costPerLead} name="Cost/Lead $" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="roi" stroke={KPI_CHART_COLORS.roi} name="ROI x" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-6">
-              {trendData.length === 1 ? "Only 1 snapshot. Compute more snapshots over time to see trends." : "No trend data yet. Compute snapshots to generate trend charts."}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-sm" data-testid="card-cost-breakdown">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              Cost Breakdown by Provider
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0">
-            {traceCostsLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : costData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={costData}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="provider" tick={{ fontSize: 10 }} angle={-20} textAnchor="end" height={50} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} formatter={(val: number) => `$${val.toFixed(2)}`} />
-                  <Bar dataKey="totalSpend" name="Total Spend" radius={[4, 4, 0, 0]}>
-                    {costData.map((_: any, i: number) => (
-                      <Cell key={i} fill={FUNNEL_COLORS[i % FUNNEL_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-6">No trace cost data available.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm" data-testid="card-match-rate-table">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Target className="w-4 h-4" />
-              Match Rate by Provider
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0">
-            {traceCostsLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : costData.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-2 px-2">Provider</th>
-                      <th className="text-right py-2 px-2">Traces</th>
-                      <th className="text-right py-2 px-2">Matches</th>
-                      <th className="text-right py-2 px-2">Match %</th>
-                      <th className="text-right py-2 px-2">Avg $/Match</th>
-                      <th className="text-right py-2 px-2">Total $</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {costData.map((row: any) => (
-                      <tr key={row.provider} className="border-b border-muted/50" data-testid={`provider-row-${row.provider}`}>
-                        <td className="py-2 px-2 font-medium">{row.provider}</td>
-                        <td className="py-2 px-2 text-right">{row.traceCount.toLocaleString()}</td>
-                        <td className="py-2 px-2 text-right">{row.matchCount.toLocaleString()}</td>
-                        <td className="py-2 px-2 text-right">
-                          <Badge variant={row.matchRate >= 50 ? "default" : row.matchRate >= 20 ? "secondary" : "outline"} className="text-[10px]">
-                            {row.matchRate}%
-                          </Badge>
-                        </td>
-                        <td className="py-2 px-2 text-right">${row.avgCostPerMatch.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right font-medium">${row.totalSpend.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-6">No provider data available.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="shadow-sm" data-testid="card-weight-retraining">
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            Weight Retraining
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6 pt-0 space-y-4">
-          <p className="text-xs text-muted-foreground">
-            Analyze closed-won vs closed-lost outcomes to identify which lead attributes correlate with wins. Results are recommendations for admin review, not auto-applied.
-          </p>
-          <Button
-            onClick={() => retrainMutation.mutate()}
-            disabled={retrainMutation.isPending}
-            data-testid="button-retrain-weights"
-          >
-            {retrainMutation.isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4 mr-2" />
-            )}
-            Run Weight Analysis
-          </Button>
-
-          {retrainResult && (
-            <div className="space-y-3 pt-3 border-t" data-testid="retrain-results">
-              <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
-                <span>Won samples: <span className="font-medium text-foreground">{retrainResult.sampleSize?.won}</span></span>
-                <span>Lost samples: <span className="font-medium text-foreground">{retrainResult.sampleSize?.lost}</span></span>
-                <span>Generated: <span className="font-medium text-foreground">{formatDate(retrainResult.generatedAt)}</span></span>
-              </div>
-              {retrainResult.note && (
-                <div className="text-xs p-2 rounded-md bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300" data-testid="text-retrain-note">
-                  {retrainResult.note}
-                </div>
-              )}
-              {retrainResult.recommendations && Object.keys(retrainResult.recommendations).length > 0 && (
-                <div className="space-y-2">
-                  {Object.entries(retrainResult.recommendations).map(([attr, rec]: [string, any]) => (
-                    <div key={attr} className="border rounded-md p-3 space-y-1" data-testid={`retrain-attr-${attr}`}>
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <span className="text-sm font-medium">{attr.replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase())}</span>
-                        {rec.suggestion && rec.suggestion !== "review_manually" && (
-                          <Badge
-                            variant={rec.suggestion === "increase_weight" ? "default" : rec.suggestion === "decrease_weight" ? "destructive" : "secondary"}
-                            className="text-[10px]"
-                          >
-                            {rec.suggestion === "increase_weight" ? "Increase" : rec.suggestion === "decrease_weight" ? "Decrease" : "No Change"}
-                          </Badge>
-                        )}
-                        {rec.suggestion === "review_manually" && (
-                          <Badge variant="outline" className="text-[10px]">Manual Review</Badge>
-                        )}
-                      </div>
-                      {rec.wonAvg !== undefined && (
-                        <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
-                          <span>Won avg: <span className="font-medium text-foreground">{rec.wonAvg}</span></span>
-                          <span>Lost avg: <span className="font-medium text-foreground">{rec.lostAvg}</span></span>
-                          <span>Impact: <span className="font-medium text-foreground">{rec.impact}</span></span>
-                          {rec.recommendedMultiplier && (
-                            <span>Multiplier: <span className="font-medium text-foreground">{rec.recommendedMultiplier}x</span></span>
-                          )}
-                        </div>
-                      )}
-                      {rec.wonBreakdown && (
-                        <div className="grid grid-cols-2 gap-2 text-xs mt-1">
-                          <div>
-                            <span className="text-muted-foreground">Won breakdown:</span>
-                            {Object.entries(rec.wonBreakdown).map(([k, v]: [string, any]) => (
-                              <span key={k} className="ml-2">{k}: {v}</span>
-                            ))}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Lost breakdown:</span>
-                            {Object.entries(rec.lostBreakdown || {}).map(([k, v]: [string, any]) => (
-                              <span key={k} className="ml-2">{k}: {v}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function CompliancePanel() {
-  const { toast } = useToast();
-  const DFW_MARKET_ID = "89c5b2b9-32f9-4e7f-8d57-e05a2a9bd5da";
-  const [consentSearchQuery, setConsentSearchQuery] = useState("");
-  const [consentSearchResult, setConsentSearchResult] = useState<any>(null);
-  const [consentSearchLoading, setConsentSearchLoading] = useState(false);
-
-  const [newSuppression, setNewSuppression] = useState({
-    entityName: "",
-    phone: "",
-    email: "",
-    channel: "all",
-    reason: "",
-    expiresInDays: 0,
-  });
-
-  const { data: complianceReport, isLoading: reportLoading } = useQuery<{
-    totalLeads: number;
-    consented: number;
-    unconsented: number;
-    revoked: number;
-    denied: number;
-    dncRegistered: number;
-    suppressed: number;
-    withValidTokens: number;
-    withExpiredTokens: number;
-    byTokenType: Record<string, number>;
-    byChannel: Record<string, number>;
-    consentRate: number;
-    complianceScore: number;
-  }>({
-    queryKey: ["/api/admin/compliance/report", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/compliance/report?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch compliance report");
-      return res.json();
-    },
-  });
-
-  const { data: suppressionStats, isLoading: suppressionStatsLoading } = useQuery<{
-    totalActive: number;
-    byChannel: Record<string, number>;
-    bySource: Record<string, number>;
-    byReason: Record<string, number>;
-  }>({
-    queryKey: ["/api/suppression/stats"],
-  });
-
-  const { data: suppressionItems, isLoading: suppressionListLoading } = useQuery<Array<{
-    id: string;
-    leadId: string | null;
-    entityName: string | null;
-    phone: string | null;
-    email: string | null;
-    channel: string;
-    reason: string;
-    source: string;
-    addedAt: string;
-    expiresAt: string | null;
-    isActive: boolean;
-  }>>({
-    queryKey: ["/api/suppression/list"],
-  });
-
-  const { data: phoneValidationSummary, isLoading: phoneLoading } = useQuery<{
-    totalPhones: number;
-    validatedCount: number;
-    invalidCount: number;
-    mobileCount: number;
-    landlineCount: number;
-    voipCount: number;
-    unknownCount: number;
-    validatedPct: number;
-    mobilePct: number;
-    landlinePct: number;
-    voipPct: number;
-    invalidPct: number;
-  }>({
-    queryKey: ["/api/admin/phone-validation/summary", DFW_MARKET_ID],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/phone-validation/summary?marketId=${DFW_MARKET_ID}`);
-      if (!res.ok) throw new Error("Failed to fetch phone validation summary");
-      return res.json();
-    },
-  });
-
-  const { data: batchValidationStatus } = useQuery<{
-    processed: number;
-    total: number;
-    running: boolean;
-  }>({
-    queryKey: ["/api/admin/phone-validation/status"],
-    refetchInterval: (query) => {
-      const d = query.state.data as { running: boolean } | undefined;
-      return d?.running ? 2000 : false;
-    },
-  });
-
-  const addSuppressionMutation = useMutation({
-    mutationFn: async (entry: typeof newSuppression) => {
-      const body: any = {
-        channel: entry.channel,
-        reason: entry.reason,
-        source: "manual",
-      };
-      if (entry.entityName) body.entityName = entry.entityName;
-      if (entry.phone) body.phone = entry.phone;
-      if (entry.email) body.email = entry.email;
-      if (entry.expiresInDays > 0) {
-        body.expiresAt = new Date(Date.now() + entry.expiresInDays * 86400000).toISOString();
-      }
-      const res = await apiRequest("POST", "/api/suppression/add", body);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Added to suppression list" });
-      queryClient.invalidateQueries({ queryKey: ["/api/suppression/list"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/suppression/stats"] });
-      setNewSuppression({ entityName: "", phone: "", email: "", channel: "all", reason: "", expiresInDays: 0 });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to add suppression", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const removeSuppressionMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest("DELETE", `/api/suppression/${id}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Removed from suppression list" });
-      queryClient.invalidateQueries({ queryKey: ["/api/suppression/list"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/suppression/stats"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to remove", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const startBatchValidationMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/phone-validation/batch", { limit: 100 });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Batch phone validation started" });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/phone-validation/status"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to start batch validation", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const handleConsentSearch = async () => {
-    if (!consentSearchQuery.trim()) return;
-    setConsentSearchLoading(true);
-    setConsentSearchResult(null);
-    try {
-      const searchRes = await fetch(`/api/leads?search=${encodeURIComponent(consentSearchQuery.trim())}&limit=1`);
-      if (!searchRes.ok) throw new Error("Search failed");
-      const searchData = await searchRes.json();
-      const leads = searchData.leads || searchData;
-      if (!leads || leads.length === 0) {
-        setConsentSearchResult({ error: "No lead found matching that query" });
-        return;
-      }
-      const leadId = leads[0].id;
-      const auditRes = await fetch(`/api/leads/${leadId}/consent/audit`);
-      if (!auditRes.ok) throw new Error("Failed to fetch audit trail");
-      const audit = await auditRes.json();
-      setConsentSearchResult({ lead: leads[0], audit });
-    } catch (err: any) {
-      setConsentSearchResult({ error: err.message });
-    } finally {
-      setConsentSearchLoading(false);
-    }
-  };
-
-  const pieData = complianceReport ? [
-    { name: "Consented", value: complianceReport.consented, fill: "#10b981" },
-    { name: "Unconsented", value: complianceReport.unconsented, fill: "#94a3b8" },
-    { name: "DNC", value: complianceReport.dncRegistered, fill: "#ef4444" },
-    { name: "Suppressed", value: complianceReport.suppressed, fill: "#f59e0b" },
-    { name: "Revoked", value: complianceReport.revoked, fill: "#8b5cf6" },
-  ].filter(d => d.value > 0) : [];
-
-  const batchRunning = batchValidationStatus?.running || false;
-  const batchPct = batchValidationStatus && batchValidationStatus.total > 0
-    ? Math.round((batchValidationStatus.processed / batchValidationStatus.total) * 100) : 0;
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-sm" data-testid="card-compliance-overview">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              Compliance Overview
-            </CardTitle>
-            <Badge variant="outline" data-testid="badge-compliance-score">
-              Score: {complianceReport?.complianceScore ?? 0}%
-            </Badge>
-          </CardHeader>
-          <CardContent className="p-6 pt-0">
-            {reportLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-40 w-full" />
-              </div>
-            ) : complianceReport ? (
-              <div className="flex flex-col items-center gap-4">
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={80}
-                      paddingAngle={2}
-                      dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    >
-                      {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs w-full">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total Leads</span>
-                    <span className="font-medium" data-testid="text-compliance-total">{complianceReport.totalLeads.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Consent Rate</span>
-                    <span className="font-medium" data-testid="text-consent-rate">{(complianceReport.consentRate * 100).toFixed(1)}%</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-emerald-600">Consented</span>
-                    <span className="font-medium" data-testid="text-consented">{complianceReport.consented.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Unconsented</span>
-                    <span className="font-medium" data-testid="text-unconsented">{complianceReport.unconsented.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-red-500">DNC Registered</span>
-                    <span className="font-medium" data-testid="text-dnc">{complianceReport.dncRegistered.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-amber-500">Suppressed</span>
-                    <span className="font-medium" data-testid="text-suppressed">{complianceReport.suppressed.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-purple-500">Revoked</span>
-                    <span className="font-medium" data-testid="text-revoked">{complianceReport.revoked.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Valid Tokens</span>
-                    <span className="font-medium" data-testid="text-valid-tokens">{complianceReport.withValidTokens.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-6">No compliance data available</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm" data-testid="card-compliance-report">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              Compliance Report
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0">
-            {reportLoading ? (
-              <Skeleton className="h-40 w-full" />
-            ) : complianceReport ? (
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <CoverageBar
-                    label="Consented"
-                    value={complianceReport.consented}
-                    total={complianceReport.totalLeads}
-                    icon={<ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />}
-                  />
-                  <CoverageBar
-                    label="DNC Registered"
-                    value={complianceReport.dncRegistered}
-                    total={complianceReport.totalLeads}
-                    icon={<Ban className="w-3.5 h-3.5 text-red-500" />}
-                  />
-                  <CoverageBar
-                    label="Suppressed"
-                    value={complianceReport.suppressed}
-                    total={complianceReport.totalLeads}
-                    icon={<ShieldOff className="w-3.5 h-3.5 text-amber-500" />}
-                  />
-                </div>
-
-                {Object.keys(complianceReport.byChannel).length > 0 && (
-                  <div className="pt-3 border-t">
-                    <p className="text-xs font-medium mb-2 text-muted-foreground">By Channel</p>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {Object.entries(complianceReport.byChannel).map(([channel, count]) => (
-                        <div key={channel} className="flex justify-between bg-muted/30 rounded-md p-2" data-testid={`channel-${channel}`}>
-                          <span>{channel}</span>
-                          <span className="font-medium">{count}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {Object.keys(complianceReport.byTokenType).length > 0 && (
-                  <div className="pt-3 border-t">
-                    <p className="text-xs font-medium mb-2 text-muted-foreground">By Token Type</p>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      {Object.entries(complianceReport.byTokenType).map(([type, count]) => (
-                        <div key={type} className="flex justify-between bg-muted/30 rounded-md p-2" data-testid={`token-type-${type}`}>
-                          <span>{type}</span>
-                          <span className="font-medium">{count}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-6">No data available</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="shadow-sm" data-testid="card-consent-search">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Search className="w-4 h-4" />
-            Consent Search
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6 pt-0 space-y-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <Input
-              placeholder="Search by address or lead ID..."
-              value={consentSearchQuery}
-              onChange={(e) => setConsentSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleConsentSearch()}
-              data-testid="input-consent-search"
-            />
-            <Button
-              onClick={handleConsentSearch}
-              disabled={consentSearchLoading || !consentSearchQuery.trim()}
-              data-testid="button-consent-search"
-            >
-              {consentSearchLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-              Search
-            </Button>
-          </div>
-
-          {consentSearchResult && (
-            <div className="space-y-3" data-testid="consent-search-results">
-              {consentSearchResult.error ? (
-                <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-                  {consentSearchResult.error}
-                </div>
-              ) : (
-                <>
-                  <div className="p-3 rounded-md bg-muted/50 space-y-2">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div>
-                        <p className="text-sm font-medium" data-testid="text-search-lead-address">{consentSearchResult.lead.address}</p>
-                        <p className="text-xs text-muted-foreground">{consentSearchResult.lead.city}, {consentSearchResult.lead.state} {consentSearchResult.lead.zipCode}</p>
-                      </div>
-                      <Badge
-                        variant={consentSearchResult.audit.currentStatus === "granted" ? "default" : "secondary"}
-                        data-testid="badge-consent-status"
-                      >
-                        {consentSearchResult.audit.currentStatus}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-muted-foreground">Consent Date:</span>{" "}
-                        <span>{consentSearchResult.audit.consentDate ? new Date(consentSearchResult.audit.consentDate).toLocaleDateString() : "N/A"}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Channel:</span>{" "}
-                        <span>{consentSearchResult.audit.consentChannel || "N/A"}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">DNC:</span>{" "}
-                        <span>{consentSearchResult.audit.dncRegistered ? "Yes" : "No"}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {consentSearchResult.audit.tokens && consentSearchResult.audit.tokens.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Consent Tokens</p>
-                      {consentSearchResult.audit.tokens.map((token: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between text-xs p-2 rounded-md bg-muted/30" data-testid={`consent-token-${i}`}>
-                          <div className="flex items-center gap-2">
-                            <Fingerprint className="w-3 h-3 text-muted-foreground" />
-                            <span className="font-medium">{token.tokenType}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <Badge
-                              variant={token.verificationResult === "valid" ? "default" : "destructive"}
-                              className="text-[10px]"
-                            >
-                              {token.verificationResult}
-                            </Badge>
-                            <span className="text-muted-foreground">{token.createdAt ? new Date(token.createdAt).toLocaleDateString() : ""}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {consentSearchResult.audit.consentRecords && consentSearchResult.audit.consentRecords.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">Consent Records</p>
-                      {consentSearchResult.audit.consentRecords.map((rec: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between text-xs p-2 rounded-md bg-muted/30" data-testid={`consent-record-${i}`}>
-                          <div className="flex items-center gap-2">
-                            <span>{rec.channel}</span>
-                            <Badge variant="outline" className="text-[10px]">{rec.consentStatus}</Badge>
-                          </div>
-                          <span className="text-muted-foreground">{rec.consentDate ? new Date(rec.consentDate).toLocaleDateString() : ""}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-sm" data-testid="card-suppression-manager">
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <ShieldOff className="w-4 h-4" />
-            Suppression List Manager
-          </CardTitle>
-          <Badge variant="secondary" data-testid="badge-suppression-count">
-            {suppressionStats?.totalActive ?? 0} active
-          </Badge>
-        </CardHeader>
-        <CardContent className="p-6 pt-0 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-            <div className="space-y-1">
-              <Label className="text-xs">Entity Name</Label>
-              <Input
-                placeholder="Name..."
-                value={newSuppression.entityName}
-                onChange={(e) => setNewSuppression(p => ({ ...p, entityName: e.target.value }))}
-                data-testid="input-suppression-entity"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Phone</Label>
-              <Input
-                placeholder="Phone..."
-                value={newSuppression.phone}
-                onChange={(e) => setNewSuppression(p => ({ ...p, phone: e.target.value }))}
-                data-testid="input-suppression-phone"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Email</Label>
-              <Input
-                placeholder="Email..."
-                value={newSuppression.email}
-                onChange={(e) => setNewSuppression(p => ({ ...p, email: e.target.value }))}
-                data-testid="input-suppression-email"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Channel</Label>
-              <select
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={newSuppression.channel}
-                onChange={(e) => setNewSuppression(p => ({ ...p, channel: e.target.value }))}
-                data-testid="select-suppression-channel"
-              >
-                <option value="all">All</option>
-                <option value="phone">Phone</option>
-                <option value="email">Email</option>
-                <option value="sms">SMS</option>
-                <option value="mail">Mail</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Reason</Label>
-              <Input
-                placeholder="Reason..."
-                value={newSuppression.reason}
-                onChange={(e) => setNewSuppression(p => ({ ...p, reason: e.target.value }))}
-                data-testid="input-suppression-reason"
-              />
-            </div>
-            <Button
-              onClick={() => addSuppressionMutation.mutate(newSuppression)}
-              disabled={addSuppressionMutation.isPending || !newSuppression.reason}
-              data-testid="button-add-suppression"
-            >
-              {addSuppressionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
-              Add
-            </Button>
-          </div>
-
-          {suppressionListLoading ? (
-            <Skeleton className="h-32 w-full" />
-          ) : suppressionItems && suppressionItems.length > 0 ? (
-            <div className="max-h-[300px] overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-background">
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-1">Entity / ID</th>
-                    <th className="text-left py-2 px-1">Phone</th>
-                    <th className="text-left py-2 px-1">Email</th>
-                    <th className="text-left py-2 px-1">Channel</th>
-                    <th className="text-left py-2 px-1">Reason</th>
-                    <th className="text-left py-2 px-1">Added</th>
-                    <th className="text-left py-2 px-1">Expires</th>
-                    <th className="text-right py-2 px-1"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suppressionItems.map((item) => (
-                    <tr key={item.id} className="border-b border-muted/50" data-testid={`suppression-row-${item.id}`}>
-                      <td className="py-1.5 px-1 truncate max-w-[120px]">{item.entityName || item.leadId || "-"}</td>
-                      <td className="py-1.5 px-1">{item.phone || "-"}</td>
-                      <td className="py-1.5 px-1 truncate max-w-[140px]">{item.email || "-"}</td>
-                      <td className="py-1.5 px-1">
-                        <Badge variant="outline" className="text-[10px]">{item.channel}</Badge>
-                      </td>
-                      <td className="py-1.5 px-1 truncate max-w-[120px]">{item.reason}</td>
-                      <td className="py-1.5 px-1 text-muted-foreground">{item.addedAt ? new Date(item.addedAt).toLocaleDateString() : "-"}</td>
-                      <td className="py-1.5 px-1 text-muted-foreground">{item.expiresAt ? new Date(item.expiresAt).toLocaleDateString() : "Never"}</td>
-                      <td className="py-1.5 px-1 text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeSuppressionMutation.mutate(item.id)}
-                          disabled={removeSuppressionMutation.isPending}
-                          data-testid={`button-remove-suppression-${item.id}`}
-                        >
-                          <XCircle className="w-3.5 h-3.5 text-destructive" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">No active suppressions</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-sm" data-testid="card-phone-validation-summary">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Phone className="w-4 h-4" />
-              Phone Validation Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0 space-y-4">
-            {phoneLoading ? (
-              <Skeleton className="h-40 w-full" />
-            ) : phoneValidationSummary ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-3 text-center mb-4">
-                  <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3" data-testid="stat-validated-phones">
-                    <div className="text-xl font-bold text-emerald-600">{phoneValidationSummary.validatedPct}%</div>
-                    <div className="text-[11px] text-muted-foreground">Validated</div>
-                  </div>
-                  <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3" data-testid="stat-mobile-phones">
-                    <div className="text-xl font-bold text-blue-600">{phoneValidationSummary.mobilePct}%</div>
-                    <div className="text-[11px] text-muted-foreground">Mobile</div>
-                  </div>
-                  <div className="bg-red-50 dark:bg-red-950/30 rounded-lg p-3" data-testid="stat-invalid-phones">
-                    <div className="text-xl font-bold text-red-600">{phoneValidationSummary.invalidPct}%</div>
-                    <div className="text-[11px] text-muted-foreground">Invalid</div>
-                  </div>
-                </div>
-
-                <CoverageBar
-                  label="Validated"
-                  value={phoneValidationSummary.validatedCount}
-                  total={phoneValidationSummary.totalPhones}
-                  icon={<CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
-                />
-                <CoverageBar
-                  label="Mobile"
-                  value={phoneValidationSummary.mobileCount}
-                  total={phoneValidationSummary.totalPhones}
-                  icon={<Phone className="w-3.5 h-3.5 text-blue-500" />}
-                />
-                <CoverageBar
-                  label="Landline"
-                  value={phoneValidationSummary.landlineCount}
-                  total={phoneValidationSummary.totalPhones}
-                  icon={<Phone className="w-3.5 h-3.5 text-amber-500" />}
-                />
-                <CoverageBar
-                  label="VoIP"
-                  value={phoneValidationSummary.voipCount}
-                  total={phoneValidationSummary.totalPhones}
-                  icon={<Globe className="w-3.5 h-3.5 text-purple-500" />}
-                />
-                <CoverageBar
-                  label="Invalid"
-                  value={phoneValidationSummary.invalidCount}
-                  total={phoneValidationSummary.totalPhones}
-                  icon={<XCircle className="w-3.5 h-3.5 text-red-500" />}
-                />
-
-                <div className="pt-2 text-xs text-muted-foreground">
-                  Total phones: {phoneValidationSummary.totalPhones.toLocaleString()}
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-6">No phone validation data</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm" data-testid="card-batch-validation">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Activity className="w-4 h-4" />
-              Batch Phone Validation
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0 space-y-4">
-            <p className="text-xs text-muted-foreground">
-              Validate phone numbers via Twilio Lookup API. Determines line type (mobile/landline/VoIP), carrier, and validity.
-            </p>
-
-            <Button
-              onClick={() => startBatchValidationMutation.mutate()}
-              disabled={batchRunning || startBatchValidationMutation.isPending}
-              data-testid="button-start-batch-validation"
-            >
-              {batchRunning || startBatchValidationMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Phone className="w-4 h-4" />
-              )}
-              {batchRunning ? "Validating..." : "Start Batch Validation"}
-            </Button>
-
-            {batchRunning && batchValidationStatus && (
-              <div className="space-y-2" data-testid="batch-validation-progress">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                    <span className="font-medium">Validating phones...</span>
-                  </span>
-                  <span className="text-muted-foreground tabular-nums">
-                    {batchValidationStatus.processed} / {batchValidationStatus.total}
-                  </span>
-                </div>
-                <div className="h-3 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-primary transition-all"
-                    style={{ width: `${batchPct}%` }}
-                    data-testid="progress-batch-validation"
-                  />
-                </div>
-                <div className="text-xs text-muted-foreground text-right">{batchPct}% complete</div>
-              </div>
-            )}
-
-            {!batchRunning && batchValidationStatus && batchValidationStatus.total > 0 && batchValidationStatus.processed > 0 && (
-              <div className="p-3 rounded-lg bg-muted/50 space-y-1" data-testid="batch-validation-complete">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  Last batch complete
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {batchValidationStatus.processed} phones processed out of {batchValidationStatus.total}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function ROIEnginePanel() {
-  const { toast } = useToast();
-  const [batchMarketId, setBatchMarketId] = useState("");
-  const [batchZip, setBatchZip] = useState("");
-
-  const { data: budgetConfig, isLoading: budgetLoading } = useQuery<BudgetConfig>({
-    queryKey: ["/api/admin/budgets"],
-  });
-
-  const [budgetForm, setBudgetForm] = useState<Partial<BudgetConfig>>({});
-
-  const effectiveBudget = { ...budgetConfig, ...budgetForm };
-
-  const budgetMutation = useMutation({
-    mutationFn: async (updates: Partial<BudgetConfig>) => {
-      const res = await apiRequest("PATCH", "/api/admin/budgets", updates);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Budget config updated" });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/budgets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/roi/stats"] });
-      setBudgetForm({});
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to update budget", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const { data: batchStatus } = useQuery<{ processed: number; total: number; running: boolean }>({
-    queryKey: ["/api/admin/roi/status"],
-    refetchInterval: (query) => {
-      const d = query.state.data as { running: boolean } | undefined;
-      return d?.running ? 2000 : false;
-    },
-  });
-
-  const startBatchMutation = useMutation({
-    mutationFn: async () => {
-      const body: any = {};
-      if (batchMarketId) body.marketId = batchMarketId;
-      if (batchZip) body.zipCode = batchZip;
-      const res = await apiRequest("POST", "/api/admin/roi/run-batch", body);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "ROI batch started" });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/roi/status"] });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to start ROI batch", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const { data: roiStats, isLoading: statsLoading } = useQuery<RoiStatsResponse>({
-    queryKey: ["/api/admin/roi/stats"],
-  });
-
-  const { data: topDecisions, isLoading: decisionsLoading } = useQuery<RoiDecisionRow[]>({
-    queryKey: ["/api/admin/roi/decisions", "limit=20"],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/roi/decisions?limit=20");
-      if (!res.ok) throw new Error("Failed to fetch decisions");
-      return res.json();
-    },
-  });
-
-  const batchRunning = batchStatus?.running || false;
-  const tierData = (roiStats?.stats || []).map(s => ({
-    name: s.tier,
-    count: s.count,
-    fill: TIER_COLORS[s.tier] || "#94a3b8",
-  }));
-
-  const totalScored = (roiStats?.stats || []).reduce((s, t) => s + t.count, 0);
-  const projectedSpend = (roiStats?.stats || []).reduce((s, t) => s + Number(t.totalCost || 0), 0);
-  const projectedEV = (roiStats?.stats || []).reduce((s, t) => s + Number(t.totalEv || 0), 0);
-  const avgRoi = projectedSpend > 0 ? projectedEV / projectedSpend : 0;
-
-  const dailyBudget = roiStats?.budget?.dailyBudgetUsd || budgetConfig?.dailyBudgetUsd || 500;
-  const spentToday = roiStats?.budget?.spentTodayUsd || budgetConfig?.spentTodayUsd || 0;
-  const dailyPct = dailyBudget > 0 ? Math.min(100, Math.round((spentToday / dailyBudget) * 100)) : 0;
-  const budgetColor = dailyPct >= 90 ? "bg-red-500" : dailyPct >= 60 ? "bg-amber-500" : "bg-emerald-500";
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="shadow-sm" data-testid="roi-summary-total-scored">
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold">{totalScored.toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground">Total Scored</div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm" data-testid="roi-summary-projected-spend">
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-amber-600">${projectedSpend.toFixed(2)}</div>
-            <div className="text-xs text-muted-foreground">Projected Spend</div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm" data-testid="roi-summary-projected-ev">
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-emerald-600">${projectedEV.toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground">Projected EV</div>
-          </CardContent>
-        </Card>
-        <Card className="shadow-sm" data-testid="roi-summary-avg-roi">
-          <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">{avgRoi.toFixed(1)}x</div>
-            <div className="text-xs text-muted-foreground">Avg ROI</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-sm" data-testid="card-budget-config">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              Budget Configuration
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0 space-y-4">
-            {budgetLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-8 w-full" />
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Daily Budget ($)</Label>
-                    <Input
-                      type="number"
-                      value={effectiveBudget.dailyBudgetUsd ?? 500}
-                      onChange={e => setBudgetForm(p => ({ ...p, dailyBudgetUsd: parseFloat(e.target.value) || 0 }))}
-                      data-testid="input-daily-budget"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Monthly Budget ($)</Label>
-                    <Input
-                      type="number"
-                      value={effectiveBudget.monthlyBudgetUsd ?? 12000}
-                      onChange={e => setBudgetForm(p => ({ ...p, monthlyBudgetUsd: parseFloat(e.target.value) || 0 }))}
-                      data-testid="input-monthly-budget"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">ROI Threshold</Label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={effectiveBudget.minRoiThreshold ?? 8.0}
-                      onChange={e => setBudgetForm(p => ({ ...p, minRoiThreshold: parseFloat(e.target.value) || 0 }))}
-                      data-testid="input-roi-threshold"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Avg Deal Size ($)</Label>
-                    <Input
-                      type="number"
-                      value={effectiveBudget.avgDealSize ?? 28500}
-                      onChange={e => setBudgetForm(p => ({ ...p, avgDealSize: parseFloat(e.target.value) || 0 }))}
-                      data-testid="input-avg-deal-size"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Hail Season Multiplier</Label>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={effectiveBudget.hailSeasonMultiplier ?? 1.8}
-                      onChange={e => setBudgetForm(p => ({ ...p, hailSeasonMultiplier: parseFloat(e.target.value) || 0 }))}
-                      data-testid="input-hail-multiplier"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Base Close Rate</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={effectiveBudget.baseCloseRate ?? 0.09}
-                      onChange={e => setBudgetForm(p => ({ ...p, baseCloseRate: parseFloat(e.target.value) || 0 }))}
-                      data-testid="input-close-rate"
-                    />
-                  </div>
-                </div>
-                <Button
-                  className="w-full"
-                  onClick={() => budgetMutation.mutate(budgetForm)}
-                  disabled={budgetMutation.isPending || Object.keys(budgetForm).length === 0}
-                  data-testid="btn-save-budget"
-                >
-                  {budgetMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DollarSign className="w-4 h-4 mr-2" />}
-                  Save Budget Config
-                </Button>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm" data-testid="card-run-roi-batch">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              Run ROI Batch
-            </CardTitle>
-            {batchRunning && <Badge variant="secondary" className="animate-pulse">Running</Badge>}
-          </CardHeader>
-          <CardContent className="p-6 pt-0 space-y-4">
-            <p className="text-xs text-muted-foreground">Score all qualifying leads for enrichment ROI. Leads with score 40+ are evaluated against budget thresholds.</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Market ID (optional)</Label>
-                <Input
-                  placeholder="Leave blank for default"
-                  value={batchMarketId}
-                  onChange={e => setBatchMarketId(e.target.value)}
-                  disabled={batchRunning}
-                  data-testid="input-batch-market"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">ZIP Code (optional)</Label>
-                <Input
-                  placeholder="e.g. 75201"
-                  value={batchZip}
-                  onChange={e => setBatchZip(e.target.value)}
-                  disabled={batchRunning}
-                  data-testid="input-batch-zip"
-                />
-              </div>
-            </div>
-            <Button
-              className="w-full"
-              onClick={() => startBatchMutation.mutate()}
-              disabled={batchRunning || startBatchMutation.isPending}
-              data-testid="btn-start-roi-batch"
-            >
-              {batchRunning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
-              {batchRunning ? "Running ROI Batch..." : "Start ROI Batch"}
-            </Button>
-            {batchStatus && batchStatus.total > 0 && (
-              <div className="space-y-2 pt-2 border-t text-xs">
-                <div className="flex justify-between">
-                  <span>Progress</span>
-                  <span>{batchStatus.processed} / {batchStatus.total}</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-full transition-all"
-                    style={{ width: `${batchStatus.total > 0 ? Math.round((batchStatus.processed / batchStatus.total) * 100) : 0}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="shadow-sm" data-testid="card-budget-meter">
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Gauge className="w-4 h-4" />
-            Daily Budget Meter
-          </CardTitle>
-          <span className="text-xs text-muted-foreground">${spentToday.toFixed(2)} / ${dailyBudget.toFixed(2)}</span>
-        </CardHeader>
-        <CardContent className="p-6 pt-0">
-          <div className="h-4 bg-muted rounded-full overflow-hidden" data-testid="budget-meter-bar">
-            <div
-              className={`h-full rounded-full transition-all ${budgetColor}`}
-              style={{ width: `${dailyPct}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-muted-foreground mt-1">
-            <span>{dailyPct}% used</span>
-            <span>${(dailyBudget - spentToday).toFixed(2)} remaining</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="shadow-sm" data-testid="card-tier-distribution">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Tier Distribution
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0">
-            {statsLoading ? (
-              <Skeleton className="h-[200px] w-full" />
-            ) : tierData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={tierData}>
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                    {tierData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No tier data yet. Run an ROI batch to generate distribution.</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm" data-testid="card-tier-stats">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-semibold">Tier Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent className="p-6 pt-0">
-            {statsLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-6 w-full" />
-                <Skeleton className="h-6 w-full" />
-              </div>
-            ) : (roiStats?.stats || []).length > 0 ? (
-              <div className="space-y-2">
-                {(roiStats?.stats || []).map(s => (
-                  <div key={s.tier} className="flex items-center justify-between text-sm py-1.5 border-b border-muted/50">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: TIER_COLORS[s.tier] || "#94a3b8" }} />
-                      <span className="font-medium">{s.tier}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>{s.count} leads</span>
-                      <span>${Number(s.totalCost || 0).toFixed(2)} cost</span>
-                      <span>${Number(s.totalEv || 0).toLocaleString()} EV</span>
-                      <span>{Number(s.avgRoi || 0).toFixed(1)}x ROI</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No stats available</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="shadow-sm" data-testid="card-top-roi-leads">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" />
-            Top ROI Leads
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6 pt-0">
-          {decisionsLoading ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
-            </div>
-          ) : topDecisions && topDecisions.length > 0 ? (
-            <div className="max-h-[400px] overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-background">
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-1">Address</th>
-                    <th className="text-right py-2 px-1">Lead Score</th>
-                    <th className="text-right py-2 px-1">ROI Score</th>
-                    <th className="text-left py-2 px-1">Tier</th>
-                    <th className="text-right py-2 px-1">EV</th>
-                    <th className="text-right py-2 px-1">Cost</th>
-                    <th className="text-left py-2 px-1">APIs</th>
-                    <th className="text-left py-2 px-1">Reason</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topDecisions.map((d, i) => (
-                    <tr key={d.id || i} className="border-b border-muted/50 hover:bg-muted/30" data-testid={`roi-decision-row-${i}`}>
-                      <td className="py-1.5 px-1 truncate max-w-[180px]">{d.address || d.leadId}</td>
-                      <td className="py-1.5 px-1 text-right">{d.leadScore ?? "-"}</td>
-                      <td className="py-1.5 px-1 text-right font-medium">{d.roiScore != null ? Number(d.roiScore).toFixed(1) : "-"}x</td>
-                      <td className="py-1.5 px-1">
-                        <Badge
-                          variant="outline"
-                          className="text-[10px]"
-                          style={{ borderColor: TIER_COLORS[d.decisionType] || "#94a3b8", color: TIER_COLORS[d.decisionType] || "#94a3b8" }}
-                        >
-                          {d.decisionType}
-                        </Badge>
-                      </td>
-                      <td className="py-1.5 px-1 text-right text-emerald-600">${d.expectedValue != null ? Number(d.expectedValue).toLocaleString() : "-"}</td>
-                      <td className="py-1.5 px-1 text-right">${d.enrichmentCost != null ? Number(d.enrichmentCost).toFixed(2) : "-"}</td>
-                      <td className="py-1.5 px-1 truncate max-w-[120px]">{(d.recommendedApis || []).join(", ") || "-"}</td>
-                      <td className="py-1.5 px-1 truncate max-w-[150px] text-muted-foreground">{d.reasonSummary || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-8">No ROI decisions yet. Run an ROI batch to see top leads.</p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 export default function Admin() {
   const { toast } = useToast();
   const [dcadMinValue, setDcadMinValue] = useState("100000");
@@ -4297,31 +2717,57 @@ export default function Admin() {
         </p>
       </div>
 
-      <EnrichmentCreditsCard />
-      <BatchFreeEnrichmentCard />
-      <BatchGooglePlacesCard />
-      <RunAllPipelineCard />
-
-      <Tabs defaultValue="property-sources" className="space-y-6">
+      <Tabs defaultValue="markets-sources" className="space-y-6">
         <TabsList className="inline-flex gap-1 p-1 bg-muted/50 rounded-xl">
-          <TabsTrigger value="data-coverage" className="rounded-lg text-[13px] font-medium" data-testid="tab-data-coverage">Data Coverage</TabsTrigger>
-          <TabsTrigger value="property-sources" className="rounded-lg text-[13px] font-medium" data-testid="tab-property-sources">Property Sources</TabsTrigger>
-          <TabsTrigger value="storm-data" className="rounded-lg text-[13px] font-medium" data-testid="tab-storm-data">Storm Data</TabsTrigger>
-          <TabsTrigger value="contact-enrichment" className="rounded-lg text-[13px] font-medium" data-testid="tab-contact-enrichment">Contact Enrichment</TabsTrigger>
-          <TabsTrigger value="intelligence" className="rounded-lg text-[13px] font-medium" data-testid="tab-intelligence">Intelligence</TabsTrigger>
-          <TabsTrigger value="roofing-permits" className="rounded-lg text-[13px] font-medium" data-testid="tab-roofing-permits">Roofing Permits</TabsTrigger>
-          <TabsTrigger value="property-scanner" className="rounded-lg text-[13px] font-medium" data-testid="tab-property-scanner">Property Scanner</TabsTrigger>
-          <TabsTrigger value="system" className="rounded-lg text-[13px] font-medium" data-testid="tab-system">System</TabsTrigger>
-          <TabsTrigger value="roi" className="rounded-lg text-[13px] font-medium" data-testid="tab-roi">ROI Engine</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-lg text-[13px] font-medium" data-testid="tab-analytics">Analytics & KPIs</TabsTrigger>
+          <TabsTrigger value="markets-sources" className="rounded-lg text-[13px] font-medium" data-testid="tab-markets-sources">Markets & Sources</TabsTrigger>
+          <TabsTrigger value="data-quality" className="rounded-lg text-[13px] font-medium" data-testid="tab-data-quality">Data Quality</TabsTrigger>
           <TabsTrigger value="compliance" className="rounded-lg text-[13px] font-medium" data-testid="tab-compliance">Compliance</TabsTrigger>
+          <TabsTrigger value="system" className="rounded-lg text-[13px] font-medium" data-testid="tab-system">System</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="data-coverage" className="space-y-6">
-          <DataCoveragePanel />
-        </TabsContent>
 
-        <TabsContent value="property-sources" className="space-y-6">
+        <TabsContent value="markets-sources" className="space-y-6">
+          <EnrichmentCreditsCard />
+          <BatchFreeEnrichmentCard />
+          <BatchGooglePlacesCard />
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                <CardTitle className="text-base font-semibold">
+                  Active Markets
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-6 pt-0">
+                {marketsLoading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 w-full" />
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {markets?.map((market) => (
+                      <div
+                        key={market.id}
+                        className="flex items-center justify-between gap-2 py-3"
+                        data-testid={`market-${market.id}`}
+                      >
+                        <div>
+                          <p className="text-sm font-medium">{market.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {market.counties.join(", ")} counties
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className={`w-2 h-2 rounded-full ${market.isActive ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                          <span className="text-xs text-muted-foreground">{market.isActive ? "Active" : "Inactive"}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!markets || markets.length === 0) && (
+                      <p className="text-sm text-muted-foreground text-center py-6">No markets configured</p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -4546,9 +2992,6 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        <TabsContent value="storm-data" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -4662,155 +3105,8 @@ export default function Admin() {
           </div>
         </TabsContent>
 
-        <TabsContent value="contact-enrichment" className="space-y-6">
-          <Card className="shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-              <CardTitle className="text-base font-semibold">
-                Contact Enrichment Overview
-              </CardTitle>
-              <Button
-                size="sm"
-                onClick={() => dfwMarket && pipelineMutation.mutate({
-                  marketId: dfwMarket.id,
-                  batchSize: 25,
-                })}
-                disabled={pipelineMutation.isPending || !dfwMarket}
-                data-testid="button-run-pipeline"
-              >
-                {pipelineMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Play className="w-3 h-3" />
-                )}
-                Quick Enrich (25 Leads)
-              </Button>
-            </CardHeader>
-            <CardContent className="p-6 pt-0 space-y-6">
-              <p className="text-sm text-muted-foreground">
-                For bulk enrichment, use the <strong>Batch Free Enrichment</strong> button at the top of the page. It runs all free agents (TX Filing, Phone Discovery, Web Research) across all unenriched leads automatically. The controls below are for testing individual agents on small batches.
-              </p>
-              {pipelineLoading ? (
-                <Skeleton className="h-20 w-full" />
-              ) : pipelineStats ? (
-                <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
-                    {[
-                      { label: "Total Leads", value: pipelineStats.total, color: "text-foreground" },
-                      { label: "Owner Known", value: pipelineStats.withOwner, color: "text-foreground" },
-                      { label: "TX Filing Data", value: pipelineStats.withTxFilingData, color: "text-blue-600 dark:text-blue-400" },
-                      { label: "Has Phone", value: pipelineStats.withPhone, color: "text-emerald-600 dark:text-emerald-400" },
-                      { label: "Business Website", value: pipelineStats.withBusinessWebsite, color: "text-violet-600 dark:text-violet-400" },
-                      { label: "Decision-Maker", value: pipelineStats.withContactPerson, color: "text-amber-600 dark:text-amber-400" },
-                      { label: "Has Email", value: pipelineStats.withEmail, color: "text-rose-600 dark:text-rose-400" },
-                      { label: "Fully Enriched", value: pipelineStats.fullyEnriched, color: "text-emerald-600 dark:text-emerald-400" },
-                    ].map((item) => (
-                      <div key={item.label} className="text-center" data-testid={`stat-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
-                        <p className={`text-2xl font-bold ${item.color}`}>{item.value.toLocaleString()}</p>
-                        <p className="text-[11px] text-muted-foreground mt-1">{item.label}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-4 flex-wrap">
-                    <span className="text-xs text-muted-foreground">Contact Confidence:</span>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span className="text-xs">High: {pipelineStats.contactConfidence.high}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-xs">Medium: {pipelineStats.contactConfidence.medium}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-orange-500" />
-                      <span className="text-xs">Low: {pipelineStats.contactConfidence.low}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-muted-foreground" />
-                      <span className="text-xs">None: {pipelineStats.contactConfidence.none}</span>
-                    </div>
-                  </div>
-                </>
-              ) : null}
-
-              <button
-                onClick={() => setShowContactAdvanced(!showContactAdvanced)}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
-                data-testid="button-toggle-contact-advanced"
-              >
-                {showContactAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                Manual controls for individual agents
-              </button>
-
-              {showContactAdvanced && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-2 border-t">
-                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold">TX Filing Enrichment</p>
-                      <Badge variant="outline" className="text-[10px]">Free</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      LLC/Corp contacts via Texas Open Data Portal.
-                    </p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts">
-                        {contactEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserSearch className="w-3 h-3" />}
-                        Enrich (50)
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts-all">
-                        All Leads
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold">Phone Discovery</p>
-                      <Badge variant={phoneStatus?.totalAvailable ? "outline" : "secondary"} className="text-[10px]">
-                        {phoneStatus?.totalAvailable || 0} Provider{(phoneStatus?.totalAvailable || 0) !== 1 ? "s" : ""}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Cascading lookup: Google Places, OpenCorporates, web search.
-                    </p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones">
-                        {phoneEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Phone className="w-3 h-3" />}
-                        Find (50)
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones-all">
-                        All Leads
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold">Web Research</p>
-                      <div className="flex items-center gap-1.5">
-                        <div className={`w-2 h-2 rounded-full ${webResearchStatus?.googlePlacesAvailable ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                        <span className="text-[10px] text-muted-foreground">{webResearchStatus?.googlePlacesAvailable ? "Active" : "Needs Key"}</span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Scans business websites for decision-maker contacts.
-                    </p>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 25 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research">
-                        {webResearchMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                        Research (25)
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 100 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research-all">
-                        Research (100)
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="intelligence" className="space-y-6">
+        <TabsContent value="data-quality" className="space-y-6">
+          <DataCoveragePanel />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {isIntelStatsLoading ? (
               [...Array(4)].map((_, i) => (
@@ -5983,9 +4279,6 @@ export default function Admin() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="roofing-permits" className="space-y-6">
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-base font-semibold">
@@ -6072,53 +4365,160 @@ export default function Admin() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="property-scanner" className="space-y-6">
           <PropertyScannerPanel />
         </TabsContent>
 
+        <TabsContent value="compliance" className="space-y-6">
+          <CompliancePanel />
+        </TabsContent>
+
         <TabsContent value="system" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                <CardTitle className="text-base font-semibold">
-                  Active Markets
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 pt-0">
-                {marketsLoading ? (
-                  <div className="space-y-3">
-                    <Skeleton className="h-16 w-full" />
-                  </div>
+          <RunAllPipelineCard />
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-base font-semibold">
+                Contact Enrichment Overview
+              </CardTitle>
+              <Button
+                size="sm"
+                onClick={() => dfwMarket && pipelineMutation.mutate({
+                  marketId: dfwMarket.id,
+                  batchSize: 25,
+                })}
+                disabled={pipelineMutation.isPending || !dfwMarket}
+                data-testid="button-run-pipeline"
+              >
+                {pipelineMutation.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
-                  <div className="divide-y">
-                    {markets?.map((market) => (
-                      <div
-                        key={market.id}
-                        className="flex items-center justify-between gap-2 py-3"
-                        data-testid={`market-${market.id}`}
-                      >
-                        <div>
-                          <p className="text-sm font-medium">{market.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {market.counties.join(", ")} counties
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <div className={`w-2 h-2 rounded-full ${market.isActive ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-                          <span className="text-xs text-muted-foreground">{market.isActive ? "Active" : "Inactive"}</span>
-                        </div>
+                  <Play className="w-3 h-3" />
+                )}
+                Quick Enrich (25 Leads)
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6 pt-0 space-y-6">
+              <p className="text-sm text-muted-foreground">
+                For bulk enrichment, use the <strong>Batch Free Enrichment</strong> button at the top of the page. It runs all free agents (TX Filing, Phone Discovery, Web Research) across all unenriched leads automatically. The controls below are for testing individual agents on small batches.
+              </p>
+              {pipelineLoading ? (
+                <Skeleton className="h-20 w-full" />
+              ) : pipelineStats ? (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+                    {[
+                      { label: "Total Leads", value: pipelineStats.total, color: "text-foreground" },
+                      { label: "Owner Known", value: pipelineStats.withOwner, color: "text-foreground" },
+                      { label: "TX Filing Data", value: pipelineStats.withTxFilingData, color: "text-blue-600 dark:text-blue-400" },
+                      { label: "Has Phone", value: pipelineStats.withPhone, color: "text-emerald-600 dark:text-emerald-400" },
+                      { label: "Business Website", value: pipelineStats.withBusinessWebsite, color: "text-violet-600 dark:text-violet-400" },
+                      { label: "Decision-Maker", value: pipelineStats.withContactPerson, color: "text-amber-600 dark:text-amber-400" },
+                      { label: "Has Email", value: pipelineStats.withEmail, color: "text-rose-600 dark:text-rose-400" },
+                      { label: "Fully Enriched", value: pipelineStats.fullyEnriched, color: "text-emerald-600 dark:text-emerald-400" },
+                    ].map((item) => (
+                      <div key={item.label} className="text-center" data-testid={`stat-${item.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                        <p className={`text-2xl font-bold ${item.color}`}>{item.value.toLocaleString()}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">{item.label}</p>
                       </div>
                     ))}
-                    {(!markets || markets.length === 0) && (
-                      <p className="text-sm text-muted-foreground text-center py-6">No markets configured</p>
-                    )}
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <div className="flex items-center gap-4 flex-wrap">
+                    <span className="text-xs text-muted-foreground">Contact Confidence:</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span className="text-xs">High: {pipelineStats.contactConfidence.high}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-xs">Medium: {pipelineStats.contactConfidence.medium}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-orange-500" />
+                      <span className="text-xs">Low: {pipelineStats.contactConfidence.low}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                      <span className="text-xs">None: {pipelineStats.contactConfidence.none}</span>
+                    </div>
+                  </div>
+                </>
+              ) : null}
 
+              <button
+                onClick={() => setShowContactAdvanced(!showContactAdvanced)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+                data-testid="button-toggle-contact-advanced"
+              >
+                {showContactAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                Manual controls for individual agents
+              </button>
+
+              {showContactAdvanced && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-2 border-t">
+                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold">TX Filing Enrichment</p>
+                      <Badge variant="outline" className="text-[10px]">Free</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      LLC/Corp contacts via Texas Open Data Portal.
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts">
+                        {contactEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <UserSearch className="w-3 h-3" />}
+                        Enrich (50)
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && contactEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={contactEnrichMutation.isPending || !dfwMarket} data-testid="button-enrich-contacts-all">
+                        All Leads
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold">Phone Discovery</p>
+                      <Badge variant={phoneStatus?.totalAvailable ? "outline" : "secondary"} className="text-[10px]">
+                        {phoneStatus?.totalAvailable || 0} Provider{(phoneStatus?.totalAvailable || 0) !== 1 ? "s" : ""}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cascading lookup: Google Places, OpenCorporates, web search.
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 50 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones">
+                        {phoneEnrichMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Phone className="w-3 h-3" />}
+                        Find (50)
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && phoneEnrichMutation.mutate({ marketId: dfwMarket.id, batchSize: 500 })} disabled={phoneEnrichMutation.isPending || !dfwMarket || !phoneStatus?.totalAvailable} data-testid="button-enrich-phones-all">
+                        All Leads
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 p-3 rounded-lg bg-muted/30">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold">Web Research</p>
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-2 h-2 rounded-full ${webResearchStatus?.googlePlacesAvailable ? "bg-emerald-500" : "bg-muted-foreground"}`} />
+                        <span className="text-[10px] text-muted-foreground">{webResearchStatus?.googlePlacesAvailable ? "Active" : "Needs Key"}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Scans business websites for decision-maker contacts.
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button size="sm" variant="outline" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 25 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research">
+                        {webResearchMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                        Research (25)
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => dfwMarket && webResearchMutation.mutate({ marketId: dfwMarket.id, batchSize: 100 })} disabled={webResearchMutation.isPending || !dfwMarket || !webResearchStatus?.googlePlacesAvailable} data-testid="button-web-research-all">
+                        Research (100)
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                 <CardTitle className="text-base font-semibold">
@@ -6228,18 +4628,6 @@ export default function Admin() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="roi" className="space-y-6">
-          <ROIEnginePanel />
-        </TabsContent>
-
-        <TabsContent value="analytics" className="space-y-6">
-          <AnalyticsKPIsPanel marketId={marketId} />
-        </TabsContent>
-
-        <TabsContent value="compliance" className="space-y-6">
-          <CompliancePanel />
         </TabsContent>
       </Tabs>
     </div>
