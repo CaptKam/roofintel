@@ -44,6 +44,18 @@ import { db } from "./storage";
 import { sql, eq, desc } from "drizzle-orm";
 import { fetchAllYearsForProperty, getCachedSnapshots, naipBatchProgress, type NAIPBatchProgress } from "./naip-imagery-agent";
 import { analyzePropertyRoof } from "./roof-change-detector";
+import {
+  startAutomationEngine,
+  getAutomationStatus,
+  runDailyAutomation,
+  runWeeklyAutomation,
+  runStormChain,
+  runNewMarketLoad,
+  enrichSingleLead,
+  updateLeadStatus,
+  exportCallList,
+  getLastDailyBriefing,
+} from "./automation-engine";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -66,6 +78,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   await seedDatabase();
   startJobScheduler();
+  startAutomationEngine();
 
   app.get("/robots.txt", (req, res) => {
     const baseUrl = `${req.protocol}://${req.get("host")}`;
@@ -571,6 +584,87 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     } catch (error) {
       console.error("NOAA import error:", error);
       res.status(500).json({ message: "Failed to start NOAA import" });
+    }
+  });
+
+  app.post("/api/import/unified-free", async (req, res) => {
+    try {
+      const { marketId } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      const steps = [
+        { id: "noaa_hail", name: "NOAA Hail Import", status: "pending" as string, detail: "" },
+        { id: "violations", name: "Violations Import", status: "pending" as string, detail: "" },
+        { id: "permits", name: "Permits Import", status: "pending" as string, detail: "" },
+      ];
+
+      res.json({ message: "Unified free import started", marketId, steps });
+
+      (async () => {
+        const currentYear = new Date().getFullYear();
+
+        for (const step of steps) {
+          try {
+            if (step.id === "noaa_hail") {
+              step.status = "running";
+              const noaaMarket = await storage.getMarketById(marketId);
+              const targetCounties = new Set((noaaMarket?.counties || []).map((c: string) => c.toUpperCase()));
+              const result = await importNoaaMultiYear(currentYear - 5, currentYear, marketId, targetCounties);
+              const totalImported = result.reduce((sum, r) => sum + r.imported, 0);
+              step.status = "complete";
+              step.detail = `Imported ${totalImported} hail events`;
+              console.log(`[unified-free] NOAA hail complete: ${totalImported} events`);
+            } else if (step.id === "violations") {
+              const violMarket = await storage.getMarketById(marketId);
+              if (violMarket?.state === "TX") {
+                step.status = "running";
+                const result311 = await importDallas311(marketId, { daysBack: 90 });
+                const resultCode = await importDallasCodeViolations(marketId, { daysBack: 365 });
+                const matchResult = await matchViolationsToLeads(marketId);
+                step.status = "complete";
+                step.detail = `311: ${result311.imported || 0}, code: ${resultCode.imported || 0}, matched: ${matchResult.matched || 0}`;
+                console.log(`[unified-free] Violations complete: ${step.detail}`);
+              } else {
+                step.status = "skipped";
+                step.detail = `Not yet available for ${violMarket?.state || "unknown"} markets`;
+                console.log(`[unified-free] Violations skipped: ${step.detail}`);
+                continue;
+              }
+            } else if (step.id === "permits") {
+              const permMarket = await storage.getMarketById(marketId);
+              if (permMarket?.state === "TX") {
+                step.status = "running";
+                const dallasResult = await importDallasPermits(marketId, { daysBack: 365 });
+                const fwResult = await importFortWorthPermits(marketId, { yearsBack: 5, commercialOnly: true, roofingOnly: false });
+                const matchResult = await matchPermitsToLeads(marketId);
+                step.status = "complete";
+                step.detail = `Dallas: ${dallasResult.imported || 0}, FW: ${fwResult.imported || 0}, matched: ${matchResult.matched || 0}`;
+                console.log(`[unified-free] Permits complete: ${step.detail}`);
+              } else {
+                step.status = "skipped";
+                step.detail = `Not yet available for ${permMarket?.state || "unknown"} markets`;
+                console.log(`[unified-free] Permits skipped: ${step.detail}`);
+                continue;
+              }
+            }
+          } catch (err: any) {
+            step.status = "error";
+            step.detail = err.message;
+            console.error(`[unified-free] Step ${step.id} failed:`, err);
+          }
+        }
+        console.log("[unified-free] All steps finished:", steps.map(s => `${s.id}=${s.status}`).join(", "));
+      })();
+    } catch (error: any) {
+      console.error("Unified free import error:", error);
+      res.status(500).json({ message: "Failed to start unified free import", error: error.message });
     }
   });
 
@@ -5612,6 +5706,109 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);
+
+  // ═══════════════════════════════════════════════════════════
+  // AUTOMATION ENGINE ENDPOINTS
+  // ═══════════════════════════════════════════════════════════
+
+  // Status of all automation tiers
+  app.get("/api/automation/status", async (_req, res) => {
+    res.json(getAutomationStatus());
+  });
+
+  // Trigger daily automation manually
+  app.post("/api/automation/daily", async (_req, res) => {
+    try {
+      const result = await runDailyAutomation();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Daily automation error", error: error.message });
+    }
+  });
+
+  // Trigger weekly automation manually
+  app.post("/api/automation/weekly", async (_req, res) => {
+    try {
+      const result = await runWeeklyAutomation();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Weekly automation error", error: error.message });
+    }
+  });
+
+  // Run the enhanced storm chain (detect → correlate → boost → queue → SMS)
+  app.post("/api/automation/storm-chain", async (_req, res) => {
+    try {
+      const result = await runStormChain();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Storm chain error", error: error.message });
+    }
+  });
+
+  // Get the latest daily briefing
+  app.get("/api/automation/briefing", async (_req, res) => {
+    const briefing = getLastDailyBriefing();
+    if (!briefing) {
+      return res.json({ message: "No briefing generated yet. Trigger daily automation first.", briefing: null });
+    }
+    res.json(briefing);
+  });
+
+  // New market load orchestrator
+  app.post("/api/automation/market-load", async (req, res) => {
+    try {
+      const { marketId, skipNoaa, skipEnrichment } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId is required" });
+      const result = await runNewMarketLoad({ marketId, skipNoaa, skipEnrichment });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Market load error", error: error.message });
+    }
+  });
+
+  // Enrich a single lead (full 16-agent pipeline)
+  app.post("/api/automation/enrich/:leadId", async (req, res) => {
+    try {
+      const result = await enrichSingleLead(req.params.leadId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Enrichment error", error: error.message });
+    }
+  });
+
+  // Mark lead status (contacted/won/lost/no_answer/callback)
+  app.post("/api/automation/lead-status/:leadId", async (req, res) => {
+    try {
+      const { status } = req.body;
+      const validStatuses = ["contacted", "won", "lost", "no_answer", "callback"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Use: ${validStatuses.join(", ")}` });
+      }
+      const updated = await updateLeadStatus(req.params.leadId, status);
+      res.json({ success: true, lead: updated });
+    } catch (error: any) {
+      res.status(500).json({ message: "Status update error", error: error.message });
+    }
+  });
+
+  // Export call list as CSV
+  app.get("/api/automation/export-calls", async (req, res) => {
+    try {
+      const { marketId, minScore, tier, limit } = req.query;
+      const result = await exportCallList({
+        marketId: marketId as string,
+        minScore: minScore ? parseInt(minScore as string, 10) : undefined,
+        tier: tier as "tier1" | "tier2" | "tier3" | undefined,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+      });
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=call-list-${new Date().toISOString().split("T")[0]}.csv`);
+      res.send(result.csv);
+    } catch (error: any) {
+      res.status(500).json({ message: "Export error", error: error.message });
+    }
+  });
 
   return httpServer;
 }
