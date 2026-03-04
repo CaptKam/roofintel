@@ -281,289 +281,115 @@ function RoofRiskIndexCard({ leadId }: { leadId: string }) {
   );
 }
 
-function HunterPDLButtons({ leadId }: { leadId: string }) {
+function UnifiedEnrichButtons({ leadId }: { leadId: string }) {
   const { toast } = useToast();
-  const { data: usage } = useQuery<{
-    hunter: { used: number; limit: number; remaining: number };
-    pdl: { used: number; limit: number; remaining: number };
-    googlePlaces: { used: number; limit: number; remaining: number; estimatedCost: number; month: string };
-    serperConfigured: boolean;
-  }>({
-    queryKey: ["/api/enrichment/usage"],
-  });
 
-  const hunterMutation = useMutation({
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "intelligence"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "contact-path"] });
+  };
+
+  // 1. FREE ENRICHMENT — TX SOS, County Clerk, SEC EDGAR, Phone, Web Research
+  const freeEnrichMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/enrichment/hunter/${leadId}`, {});
+      const res = await apiRequest("POST", `/api/unified/enrich-free/${leadId}`, {});
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
-      if (data.success && data.emails?.length > 0) {
-        toast({ title: "Hunter.io", description: `Found ${data.emails.length} email(s)` });
-      } else if (data.error) {
-        toast({ title: "Hunter.io", description: data.error, variant: "destructive" });
-      } else {
-        toast({ title: "Hunter.io", description: "No emails found for this domain" });
-      }
-    },
-    onError: async (err: any) => {
-      let description = err.message || "Unknown error";
-      try {
-        const raw = description.replace(/^\d+:\s*/, "");
-        const body = JSON.parse(raw);
-        if (body.detail) {
-          description = body.detail;
-          if (body.suggestions?.length) description += " Try: " + body.suggestions[0];
-        } else if (body.message) {
-          description = body.message;
-        }
-      } catch {}
-      toast({ title: "Hunter.io", description, variant: "destructive" });
-    },
-  });
-
-  const pdlMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/enrichment/pdl/${leadId}`, {});
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
-      if (data.success && data.person) {
-        const found = [];
-        if (data.person.emails?.length) found.push(`${data.person.emails.length} email(s)`);
-        if (data.person.phones?.length) found.push(`${data.person.phones.length} phone(s)`);
-        toast({ title: "People Data Labs", description: found.length > 0 ? `Found ${found.join(", ")}` : "Match found but no new contacts" });
-      } else if (data.error) {
-        toast({ title: "People Data Labs", description: data.error, variant: "destructive" });
-      } else {
-        toast({ title: "People Data Labs", description: "No match found" });
-      }
+      invalidateAll();
+      const completed = data.results?.filter((r: any) => r.status === "complete").length || 0;
+      toast({ title: "Free Enrichment Complete", description: `${completed}/${data.agentsRun} agents ran. Score: ${data.newScore}` });
     },
     onError: (err: any) => {
-      toast({ title: "PDL failed", description: err.message, variant: "destructive" });
+      toast({ title: "Free enrichment failed", description: err.message, variant: "destructive" });
     },
   });
 
-  const hunterRemaining = usage?.hunter?.remaining ?? 0;
-  const pdlRemaining = usage?.pdl?.remaining ?? 0;
-  const gpUsed = usage?.googlePlaces?.used ?? 0;
-  const serperAvailable = usage?.serperConfigured ?? false;
-
-  const googlePlacesMutation = useMutation({
+  // 2. PAID SKIP TRACE — Hunter.io + PDL + Owner Intelligence
+  const skipTraceMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/leads/${leadId}/enrich/google-places`, {});
+      const res = await apiRequest("POST", `/api/unified/skip-trace/${leadId}`, {});
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "intelligence"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "contact-path"] });
-      toast({ title: "Google Places", description: data.message || "Enrichment complete" });
+      invalidateAll();
+      const completed = data.results?.filter((r: any) => r.status === "complete").length || 0;
+      toast({ title: "Skip Trace Complete", description: `${completed}/${data.agentsRun} agents ran. Score: ${data.newScore}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Skip trace failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // 3. PAID GOOGLE PLACES — Google Places API + Serper
+  const googlePlacesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/unified/google-places/${leadId}`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      invalidateAll();
+      const completed = data.results?.filter((r: any) => r.status === "complete").length || 0;
+      toast({ title: "Google Places Complete", description: `${completed}/${data.agentsRun} agents ran. Score: ${data.newScore}` });
     },
     onError: (err: any) => {
       toast({ title: "Google Places failed", description: err.message, variant: "destructive" });
     },
   });
 
-  const serperMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/leads/${leadId}/enrich/serper`, {});
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/enrichment/usage"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "intelligence"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "contact-path"] });
-      const agents = data.agentResults?.length || 0;
-      toast({ title: "Serper", description: agents > 0 ? `${agents} agent(s) returned results` : "Enrichment complete" });
-    },
-    onError: (err: any) => {
-      toast({ title: "Serper failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const sosMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/enrichment/tx-sos/${leadId}`, {});
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
-      if (data.success && data.entity?.officers?.length > 0) {
-        toast({ title: "TX SOS", description: `Found ${data.entity.officers.length} officer(s): ${data.entity.officers.map((o: any) => o.name).join(", ")}` });
-      } else if (data.error) {
-        toast({ title: "TX SOS", description: data.error });
-      } else {
-        toast({ title: "TX SOS", description: "Entity found but no officer data" });
-      }
-    },
-    onError: (err: any) => {
-      toast({ title: "TX SOS failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const edgarMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/enrichment/sec-edgar/${leadId}`, {});
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
-      if (data.success && data.company) {
-        toast({ title: "SEC EDGAR", description: `Found: ${data.company.name} (${data.company.sicDescription || "N/A"})` });
-      } else if (data.error) {
-        toast({ title: "SEC EDGAR", description: data.error });
-      } else {
-        toast({ title: "SEC EDGAR", description: "No SEC filings found" });
-      }
-    },
-    onError: (err: any) => {
-      toast({ title: "SEC EDGAR failed", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const countyMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/enrichment/county-clerk/${leadId}`, {});
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/leads", leadId, "evidence"] });
-      if (data.success && data.records?.length > 0) {
-        toast({ title: "County Clerk", description: `Found ${data.records.length} deed record(s)` });
-      } else if (data.error) {
-        toast({ title: "County Clerk", description: data.error });
-      } else {
-        toast({ title: "County Clerk", description: "No deed records found" });
-      }
-    },
-    onError: (err: any) => {
-      toast({ title: "County Clerk failed", description: err.message, variant: "destructive" });
-    },
-  });
+  const anyPending = freeEnrichMutation.isPending || skipTraceMutation.isPending || googlePlacesMutation.isPending;
 
   return (
     <>
       <Button
         size="sm"
-        variant="outline"
-        onClick={() => hunterMutation.mutate()}
-        disabled={hunterMutation.isPending || hunterRemaining <= 0}
-        className="text-xs"
-        data-testid="button-hunter-enrich"
+        onClick={() => freeEnrichMutation.mutate()}
+        disabled={anyPending}
+        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+        data-testid="button-free-enrich"
       >
-        {hunterMutation.isPending ? (
+        {freeEnrichMutation.isPending ? (
           <Loader2 className="w-3 h-3 animate-spin mr-1" />
         ) : (
-          <Mail className="w-3 h-3 mr-1" />
+          <Zap className="w-3 h-3 mr-1" />
         )}
-        Hunter.io ({hunterRemaining})
+        Free Enrich
       </Button>
       <Button
         size="sm"
         variant="outline"
-        onClick={() => pdlMutation.mutate()}
-        disabled={pdlMutation.isPending || pdlRemaining <= 0}
-        className="text-xs"
-        data-testid="button-pdl-enrich"
+        onClick={() => skipTraceMutation.mutate()}
+        disabled={anyPending}
+        className="text-xs border-amber-500/50 text-amber-700 hover:bg-amber-50"
+        data-testid="button-skip-trace"
       >
-        {pdlMutation.isPending ? (
+        {skipTraceMutation.isPending ? (
           <Loader2 className="w-3 h-3 animate-spin mr-1" />
         ) : (
-          <Users className="w-3 h-3 mr-1" />
+          <Fingerprint className="w-3 h-3 mr-1" />
         )}
-        PDL ({pdlRemaining})
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => sosMutation.mutate()}
-        disabled={sosMutation.isPending}
-        className="text-xs"
-        data-testid="button-txsos-enrich"
-      >
-        {sosMutation.isPending ? (
-          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-        ) : (
-          <FileText className="w-3 h-3 mr-1" />
-        )}
-        TX SOS
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => edgarMutation.mutate()}
-        disabled={edgarMutation.isPending}
-        className="text-xs"
-        data-testid="button-edgar-enrich"
-      >
-        {edgarMutation.isPending ? (
-          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-        ) : (
-          <Scale className="w-3 h-3 mr-1" />
-        )}
-        SEC EDGAR
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => countyMutation.mutate()}
-        disabled={countyMutation.isPending}
-        className="text-xs"
-        data-testid="button-county-enrich"
-      >
-        {countyMutation.isPending ? (
-          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-        ) : (
-          <FileText className="w-3 h-3 mr-1" />
-        )}
-        County Clerk
+        Skip Trace
+        <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0">$</Badge>
       </Button>
       <Button
         size="sm"
         variant="outline"
         onClick={() => googlePlacesMutation.mutate()}
-        disabled={googlePlacesMutation.isPending}
-        className="text-xs"
-        data-testid="button-google-places-enrich"
+        disabled={anyPending}
+        className="text-xs border-blue-500/50 text-blue-700 hover:bg-blue-50"
+        data-testid="button-google-places"
       >
         {googlePlacesMutation.isPending ? (
           <Loader2 className="w-3 h-3 animate-spin mr-1" />
         ) : (
           <MapPinned className="w-3 h-3 mr-1" />
         )}
-        Google Places ({gpUsed} used)
+        Google Places
+        <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0">$</Badge>
       </Button>
-      {serperAvailable && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => serperMutation.mutate()}
-          disabled={serperMutation.isPending}
-          className="text-xs"
-          data-testid="button-serper-enrich"
-        >
-          {serperMutation.isPending ? (
-            <Loader2 className="w-3 h-3 animate-spin mr-1" />
-          ) : (
-            <Search className="w-3 h-3 mr-1" />
-          )}
-          Serper Search
-        </Button>
-      )}
     </>
   );
 }
@@ -914,20 +740,7 @@ export default function LeadDetail() {
               <Sparkles className="w-4 h-4 mr-2" />
               Ask Grok
             </Button>
-            <HunterPDLButtons leadId={id!} />
-            <Button
-              size="sm"
-              onClick={() => enrichMutation.mutate()}
-              disabled={enrichMutation.isPending || leadEnrichmentStatus === "running"}
-              data-testid="button-auto-enrich"
-            >
-              {enrichMutation.isPending || leadEnrichmentStatus === "running" ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Zap className="w-4 h-4 mr-2" />
-              )}
-              {leadEnrichmentStatus === "complete" ? "Re-Enrich (Free)" : "Auto-Enrich (Free)"}
-            </Button>
+            <UnifiedEnrichButtons leadId={id!} />
           </div>
         </div>
 
