@@ -574,6 +574,87 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  app.post("/api/import/unified-free", async (req, res) => {
+    try {
+      const { marketId } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      const steps = [
+        { id: "noaa_hail", name: "NOAA Hail Import", status: "pending" as string, detail: "" },
+        { id: "violations", name: "Violations Import", status: "pending" as string, detail: "" },
+        { id: "permits", name: "Permits Import", status: "pending" as string, detail: "" },
+      ];
+
+      res.json({ message: "Unified free import started", marketId, steps });
+
+      (async () => {
+        const currentYear = new Date().getFullYear();
+
+        for (const step of steps) {
+          try {
+            if (step.id === "noaa_hail") {
+              step.status = "running";
+              const noaaMarket = await storage.getMarketById(marketId);
+              const targetCounties = new Set((noaaMarket?.counties || []).map((c: string) => c.toUpperCase()));
+              const result = await importNoaaMultiYear(currentYear - 5, currentYear, marketId, targetCounties);
+              const totalImported = result.reduce((sum, r) => sum + r.imported, 0);
+              step.status = "complete";
+              step.detail = `Imported ${totalImported} hail events`;
+              console.log(`[unified-free] NOAA hail complete: ${totalImported} events`);
+            } else if (step.id === "violations") {
+              const violMarket = await storage.getMarketById(marketId);
+              if (violMarket?.state === "TX") {
+                step.status = "running";
+                const result311 = await importDallas311(marketId, { daysBack: 90 });
+                const resultCode = await importDallasCodeViolations(marketId, { daysBack: 365 });
+                const matchResult = await matchViolationsToLeads(marketId);
+                step.status = "complete";
+                step.detail = `311: ${result311.imported || 0}, code: ${resultCode.imported || 0}, matched: ${matchResult.matched || 0}`;
+                console.log(`[unified-free] Violations complete: ${step.detail}`);
+              } else {
+                step.status = "skipped";
+                step.detail = `Not yet available for ${violMarket?.state || "unknown"} markets`;
+                console.log(`[unified-free] Violations skipped: ${step.detail}`);
+                continue;
+              }
+            } else if (step.id === "permits") {
+              const permMarket = await storage.getMarketById(marketId);
+              if (permMarket?.state === "TX") {
+                step.status = "running";
+                const dallasResult = await importDallasPermits(marketId, { daysBack: 365 });
+                const fwResult = await importFortWorthPermits(marketId, { yearsBack: 5, commercialOnly: true, roofingOnly: false });
+                const matchResult = await matchPermitsToLeads(marketId);
+                step.status = "complete";
+                step.detail = `Dallas: ${dallasResult.imported || 0}, FW: ${fwResult.imported || 0}, matched: ${matchResult.matched || 0}`;
+                console.log(`[unified-free] Permits complete: ${step.detail}`);
+              } else {
+                step.status = "skipped";
+                step.detail = `Not yet available for ${permMarket?.state || "unknown"} markets`;
+                console.log(`[unified-free] Permits skipped: ${step.detail}`);
+                continue;
+              }
+            }
+          } catch (err: any) {
+            step.status = "error";
+            step.detail = err.message;
+            console.error(`[unified-free] Step ${step.id} failed:`, err);
+          }
+        }
+        console.log("[unified-free] All steps finished:", steps.map(s => `${s.id}=${s.status}`).join(", "));
+      })();
+    } catch (error: any) {
+      console.error("Unified free import error:", error);
+      res.status(500).json({ message: "Failed to start unified free import", error: error.message });
+    }
+  });
+
   app.get("/api/import/runs", async (_req, res) => {
     try {
       const runs = await storage.getImportRuns();
