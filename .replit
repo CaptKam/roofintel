@@ -40,3 +40,4 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_anthropic_ai_integrations:2.0.0", "javascript_xai:1.0.0"]
+expertMode = true
