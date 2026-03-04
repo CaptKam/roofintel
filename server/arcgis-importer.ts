@@ -34,11 +34,17 @@ interface FilterConfig {
 function getFieldValue(attributes: Record<string, any>, mapping: string | string[]): any {
   if (Array.isArray(mapping)) {
     for (const key of mapping) {
+      if (typeof key === 'string' && key.startsWith('_STATIC_')) {
+        return key.slice(8);
+      }
       if (attributes[key] !== undefined && attributes[key] !== null) {
         return attributes[key];
       }
     }
     return null;
+  }
+  if (typeof mapping === 'string' && mapping.startsWith('_STATIC_')) {
+    return mapping.slice(8);
   }
   return attributes[mapping] ?? null;
 }
@@ -101,8 +107,8 @@ function buildOutFields(fieldMapping: FieldMapping): string {
   const fields = new Set<string>();
   for (const mapping of Object.values(fieldMapping)) {
     if (Array.isArray(mapping)) {
-      mapping.forEach(f => fields.add(f));
-    } else {
+      mapping.forEach(f => { if (!f.startsWith('_STATIC_')) fields.add(f); });
+    } else if (!mapping.startsWith('_STATIC_')) {
       fields.add(mapping);
     }
   }

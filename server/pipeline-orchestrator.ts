@@ -360,9 +360,14 @@ export async function runFullPipeline(options: { skipPhases?: string[]; filters?
       } else {
         updatePhaseStatus("storm", "running");
         await runStep("noaa-current", async () => {
+          const { storage } = await import("./storage");
           const currentYear = new Date().getFullYear();
-          const result = await callInternalApi("/api/import/noaa", { marketId, startYear: currentYear, endYear: currentYear });
-          return `Imported ${result.imported || 0} hail events for ${currentYear}`;
+          const noaaMarket = await storage.getMarketById(marketId);
+          const targetCounties = new Set((noaaMarket?.counties || []).map((c: string) => c.toUpperCase()));
+          const { importNoaaMultiYear } = await import("./noaa-importer");
+          const results = await importNoaaMultiYear(currentYear - 5, currentYear, marketId, targetCounties);
+          const totalImported = results.reduce((sum, r) => sum + r.imported, 0);
+          return `Imported ${totalImported} hail events for ${currentYear - 5}-${currentYear}`;
         });
         await runStep("hail-correlate", async () => {
           const result = await callInternalApi("/api/correlate/hail", { marketId, radiusMiles: 5 });
@@ -378,26 +383,39 @@ export async function runFullPipeline(options: { skipPhases?: string[]; filters?
         pipelineStatus.phases.find(p => p.id === "intelligence-data")?.steps.forEach(s => { s.status = "skipped"; s.detail = "Phase skipped by user"; });
       } else {
         updatePhaseStatus("intelligence-data", "running");
-        await runStep("import-311", async () => {
-          const result = await callInternalApi("/api/violations/import-311", { marketId });
-          return `Imported ${result.imported || 0} service requests`;
-        });
-        await runStep("import-code", async () => {
-          const result = await callInternalApi("/api/violations/import-code", { marketId });
-          return `Imported ${result.imported || 0} code violations`;
-        });
-        await runStep("match-violations", async () => {
-          const result = await callInternalApi("/api/violations/match", { marketId });
-          return `Matched ${result.matched || 0} violations to leads`;
-        });
-        await runStep("import-dallas-permits", async () => {
-          const result = await callInternalApi("/api/permits/import-dallas", { marketId, yearsBack: 10 });
-          return `Imported ${result.imported || 0} Dallas permits`;
-        });
-        await runStep("import-fw-permits", async () => {
-          const result = await callInternalApi("/api/permits/import-fortworth", { marketId, yearsBack: 10 });
-          return `Imported ${result.imported || 0} Fort Worth permits`;
-        });
+        const { storage: violStore } = await import("./storage");
+        const violMarket = await violStore.getMarketById(marketId);
+        if (violMarket?.state === "TX") {
+          await runStep("import-311", async () => {
+            const result = await callInternalApi("/api/violations/import-311", { marketId });
+            return `Imported ${result.imported || 0} service requests`;
+          });
+          await runStep("import-code", async () => {
+            const result = await callInternalApi("/api/violations/import-code", { marketId });
+            return `Imported ${result.imported || 0} code violations`;
+          });
+          await runStep("match-violations", async () => {
+            const result = await callInternalApi("/api/violations/match", { marketId });
+            return `Matched ${result.matched || 0} violations to leads`;
+          });
+        } else {
+          updateStepStatus("import-311", "skipped", `Not yet available for ${violMarket?.state || "unknown"} markets`);
+          updateStepStatus("import-code", "skipped", `Not yet available for ${violMarket?.state || "unknown"} markets`);
+          updateStepStatus("match-violations", "skipped", `Not yet available for ${violMarket?.state || "unknown"} markets`);
+        }
+        if (violMarket?.state === "TX") {
+          await runStep("import-dallas-permits", async () => {
+            const result = await callInternalApi("/api/permits/import-dallas", { marketId, yearsBack: 10 });
+            return `Imported ${result.imported || 0} Dallas permits`;
+          });
+          await runStep("import-fw-permits", async () => {
+            const result = await callInternalApi("/api/permits/import-fortworth", { marketId, yearsBack: 10 });
+            return `Imported ${result.imported || 0} Fort Worth permits`;
+          });
+        } else {
+          updateStepStatus("import-dallas-permits", "skipped", `Not yet available for ${violMarket?.state || "unknown"} markets`);
+          updateStepStatus("import-fw-permits", "skipped", `Not yet available for ${violMarket?.state || "unknown"} markets`);
+        }
         await runStep("match-permits", async () => {
           const result = await callInternalApi("/api/permits/match", { marketId });
           return `Matched ${result.matched || 0} permits to leads`;

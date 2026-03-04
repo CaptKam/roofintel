@@ -1636,6 +1636,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     try {
       const { marketId, daysBack } = req.body;
       if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const market = await storage.getMarketById(marketId);
+      if (market?.state !== "TX") {
+        return res.status(400).json({ message: `Not yet available for ${market?.state || "unknown"} markets. Use CSV import instead.` });
+      }
       const result = await importDallas311(marketId, { daysBack: daysBack || 90 });
       res.json(result);
     } catch (error: any) {
@@ -1647,6 +1651,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     try {
       const { marketId, daysBack } = req.body;
       if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const market = await storage.getMarketById(marketId);
+      if (market?.state !== "TX") {
+        return res.status(400).json({ message: `Not yet available for ${market?.state || "unknown"} markets. Use CSV import instead.` });
+      }
       const result = await importDallasCodeViolations(marketId, { daysBack: daysBack || 365 });
       res.json(result);
     } catch (error: any) {
@@ -1785,6 +1793,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     try {
       const { marketId, daysBack, commercialOnly } = req.body;
       if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const market = await storage.getMarketById(marketId);
+      if (market?.state !== "TX") {
+        return res.status(400).json({ message: `Not yet available for ${market?.state || "unknown"} markets. Use CSV import instead.` });
+      }
       const result = await importDallasPermits(marketId, { daysBack, commercialOnly });
       res.json(result);
     } catch (error: any) {
@@ -1796,6 +1808,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     try {
       const { marketId, yearsBack, commercialOnly, roofingOnly } = req.body;
       if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const market = await storage.getMarketById(marketId);
+      if (market?.state !== "TX") {
+        return res.status(400).json({ message: `Not yet available for ${market?.state || "unknown"} markets. Use CSV import instead.` });
+      }
       const result = await importFortWorthPermits(marketId, {
         yearsBack: yearsBack ?? 5,
         commercialOnly: commercialOnly ?? true,
@@ -1820,6 +1836,10 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     try {
       const { marketId, yearsBack, commercialOnly } = req.body;
       if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const market = await storage.getMarketById(marketId);
+      if (market?.state !== "TX") {
+        return res.status(400).json({ message: `Not yet available for ${market?.state || "unknown"} markets. Use CSV import instead.` });
+      }
       const result = await importDallasRoofingPermits(marketId, {
         yearsBack: yearsBack ?? 10,
         commercialOnly: commercialOnly ?? false,
