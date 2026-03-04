@@ -44,6 +44,18 @@ import { db } from "./storage";
 import { sql, eq, desc } from "drizzle-orm";
 import { fetchAllYearsForProperty, getCachedSnapshots, naipBatchProgress, type NAIPBatchProgress } from "./naip-imagery-agent";
 import { analyzePropertyRoof } from "./roof-change-detector";
+import {
+  startAutomationEngine,
+  getAutomationStatus,
+  runDailyAutomation,
+  runWeeklyAutomation,
+  runStormChain,
+  runNewMarketLoad,
+  enrichSingleLead,
+  updateLeadStatus,
+  exportCallList,
+  getLastDailyBriefing,
+} from "./automation-engine";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -66,6 +78,7 @@ export async function registerRoutes(
 ): Promise<Server> {
   await seedDatabase();
   startJobScheduler();
+  startAutomationEngine();
 
   app.get("/robots.txt", (req, res) => {
     const baseUrl = `${req.protocol}://${req.get("host")}`;
@@ -5693,6 +5706,109 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   // Start storm monitor on boot
   startStormMonitor(10);
   startXweatherMonitor(2);
+
+  // ═══════════════════════════════════════════════════════════
+  // AUTOMATION ENGINE ENDPOINTS
+  // ═══════════════════════════════════════════════════════════
+
+  // Status of all automation tiers
+  app.get("/api/automation/status", async (_req, res) => {
+    res.json(getAutomationStatus());
+  });
+
+  // Trigger daily automation manually
+  app.post("/api/automation/daily", async (_req, res) => {
+    try {
+      const result = await runDailyAutomation();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Daily automation error", error: error.message });
+    }
+  });
+
+  // Trigger weekly automation manually
+  app.post("/api/automation/weekly", async (_req, res) => {
+    try {
+      const result = await runWeeklyAutomation();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Weekly automation error", error: error.message });
+    }
+  });
+
+  // Run the enhanced storm chain (detect → correlate → boost → queue → SMS)
+  app.post("/api/automation/storm-chain", async (_req, res) => {
+    try {
+      const result = await runStormChain();
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Storm chain error", error: error.message });
+    }
+  });
+
+  // Get the latest daily briefing
+  app.get("/api/automation/briefing", async (_req, res) => {
+    const briefing = getLastDailyBriefing();
+    if (!briefing) {
+      return res.json({ message: "No briefing generated yet. Trigger daily automation first.", briefing: null });
+    }
+    res.json(briefing);
+  });
+
+  // New market load orchestrator
+  app.post("/api/automation/market-load", async (req, res) => {
+    try {
+      const { marketId, skipNoaa, skipEnrichment } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId is required" });
+      const result = await runNewMarketLoad({ marketId, skipNoaa, skipEnrichment });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Market load error", error: error.message });
+    }
+  });
+
+  // Enrich a single lead (full 16-agent pipeline)
+  app.post("/api/automation/enrich/:leadId", async (req, res) => {
+    try {
+      const result = await enrichSingleLead(req.params.leadId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Enrichment error", error: error.message });
+    }
+  });
+
+  // Mark lead status (contacted/won/lost/no_answer/callback)
+  app.post("/api/automation/lead-status/:leadId", async (req, res) => {
+    try {
+      const { status } = req.body;
+      const validStatuses = ["contacted", "won", "lost", "no_answer", "callback"];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Use: ${validStatuses.join(", ")}` });
+      }
+      const updated = await updateLeadStatus(req.params.leadId, status);
+      res.json({ success: true, lead: updated });
+    } catch (error: any) {
+      res.status(500).json({ message: "Status update error", error: error.message });
+    }
+  });
+
+  // Export call list as CSV
+  app.get("/api/automation/export-calls", async (req, res) => {
+    try {
+      const { marketId, minScore, tier, limit } = req.query;
+      const result = await exportCallList({
+        marketId: marketId as string,
+        minScore: minScore ? parseInt(minScore as string, 10) : undefined,
+        tier: tier as "tier1" | "tier2" | "tier3" | undefined,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+      });
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=call-list-${new Date().toISOString().split("T")[0]}.csv`);
+      res.send(result.csv);
+    } catch (error: any) {
+      res.status(500).json({ message: "Export error", error: error.message });
+    }
+  });
 
   return httpServer;
 }
