@@ -102,6 +102,28 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     app.get(path, (_req, res) => res.status(404).type("text/plain").send("Not found"));
   }
 
+  // Helper: resolve market slug (dfw, cos) or UUID to actual market ID
+  async function resolveMarketId(idOrSlug: string): Promise<string | null> {
+    // If it looks like a UUID, return as-is
+    if (idOrSlug.length > 10) return idOrSlug;
+
+    const slugMap: Record<string, string> = {
+      dfw: "Dallas-Fort Worth",
+      cos: "Colorado Springs",
+      "colorado-springs": "Colorado Springs",
+      "dallas-fort-worth": "Dallas-Fort Worth",
+    };
+
+    const targetName = slugMap[idOrSlug.toLowerCase()];
+    if (!targetName) return idOrSlug;
+
+    const markets = await storage.getMarkets();
+    const match = markets.find(
+      (m) => m.name?.toLowerCase() === targetName.toLowerCase()
+    );
+    return match?.id || idOrSlug;
+  }
+
   app.get("/api/markets", async (_req, res) => {
     try {
       const markets = await storage.getMarkets();
@@ -114,7 +136,8 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
 
   app.get("/api/markets/:marketId/data-sources", async (req, res) => {
     try {
-      const sources = await storage.getMarketDataSources(req.params.marketId);
+      const resolvedId = await resolveMarketId(req.params.marketId);
+      const sources = await storage.getMarketDataSources(resolvedId || req.params.marketId);
       res.json(sources);
     } catch (error) {
       console.error("Market data sources fetch error:", error);
@@ -4844,7 +4867,8 @@ Rules:
   app.get("/api/markets/:id/readiness", async (req, res) => {
     try {
       const { computeMarketReadiness } = await import("./data-quality-metrics");
-      const readiness = await computeMarketReadiness(req.params.id);
+      const resolvedId = await resolveMarketId(req.params.id);
+      const readiness = await computeMarketReadiness(resolvedId || req.params.id);
       res.json(readiness);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to compute market readiness", error: error.message });
@@ -5083,6 +5107,16 @@ Rules:
       const minConfidence = parseInt(req.query.minConfidence as string) || 0;
       const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
       const offset = parseInt(req.query.offset as string) || 0;
+
+      // Check if table exists before querying
+      const tableCheck = (await db.execute(sql`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables WHERE table_name = 'naip_roof_changes'
+        ) as exists
+      `)) as any;
+      if (!tableCheck.rows?.[0]?.exists) {
+        return res.json({ results: [], total: 0, stats: {} });
+      }
 
       const results = (await db.execute(sql`
         SELECT nc.*, l.property_name, l.address, l.year_built, l.roof_type
