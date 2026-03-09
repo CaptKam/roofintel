@@ -140,33 +140,61 @@ async function fetchArcgisPage(
   whereClause: string,
   outFields: string,
   offset: number,
-  maxRecords: number
+  maxRecords: number,
+  paginationMode?: string
 ): Promise<{ features: any[]; hasMore: boolean }> {
-  const params = new URLSearchParams({
+  const paramObj: Record<string, string> = {
     where: whereClause,
-    outFields,
+    outFields: paginationMode === "objectid" ? outFields + ",OBJECTID" : outFields,
     returnGeometry: "true",
     outSR: "4326",
     f: "json",
-    resultRecordCount: String(Math.min(maxRecords, MAX_RECORDS_PER_REQUEST)),
-    resultOffset: String(offset),
-  });
-
-  const url = `${endpoint}?${params.toString()}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`ArcGIS API error: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`ArcGIS API error: ${data.error.message || JSON.stringify(data.error)}`);
-  }
-
-  return {
-    features: data.features || [],
-    hasMore: data.exceededTransferLimit === true,
   };
+
+  if (paginationMode !== "objectid") {
+    paramObj.resultRecordCount = String(Math.min(maxRecords, MAX_RECORDS_PER_REQUEST));
+    paramObj.resultOffset = String(offset);
+  }
+
+  const params = new URLSearchParams(paramObj);
+  const url = `${endpoint}?${params.toString()}`;
+
+  let data: any;
+  const MAX_RETRIES = 4;
+  const RETRYABLE_HTTP = new Set([429, 500, 502, 503, 504]);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      const delay = Math.min(5000 * Math.pow(2, attempt - 1), 30000);
+      console.log(`[ArcGIS Importer] Retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES + 1})...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+    let response: Response;
+    try {
+      response = await fetch(url);
+    } catch (networkErr: any) {
+      if (attempt === MAX_RETRIES) throw new Error(`ArcGIS network error: ${networkErr.message}`);
+      continue;
+    }
+    if (!response.ok) {
+      if (RETRYABLE_HTTP.has(response.status) && attempt < MAX_RETRIES) continue;
+      throw new Error(`ArcGIS API error: ${response.status} ${response.statusText}`);
+    }
+    data = await response.json();
+    if (!data.error) break;
+    if (attempt === MAX_RETRIES) {
+      throw new Error(`ArcGIS API error: ${data.error.message || JSON.stringify(data.error)}`);
+    }
+  }
+
+  const features = data.features || [];
+  let hasMore: boolean;
+  if (paginationMode === "objectid") {
+    hasMore = features.length >= 2500;
+  } else {
+    hasMore = data.exceededTransferLimit === true;
+  }
+
+  return { features, hasMore };
 }
 
 function transformFeatureToLead(
@@ -216,9 +244,9 @@ function transformFeatureToLead(
   const zoning = inferZoning(classDesc);
   const llcName = ownerType === "LLC" ? ownerName : undefined;
 
-  const city = getFieldValue(a, fieldMapping.city || "CITY") || county;
+  const city = getFieldValue(a, fieldMapping.city || "CITY") || filterConfig.defaultCity || county;
   const zipCode = getFieldValue(a, fieldMapping.zipCode || "PSTLZIP5") || "00000";
-  const state = getFieldValue(a, fieldMapping.state || "STATE") || "TX";
+  const state = getFieldValue(a, fieldMapping.state || "STATE") || filterConfig.defaultState || "TX";
   const constructionType = getFieldValue(a, fieldMapping.constructionType || "STRCLASS") || "Masonry";
 
   const ownerAddress = getFieldValue(a, fieldMapping.ownerAddress || "PSTLADDRESS");
@@ -350,18 +378,35 @@ export async function importGenericArcgis(
     console.log(`[ArcGIS Importer] Where: ${whereClause}`);
     console.log(`[ArcGIS Importer] Dry run: ${dryRun}`);
 
+    const paginationMode = filterConfig.paginationMode;
+    let lastObjectId = 0;
+
     while (hasMore && result.totalFetched < maxRecords) {
-      console.log(`[ArcGIS Importer] Fetching page at offset ${offset}...`);
+      let currentWhere = whereClause;
+      if (paginationMode === "objectid" && lastObjectId > 0) {
+        if (whereClause.match(/^OBJECTID\s*>/i)) {
+          currentWhere = `OBJECTID > ${lastObjectId}`;
+        } else {
+          currentWhere = `(${whereClause}) AND OBJECTID > ${lastObjectId}`;
+        }
+      }
+      console.log(`[ArcGIS Importer] Fetching page at offset ${offset} (where: ${currentWhere})...`);
       const page = await fetchArcgisPage(
         dataSource.endpoint,
-        whereClause,
+        currentWhere,
         outFields,
         offset,
-        MAX_RECORDS_PER_REQUEST
+        MAX_RECORDS_PER_REQUEST,
+        paginationMode
       );
       const features = page.features;
       hasMore = page.hasMore;
       result.totalFetched += features.length;
+
+      if (paginationMode === "objectid" && features.length > 0) {
+        const maxOid = Math.max(...features.map((f: any) => f.attributes?.OBJECTID || 0));
+        lastObjectId = maxOid;
+      }
 
       for (const feature of features) {
         try {
@@ -428,7 +473,8 @@ export async function importGenericArcgis(
       offset += features.length;
       if (features.length === 0) break;
 
-      await new Promise((r) => setTimeout(r, 500));
+      const pageDelay = paginationMode === "objectid" ? 3000 : 500;
+      await new Promise((r) => setTimeout(r, pageDelay));
     }
 
     if (!dryRun && leadsBatch.length > 0) {

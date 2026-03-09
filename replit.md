@@ -74,3 +74,4 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 - **COS City GIS (ArcGIS)**: Colorado Springs parcels, address points, land records, building footprints, zoning, planning/dev tracker.
 - **CO Secretary of State (Socrata)**: Business entity registrations for owner/LLC resolution.
 - **El Paso County Assessor (ArcGIS)**: County-level property assessor data.
+- **Fort Collins GIS (ArcGIS 10.81)**: Larimer County parcels (FCMaps/MapServer/3). Older server requires OBJECTID-based pagination (no `resultOffset` support), `OBJECTID > N` where clause, 2500 records/page, 3s delay between pages, retry with exponential backoff. Address field uses `MAILADDRESS2` (mailing address, not situs). Property location from parcel geometry centroids.

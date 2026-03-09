@@ -550,7 +550,7 @@ export async function runNewMarketLoad(options: MarketLoadOptions): Promise<Mark
   let leadsScored = 0;
 
   try {
-    // Step 1: Import properties (CSV or ArcGIS — CSV handled by caller via /api/import/property-csv)
+    // Step 1: Import properties (CSV or ArcGIS)
     automationStatus.marketLoad.currentStep = "import_properties";
     if (options.csvBuffer) {
       try {
@@ -562,7 +562,31 @@ export async function runNewMarketLoad(options: MarketLoadOptions): Promise<Mark
         steps.push({ step: "Import Properties (CSV)", status: "error", detail: err.message });
       }
     } else {
-      steps.push({ step: "Import Properties", status: "skipped", detail: "No CSV provided — use ArcGIS importer separately" });
+      try {
+        const arcgisSources = await storage.getMarketDataSources(marketId);
+        const cadSources = arcgisSources.filter(s => s.sourceType === "cad_arcgis" && s.isActive);
+        if (cadSources.length > 0) {
+          const { importGenericArcgis } = await import("./arcgis-importer");
+          for (const source of cadSources) {
+            try {
+              console.log(`[Automation] Importing from ArcGIS source: ${source.sourceName}`);
+              const result = await importGenericArcgis(source.id, {
+                maxRecords: 5000,
+                minSqft: 0,
+                dryRun: false,
+              });
+              totalLeadsImported += result.imported;
+              steps.push({ step: `Import Properties (${source.sourceName})`, status: "complete", detail: `${result.imported} imported, ${result.skipped} skipped` });
+            } catch (err: any) {
+              steps.push({ step: `Import Properties (${source.sourceName})`, status: "error", detail: err.message });
+            }
+          }
+        } else {
+          steps.push({ step: "Import Properties", status: "skipped", detail: "No CSV or ArcGIS sources configured" });
+        }
+      } catch (err: any) {
+        steps.push({ step: "Import Properties (ArcGIS)", status: "error", detail: err.message });
+      }
     }
 
     // Step 2: Import NOAA hail history

@@ -597,7 +597,7 @@ async function seedFortCollinsMarket() {
     endpoint: "https://gisweb.fcgov.com/arcgis/rest/services/FCMaps/MapServer/3/query",
     fieldMapping: {
       sourceId: "PARCELNO",
-      address: ["MAILADDRESS1", "MAILADDRESS2"],
+      address: ["MAILADDRESS2", "MAILADDRESS1"],
       ownerName: ["OWNERNAMES", "NAME1", "NAME2"],
       city: "MAILCITY",
       zipCode: "MAILZIPCODE",
@@ -607,6 +607,8 @@ async function seedFortCollinsMarket() {
       county: "Larimer",
       defaultCity: "Fort Collins",
       defaultState: "CO",
+      whereClause: "OBJECTID > 0",
+      paginationMode: "objectid",
     },
     isActive: true,
   });
