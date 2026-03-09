@@ -1158,6 +1158,51 @@ Rules:
     }
   });
 
+  app.post("/api/import/market-properties", async (req, res) => {
+    try {
+      const { marketId, maxRecords, minSqft } = req.body;
+      if (!marketId) {
+        return res.status(400).json({ message: "marketId is required" });
+      }
+
+      const market = await storage.getMarketById(marketId);
+      if (!market) {
+        return res.status(404).json({ message: "Market not found" });
+      }
+
+      const marketSources = await storage.getMarketDataSources(marketId);
+      const cadSources = marketSources.filter(s => s.sourceType === "cad_arcgis" && s.isActive);
+
+      if (cadSources.length === 0) {
+        return res.status(400).json({ message: `No active CAD/ArcGIS data sources configured for market "${market.name}"` });
+      }
+
+      const { importGenericArcgis } = await import("./arcgis-importer");
+
+      res.json({
+        message: `Property import started for ${market.name}`,
+        marketId,
+        sources: cadSources.map(s => s.sourceName),
+      });
+
+      for (const source of cadSources) {
+        try {
+          const result = await importGenericArcgis(source.id, {
+            maxRecords: maxRecords || 4000,
+            minSqft: minSqft || 0,
+            dryRun: false,
+          });
+          console.log(`[market-properties] ${source.sourceName}: ${result.imported} imported, ${result.skipped} skipped`);
+        } catch (err: any) {
+          console.error(`[market-properties] ${source.sourceName} failed:`, err.message);
+        }
+      }
+    } catch (error: any) {
+      console.error("Market properties import error:", error);
+      res.status(500).json({ message: error.message || "Failed to start market property import" });
+    }
+  });
+
   app.post("/api/import/generic-arcgis", async (req, res) => {
     try {
       const { dataSourceId, maxRecords, minSqft, dryRun } = req.body;

@@ -163,6 +163,7 @@ export async function seedDatabase() {
   const existingMarkets = await storage.getMarkets();
   if (existingMarkets.length > 0) {
     console.log("Database already seeded, skipping...");
+    await seedColoradoSpringsSources();
     await seedFortCollinsMarket();
     return;
   }
@@ -396,41 +397,57 @@ async function seedColoradoSpringsSources() {
   }
 
   const existingSources = await storage.getMarketDataSources(cosMarket.id);
-  if (existingSources.some(s => s.sourceName === "Colorado Springs Land Records")) {
-    console.log("Colorado Springs Land Records source already exists, skipping");
-    return;
+  if (!existingSources.some(s => s.sourceName === "Colorado Springs Land Records")) {
+    await storage.createMarketDataSource({
+      marketId: cosMarket.id,
+      sourceName: "Colorado Springs Land Records",
+      sourceType: "cad_arcgis",
+      endpoint: "https://gis.coloradosprings.gov/arcgis/rest/services/GeneralUse/LandRecords/MapServer/4/query",
+      fieldMapping: {
+        sourceId: "SCHEDULE_NUMBER",
+        address: ["SITUS_ADDRESS", "FULL_ADDRESS", "ADDRESS"],
+        ownerName: ["OwnerName", "OWNER_NAME", "OWNER"],
+        city: ["SITUS_CITY", "CITY"],
+        zipCode: ["SITUS_ZIP", "ZIP_CODE"],
+        classDescription: ["LAND_USE_DESC", "USE_CODE_DESC"],
+        totalValue: ["TOTAL_VALUE", "ASSESSED_VALUE"],
+        improvementValue: ["IMP_VALUE"],
+        landValue: ["LAND_VALUE"],
+        sqft: ["BLDG_SQFT", "BUILDING_SQFT"],
+        yearBuilt: ["YEAR_BUILT", "YR_BUILT"],
+        stories: ["NUM_STORIES"],
+        state: "_STATIC_CO",
+      },
+      filterConfig: {
+        county: "El Paso",
+        defaultCity: "Colorado Springs",
+        defaultState: "CO",
+        minImpValue: 50000,
+      },
+      isActive: true,
+    });
+    console.log("Seeded Colorado Springs Land Records market data source");
   }
 
-  await storage.createMarketDataSource({
-    marketId: cosMarket.id,
-    sourceName: "Colorado Springs Land Records",
-    sourceType: "cad_arcgis",
-    endpoint: "https://gis.coloradosprings.gov/arcgis/rest/services/GeneralUse/LandRecords/MapServer/4/query",
-    fieldMapping: {
-      sourceId: "SCHEDULE_NUMBER",
-      address: ["SITUS_ADDRESS", "FULL_ADDRESS", "ADDRESS"],
-      ownerName: ["OwnerName", "OWNER_NAME", "OWNER"],
-      city: ["SITUS_CITY", "CITY"],
-      zipCode: ["SITUS_ZIP", "ZIP_CODE"],
-      classDescription: ["LAND_USE_DESC", "USE_CODE_DESC"],
-      totalValue: ["TOTAL_VALUE", "ASSESSED_VALUE"],
-      improvementValue: ["IMP_VALUE"],
-      landValue: ["LAND_VALUE"],
-      sqft: ["BLDG_SQFT", "BUILDING_SQFT"],
-      yearBuilt: ["YEAR_BUILT", "YR_BUILT"],
-      stories: ["NUM_STORIES"],
-      state: "_STATIC_CO",
-    },
-    filterConfig: {
-      county: "El Paso",
-      defaultCity: "Colorado Springs",
-      defaultState: "CO",
-      minImpValue: 50000,
-    },
-    isActive: true,
-  });
-
-  console.log("Seeded Colorado Springs Land Records market data source");
+  const existingDataSources = await storage.getDataSources();
+  if (!existingDataSources.some(s => s.name?.toLowerCase().includes("colorado springs land records"))) {
+    await storage.createDataSource({
+      name: "Colorado Springs Land Records",
+      type: "cad_arcgis",
+      url: "https://gis.coloradosprings.gov/arcgis/rest/services/GeneralUse/LandRecords/MapServer/4/query",
+      marketId: cosMarket.id,
+      isActive: true,
+      config: {
+        description: "Colorado Springs Land Records via El Paso County parcel data for commercial property import",
+        fieldMapping: {
+          sourceId: "SCHEDULE_NUMBER",
+          address: ["SITUS_ADDRESS", "FULL_ADDRESS", "ADDRESS"],
+          ownerName: ["OwnerName", "OWNER_NAME", "OWNER"],
+        },
+      },
+    });
+    console.log("Seeded Colorado Springs Land Records data source");
+  }
 }
 
 async function seedFortCollinsMarket() {
