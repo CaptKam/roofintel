@@ -63,7 +63,7 @@ function normalizeAddress(addr: string): string {
     .replace(/\bCOURT\b/g, 'CT')
     .replace(/\bCIRCLE\b/g, 'CIR')
     .replace(/\bPLACE\b/g, 'PL')
-    .replace(/\s*(DALLAS|FORT WORTH|TX|TEXAS|,)\s*\d{5}(-\d{4})?$/gi, '')
+    .replace(/\s*(DALLAS|FORT WORTH|FORT COLLINS|TX|TEXAS|CO|COLORADO|,)\s*\d{5}(-\d{4})?$/gi, '')
     .trim();
 }
 
@@ -433,6 +433,152 @@ export async function importFortWorthPermits(
   return { imported, skipped, errors };
 }
 
+const FC_PERMITS_SOCRATA_URL = "https://opendata.fcgov.com/resource/fvgz-viez.json";
+const FC_SOCRATA_PAGE_SIZE = 1000;
+
+function extractContactFromWorkDesc(desc: string): { name: string | null; phone: string | null } {
+  if (!desc) return { name: null, phone: null };
+  const patterns = [
+    /(?:Job\s*(?:site)?\s*[Cc]ontact|Contact|GC)\s*:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\s*[(\d\-]/i,
+    /(?:Job\s*(?:site)?\s*[Cc]ontact|Contact|GC)\s*:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})/i,
+  ];
+  let name: string | null = null;
+  for (const p of patterns) {
+    const m = desc.match(p);
+    if (m && m[1] && m[1].trim().toLowerCase() !== "tba") {
+      name = m[1].trim();
+      break;
+    }
+  }
+  const phoneMatch = desc.match(/(\(?\d{3}\)?[\s\-.]?\d{3}[\s\-.]?\d{4})/);
+  const phone = phoneMatch ? phoneMatch[1].replace(/[^\d]/g, '').replace(/^(\d{3})(\d{3})(\d{4})$/, '($1) $2-$3') : null;
+  return { name, phone };
+}
+
+const FC_COMMERCIAL_PERMIT_TYPES = [
+  "Commercial General Alteration",
+  "Commercial New Com-Ind-Mixed-Use Building",
+  "Commercial New Secondary Building",
+  "Commercial Addition",
+  "Demolition",
+];
+
+export async function importFortCollinsPermits(
+  marketId: string,
+  options?: { commercialOnly?: boolean }
+): Promise<{ imported: number; skipped: number; errors: string[] }> {
+  const commercialOnly = options?.commercialOnly ?? true;
+
+  let imported = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  console.log(`[Fort Collins Permits] Starting Socrata import for market ${marketId}, commercialOnly=${commercialOnly}`);
+
+  const whereClause = commercialOnly
+    ? `permittype in(${FC_COMMERCIAL_PERMIT_TYPES.map(t => `'${t}'`).join(",")})`
+    : "1=1";
+
+  while (hasMore) {
+    try {
+      const url = `${FC_PERMITS_SOCRATA_URL}?$where=${encodeURIComponent(whereClause)}&$limit=${FC_SOCRATA_PAGE_SIZE}&$offset=${offset}&$order=objectid`;
+
+      const response = await fetchWithTimeout(url, 30000);
+      if (!response.ok) {
+        errors.push(`Fort Collins Socrata API error ${response.status}`);
+        break;
+      }
+
+      const records = await response.json();
+      if (!Array.isArray(records) || records.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      const batch: InsertBuildingPermit[] = [];
+
+      for (const record of records) {
+        const permitNumber = record.permitnum;
+        if (!permitNumber) continue;
+
+        const address = (record.staddr || record.address || "").trim();
+        if (!address) continue;
+
+        const sourcePermitId = `fc_socrata_${permitNumber}`;
+
+        const existing = await db
+          .select({ id: buildingPermits.id })
+          .from(buildingPermits)
+          .where(eq(buildingPermits.sourcePermitId, sourcePermitId))
+          .limit(1);
+
+        if (existing.length > 0) {
+          skipped++;
+          continue;
+        }
+
+        const workDesc = record.b1_work_desc || null;
+        const contact = workDesc ? extractContactFromWorkDesc(workDesc) : { name: null, phone: null };
+
+        batch.push({
+          marketId,
+          permitNumber,
+          permitType: record.permittype || "Unknown",
+          issuedDate: null,
+          address,
+          city: "Fort Collins",
+          zipCode: record.zip || null,
+          contractor: contact.name,
+          contractorPhone: contact.phone,
+          owner: null,
+          applicantName: null,
+          workDescription: record.b1_work_desc || null,
+          estimatedValue: null,
+          sqft: null,
+          landUse: record.permittype || null,
+          status: record.b1_appl_status || null,
+          source: "fort_collins_socrata",
+          sourcePermitId,
+          metadata: {
+            subdivisionName: record.subdivisionname || null,
+            projectName: record.projectname || null,
+            web: record.web || null,
+            permitGroup: record.b1_per_group || null,
+            streetName: record.stname || null,
+            streetType: record.sttype || null,
+          },
+        });
+
+        if (batch.length >= 100) {
+          await db.insert(buildingPermits).values(batch);
+          imported += batch.length;
+          batch.length = 0;
+        }
+      }
+
+      if (batch.length > 0) {
+        await db.insert(buildingPermits).values(batch);
+        imported += batch.length;
+      }
+
+      if (records.length < FC_SOCRATA_PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        offset += FC_SOCRATA_PAGE_SIZE;
+        await sleep(RATE_LIMIT_MS);
+      }
+    } catch (err: any) {
+      errors.push(`Fort Collins Socrata fetch error at offset ${offset}: ${err.message}`);
+      hasMore = false;
+    }
+  }
+
+  console.log(`[Fort Collins Permits] Complete: imported=${imported}, skipped=${skipped}, errors=${errors.length}`);
+  return { imported, skipped, errors };
+}
+
 export async function matchPermitsToLeads(
   marketId: string
 ): Promise<{ matched: number; unmatched: number; evidenceRecorded: number }> {
@@ -454,11 +600,17 @@ export async function matchPermitsToLeads(
     leadsByNormalizedAddress.set(normalized, lead);
   }
 
+  const PERMIT_SOURCE_LABELS: Record<string, { name: string; url: string }> = {
+    dallas_open_data: { name: "Dallas Building Permits", url: "https://www.dallasopendata.com/resource/e7gq-4sah.json" },
+    fort_worth_arcgis: { name: "Fort Worth Building Permits", url: FORT_WORTH_ARCGIS_URL },
+    fort_collins_socrata: { name: "Fort Collins Building Permits", url: FC_PERMITS_SOCRATA_URL },
+  };
+
   const leadPermitStats = new Map<string, {
     total: number;
     lastDate: string | null;
-    contractors: { name: string; phone: string | null; email: string | null; address: string | null; city: string | null; state: string | null; zip: string | null }[];
-    owners: string[];
+    contractors: { name: string; phone: string | null; email: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; source: string }[];
+    owners: { name: string; source: string }[];
   }>();
 
   let matched = 0;
@@ -500,14 +652,15 @@ export async function matchPermitsToLeads(
           city: permit.contractorCity,
           state: permit.contractorState,
           zip: permit.contractorZip,
+          source: permit.source,
         });
       }
     }
-    if (permit.owner && !stats.owners.includes(permit.owner)) {
-      stats.owners.push(permit.owner);
+    if (permit.owner && !stats.owners.some(o => o.name === permit.owner)) {
+      stats.owners.push({ name: permit.owner, source: permit.source });
     }
-    if (permit.applicantName && !stats.owners.includes(permit.applicantName) && permit.applicantName !== permit.owner) {
-      stats.owners.push(permit.applicantName);
+    if (permit.applicantName && !stats.owners.some(o => o.name === permit.applicantName) && permit.applicantName !== permit.owner) {
+      stats.owners.push({ name: permit.applicantName, source: permit.source });
     }
     leadPermitStats.set(lead.id, stats);
   }
@@ -546,13 +699,14 @@ export async function matchPermitsToLeads(
     if ((stats.contractors.length > 0 || stats.owners.length > 0) && recordBatchEvidence) {
       const evidenceBatch: any[] = [];
       for (const c of stats.contractors) {
+        const srcLabel = PERMIT_SOURCE_LABELS[c.source] || { name: "Building Permits", url: "" };
         if (c.phone) {
           evidenceBatch.push({
             leadId,
             contactType: "phone",
             contactValue: c.phone,
-            sourceName: "Dallas Building Permits",
-            sourceUrl: "https://www.dallasopendata.com/resource/e7gq-4sah.json",
+            sourceName: srcLabel.name,
+            sourceUrl: srcLabel.url,
             confidence: 70,
             extractorMethod: "RULE",
             rawSnippet: `Contractor: ${c.name}`,
@@ -563,24 +717,25 @@ export async function matchPermitsToLeads(
             leadId,
             contactType: "email",
             contactValue: c.email,
-            sourceName: "Dallas Building Permits",
-            sourceUrl: "https://www.dallasopendata.com/resource/e7gq-4sah.json",
+            sourceName: srcLabel.name,
+            sourceUrl: srcLabel.url,
             confidence: 70,
             extractorMethod: "RULE",
             rawSnippet: `Contractor: ${c.name}`,
           });
         }
       }
-      for (const ownerName of stats.owners) {
+      for (const owner of stats.owners) {
+        const srcLabel = PERMIT_SOURCE_LABELS[owner.source] || { name: "Building Permits", url: "" };
         evidenceBatch.push({
           leadId,
           contactType: "name",
-          contactValue: ownerName,
-          sourceName: "Fort Worth Building Permits",
-          sourceUrl: FORT_WORTH_ARCGIS_URL,
+          contactValue: owner.name,
+          sourceName: srcLabel.name,
+          sourceUrl: srcLabel.url,
           confidence: 75,
           extractorMethod: "RULE",
-          rawSnippet: `Permit Owner/Applicant: ${ownerName}`,
+          rawSnippet: `Permit Owner/Applicant: ${owner.name}`,
         });
       }
       if (evidenceBatch.length > 0) {

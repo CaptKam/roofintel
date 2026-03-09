@@ -30,7 +30,7 @@ import { buildContactPath } from "./contact-ranking";
 import { seedPmCompanies, findPmCompany, addPmCompany, getAllPmCompanies } from "./pm-company-manager";
 import { getSkipTraceStatus } from "./skip-trace-agent";
 import { importDallas311, importDallasCodeViolations, matchViolationsToLeads, getDallasRecordsStatus, addRecordedDocument } from "./dallas-records-agent";
-import { importDallasPermits, importFortWorthPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats, cleanupContractorData } from "./permits-agent";
+import { importDallasPermits, importFortWorthPermits, importFortCollinsPermits, matchPermitsToLeads, getPermitStats, importDallasRoofingPermits, getRoofingPermitStats, cleanupContractorData } from "./permits-agent";
 import { enrichLeadsWithFloodZones, getFloodZoneStats } from "./flood-zone-agent";
 import { calculateScore, calculateDistressScore, getScoreBreakdown } from "./seed";
 import { updateLeadSchema, insertStormAlertConfigSchema, type LeadFilter, buildingPermits, leads as leadsTable, enrichmentJobs, apiUsageTracker, savedFilters, insertSavedFilterSchema, suppressionList } from "@shared/schema";
@@ -925,13 +925,19 @@ Rules:
               }
             } else if (step.id === "permits") {
               const permMarket = await storage.getMarketById(marketId);
+              step.status = "running";
               if (permMarket?.state === "TX") {
-                step.status = "running";
                 const dallasResult = await importDallasPermits(marketId, { daysBack: 365 });
                 const fwResult = await importFortWorthPermits(marketId, { yearsBack: 5, commercialOnly: true, roofingOnly: false });
                 const matchResult = await matchPermitsToLeads(marketId);
                 step.status = "complete";
                 step.detail = `Dallas: ${dallasResult.imported || 0}, FW: ${fwResult.imported || 0}, matched: ${matchResult.matched || 0}`;
+                console.log(`[unified-free] Permits complete: ${step.detail}`);
+              } else if (permMarket?.state === "CO" && permMarket?.counties?.some((c: string) => c.toLowerCase() === "larimer")) {
+                const fcResult = await importFortCollinsPermits(marketId, { commercialOnly: true });
+                const matchResult = await matchPermitsToLeads(marketId);
+                step.status = "complete";
+                step.detail = `FC: ${fcResult.imported || 0}, matched: ${matchResult.matched || 0}`;
                 console.log(`[unified-free] Permits complete: ${step.detail}`);
               } else {
                 step.status = "skipped";
@@ -2200,6 +2206,24 @@ Rules:
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to import Fort Worth permits", error: error.message });
+    }
+  });
+
+  app.post("/api/permits/import-fortcollins", async (req, res) => {
+    try {
+      const { marketId, commercialOnly } = req.body;
+      if (!marketId) return res.status(400).json({ message: "marketId required" });
+      const market = await storage.getMarketById(marketId);
+      if (market?.state !== "CO") {
+        return res.status(400).json({ message: `Fort Collins permits only available for CO markets` });
+      }
+      const result = await importFortCollinsPermits(marketId, {
+        commercialOnly: commercialOnly ?? true,
+      });
+      const matchResult = await matchPermitsToLeads(marketId);
+      res.json({ ...result, matched: matchResult.matched });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to import Fort Collins permits", error: error.message });
     }
   });
 

@@ -1827,8 +1827,10 @@ export default function Admin() {
 
   const marketId = activeMarket?.id;
   const isTexas = activeMarket?.state === "TX";
+  const isColorado = activeMarket?.state === "CO";
   const hasDallas = activeMarket?.counties?.some((c: string) => c.toLowerCase() === "dallas");
   const hasTarrant = activeMarket?.counties?.some((c: string) => c.toLowerCase() === "tarrant");
+  const hasLarimer = activeMarket?.counties?.some((c: string) => c.toLowerCase() === "larimer");
 
   useEffect(() => {
     setDcadMinValue("100000");
@@ -2255,6 +2257,25 @@ export default function Admin() {
     },
     onError: (err: any) => {
       toast({ title: "Import failed", description: err?.message || "Could not import Fort Worth permits.", variant: "destructive" });
+    },
+  });
+
+  const importFortCollinsPermitsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/permits/import-fortcollins", { marketId, commercialOnly: true });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const count = data.imported ?? 0;
+      const skipped = data.skipped ?? 0;
+      const matched = data.matched ?? 0;
+      setLastResults((prev) => ({ ...prev, importFortCollinsPermits: `${count} permits imported, ${skipped} duplicates, ${matched} matched` }));
+      toast({ title: "Fort Collins permits import complete", description: `${count} permits imported, ${matched} matched to leads.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/permits/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Import failed", description: err?.message || "Could not import Fort Collins permits.", variant: "destructive" });
     },
   });
 
@@ -3338,7 +3359,7 @@ export default function Admin() {
             </Card>
             )}
 
-            {isTexas && (
+            {(isTexas || isColorado) && (
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                 <CardTitle className="text-base font-semibold">
@@ -3352,7 +3373,9 @@ export default function Admin() {
               </CardHeader>
               <CardContent className="p-6 pt-0 space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  Import building permits from Dallas (Socrata) and Fort Worth (ArcGIS, 1.5M+ records back to 2001), then match to leads with evidence recording.
+                  {isTexas
+                    ? "Import building permits from Dallas (Socrata) and Fort Worth (ArcGIS, 1.5M+ records back to 2001), then match to leads with evidence recording."
+                    : "Import building permits from Fort Collins open data portal (Socrata), then match to leads with evidence recording."}
                 </p>
 
                 {permitsStatus && permitsStatus.totalPermits > 0 && (
@@ -3439,6 +3462,22 @@ export default function Admin() {
                       <Building2 className="w-3 h-3" />
                     )}
                     Fort Worth ({permitYearsBack}yr ArcGIS)
+                  </Button>
+                  )}
+                  {hasLarimer && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => importFortCollinsPermitsMutation.mutate()}
+                    disabled={importFortCollinsPermitsMutation.isPending || !marketId}
+                    data-testid="button-import-fortcollins-permits"
+                  >
+                    {importFortCollinsPermitsMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Building2 className="w-3 h-3" />
+                    )}
+                    Fort Collins (Socrata)
                   </Button>
                   )}
                   <Button
