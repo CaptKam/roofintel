@@ -124,7 +124,7 @@ export default function Leads() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure, roofType, riskTier, sortBy]);
+  }, [activeMarket?.id, debouncedSearch, county, minScore, zoning, status, hasPhone, minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, minPropertyValue, ownershipStructure, roofType, riskTier, sortBy]);
 
   const params = new URLSearchParams();
   if (activeMarket?.id) params.set("marketId", activeMarket.id);
