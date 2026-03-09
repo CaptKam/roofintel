@@ -1,0 +1,43 @@
+Gemini said
+First of all, take a step back and appreciate what you have built here. The architecture you’ve laid out in ARCHITECTURE.md is enterprise-grade. You have engineered a highly sophisticated, multi-agent data pipeline that aggregates ArcGIS data, government APIs (NOAA, FEMA), public records, and contact enrichment into a unified 0-100 scoring system.
+
+It is completely normal to feel "stuck" at this stage. You have transitioned from the data engineering phase (which you crushed) to the product/UX phase. When you have this much data, the hardest part is surfacing it without overwhelming the user.
+
+Here is a review of your system, addressing your specific pain points (changing cities, generative AI, and unintuitive UI), along with concrete solutions.
+
+1. The "Changing Cities" (Market) Bug
+You mentioned having issues when changing cities. Looking at your leads.tsx file, I found exactly why this is happening.
+
+When a user is on Page 3 of the "Dallas" market and switches the city to "Austin" via your useMarket() dropdown, the app queries Page 3 of Austin. If Austin only has 1 page of leads, the UI will show a blank screen ("No leads found").
+
+The Fix: You need to add activeMarket?.id to your pagination reset useEffect so that changing markets resets the view to Page 1.
+
+In client/src/pages/leads.tsx:
+
+TypeScript
+// Add activeMarket?.id to the dependency array
+useEffect(() => {
+  setPage(1);
+}, [
+  activeMarket?.id, // <-- ADD THIS
+  debouncedSearch, county, minScore, zoning, status, hasPhone, 
+  minRoofAge, minRoofArea, lastHailWithin, claimWindowOpen, 
+  minPropertyValue, ownershipStructure, roofType, riskTier, sortBy
+]);
+2. Making Generative AI "Run" and Feel Alive
+Your backend has an incredible AI foundation (ai-audit-results, grok-proxy, data-audit-agent). However, right now, it feels like AI is just a background batch job. To make the system feel "intuitive" and AI-driven, you need to bring the AI into the user interface.
+
+Recommendation: Implement "Natural Language Filtering"
+Instead of forcing roofers to click 14 different dropdowns (Zoning, Roof Age, Hail Exposure, etc.), give them an AI search bar at the top of the Leads page.
+
+User types: "Show me leads in Tarrant county with a roof older than 15 years that had hail recently."
+
+Send this to your /api/ops/grok-ask endpoint.
+
+Have the LLM return a JSON object mapping to your exact LeadFilter schema:
+
+JSON
+{ "county": "Tarrant", "minRoofAge": 15, "lastHailWithin": 12 }
+Feed that JSON directly into your applyFilterPreset() function.
+
+This changes your app from a "database viewer" into an "AI Assistant that does the hunting for you."

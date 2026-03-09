@@ -46,6 +46,7 @@ import {
   Flame,
 } from "lucide-react";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
+import { AIFilterBar } from "@/components/ai-filter-bar";
 import type { Lead } from "@shared/schema";
 
 const PAGE_SIZE = 50;
@@ -320,6 +321,11 @@ export default function Leads() {
           </Button>
         )}
       </div>
+
+      <AIFilterBar
+        marketId={activeMarket?.id}
+        onApplyFilters={applyFilterPreset}
+      />
 
       <SavedFilterBar
         currentFilters={currentFilterState}

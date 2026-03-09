@@ -406,6 +406,105 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
     }
   });
 
+  app.post("/api/leads/ai-filter", async (req, res) => {
+    try {
+      const { askClaudeJson } = await import("./ai-client");
+      const { query, marketId } = req.body;
+      if (!query || typeof query !== "string" || query.trim().length === 0) {
+        return res.status(400).json({ message: "query is required" });
+      }
+
+      let counties: string[] = [];
+      try {
+        const market = marketId ? await storage.getMarketById(marketId) : null;
+        counties = market?.counties || [];
+      } catch {}
+
+      const systemPrompt = `You are a filter parser for a commercial roofing lead database. Convert the user's natural language query into a JSON filter object.
+
+Available filter fields (use EXACTLY these values):
+- county (string): County name. Known counties: ${counties.length > 0 ? counties.join(", ") : "Dallas, Tarrant, El Paso, Collin, Denton"}
+- minScore (number 0-100): Minimum lead intelligence score. 80+ = hot leads.
+- zoning (string): EXACTLY one of "Commercial", "Multi-Family", "Industrial"
+- status (string): EXACTLY one of "new", "contacted", "qualified", "proposal", "closed"
+- hasPhone (boolean): Lead has a phone number on file
+- hasEmail (boolean): Lead has an email on file
+- minRoofAge (number): Minimum age of the roof in years. Common values: 5, 10, 15, 20, 25
+- minRoofArea (number): Minimum roof area in square feet. Common values: 5000, 10000, 20000, 50000, 100000
+- lastHailWithin (number): Months since last hail event. Common values: 6, 12, 24, 36
+- claimWindowOpen (boolean): Insurance claim window is currently open
+- minPropertyValue (number): Minimum property value in dollars. Common values: 1000000, 2000000, 5000000, 10000000, 25000000
+- ownershipStructure (string): EXACTLY one of "small_private", "investment_firm", "institutional_reit", "third_party_managed"
+- roofType (string): EXACTLY one of "TPO", "EPDM", "Modified Bitumen", "Built-Up (BUR)", "Metal", "Shingle"
+- riskTier (string): EXACTLY one of "critical", "high", "moderate", "low"
+- sortBy (string): Use "roofRiskIndex" for sorting by risk score
+
+Rules:
+- Return ONLY a valid JSON object with the matching filter fields. No extra text.
+- Only include fields the user mentioned or implied. Do not invent filters.
+- For "high value" or "expensive" properties, use minPropertyValue.
+- For "old roof" or "aging roof", use minRoofAge.
+- For "recent hail" or "hail damage", use lastHailWithin (in months).
+- For "best" or "top" leads, use minScore: 70 or higher.
+- If no filters can be extracted, return an empty object: {}`;
+
+      const { data: rawFilters } = await askClaudeJson<Record<string, any>>(
+        query.trim(),
+        systemPrompt
+      );
+
+      const allowedKeys = new Set([
+        "county", "minScore", "zoning", "status", "hasPhone", "hasEmail",
+        "minRoofAge", "minRoofArea", "lastHailWithin", "claimWindowOpen",
+        "minPropertyValue", "ownershipStructure", "roofType", "riskTier", "sortBy"
+      ]);
+      const validZoning = new Set(["Commercial", "Multi-Family", "Industrial"]);
+      const validStatus = new Set(["new", "contacted", "qualified", "proposal", "closed"]);
+      const validOwnership = new Set(["small_private", "investment_firm", "institutional_reit", "third_party_managed"]);
+      const validRoofType = new Set(["TPO", "EPDM", "Modified Bitumen", "Built-Up (BUR)", "Metal", "Shingle"]);
+      const validRiskTier = new Set(["critical", "high", "moderate", "low"]);
+
+      const roofTypeAliases: Record<string, string> = { "BUR": "Built-Up (BUR)", "Built-Up": "Built-Up (BUR)", "Mod Bit": "Modified Bitumen" };
+      const statusAliases: Record<string, string> = {
+        "New": "new", "Contacted": "contacted", "Qualified": "qualified",
+        "Proposal": "proposal", "Closed": "closed", "Won": "closed", "Lost": "closed", "Archived": "closed"
+      };
+
+      const filters: Record<string, any> = {};
+      for (const [key, value] of Object.entries(rawFilters)) {
+        if (!allowedKeys.has(key) || value === null || value === undefined) continue;
+
+        if (key === "zoning" && typeof value === "string") {
+          if (validZoning.has(value)) filters[key] = value;
+        } else if (key === "status" && typeof value === "string") {
+          const normalized = statusAliases[value] || value.toLowerCase();
+          if (validStatus.has(normalized)) filters[key] = normalized;
+        } else if (key === "ownershipStructure" && typeof value === "string") {
+          if (validOwnership.has(value)) filters[key] = value;
+        } else if (key === "roofType" && typeof value === "string") {
+          const normalized = roofTypeAliases[value] || value;
+          if (validRoofType.has(normalized)) filters[key] = normalized;
+        } else if (key === "riskTier" && typeof value === "string") {
+          if (validRiskTier.has(value)) filters[key] = value;
+        } else if (key === "sortBy" && typeof value === "string") {
+          if (value === "roofRiskIndex") filters[key] = value;
+        } else if (["hasPhone", "hasEmail", "claimWindowOpen"].includes(key)) {
+          filters[key] = !!value;
+        } else if (["minScore", "minRoofAge", "minRoofArea", "lastHailWithin", "minPropertyValue"].includes(key)) {
+          const num = Number(value);
+          if (!isNaN(num) && num > 0) filters[key] = num;
+        } else if (key === "county" && typeof value === "string") {
+          filters[key] = value;
+        }
+      }
+
+      res.json({ filters, query: query.trim() });
+    } catch (error: any) {
+      console.error("[AI Filter] Error:", error);
+      res.status(500).json({ message: "Failed to parse query", error: error.message });
+    }
+  });
+
   app.get("/api/leads", async (req, res) => {
     try {
       const filter: LeadFilter = {
