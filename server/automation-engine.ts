@@ -479,7 +479,7 @@ async function refreshNoaaAllMarkets(): Promise<{ marketsProcessed: number; tota
     if (!market.isActive) continue;
     try {
       const targetCounties = new Set(market.counties.map((c: string) => c.toUpperCase()));
-      const result = await importNoaaHailData(currentYear, market.id, targetCounties);
+      const result = await importNoaaHailData(currentYear, market.id, targetCounties, market.state);
       totalImported += result.imported;
       marketsProcessed++;
     } catch (err) {
@@ -599,7 +599,7 @@ export async function runNewMarketLoad(options: MarketLoadOptions): Promise<Mark
           const currentYear = new Date().getFullYear();
           // Import current year and previous 2 years
           for (const year of [currentYear, currentYear - 1, currentYear - 2]) {
-            const result = await importNoaaHailData(year, marketId, targetCounties);
+            const result = await importNoaaHailData(year, marketId, targetCounties, market.state);
             hailEventsImported += result.imported;
           }
           steps.push({ step: "Import NOAA Hail History", status: "complete", detail: `${hailEventsImported} events (3 years)` });

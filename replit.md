@@ -22,7 +22,7 @@ The user interface features a professional B2B color scheme (blue/slate), dark s
 
 ### Core Agents & Services
 - **Property Data Agents**: Automated fetching from Central Appraisal Districts ArcGIS APIs.
-- **Hail Correlation & Monitoring**: Proximity-based hail event matching, real-time NOAA SWDI radar, and Xweather predictive hail threat forecasting.
+- **Hail Correlation & Monitoring**: Proximity-based hail event matching, real-time NOAA SWDI radar, and Xweather predictive hail threat forecasting. NOAA importer, SWDI radar fetcher, and NWS alert tracker are all market-aware (dynamically resolve state and bounding box from active markets, not hardcoded to Texas).
 - **Owner Intelligence & Decision-Maker Discovery**: Identifies owners, resolves entities, discovers portfolios, links LLCs, classifies ownership, and infers decision-makers.
 - **Enrichment Pipeline**: A 3-stage pipeline for contact enrichment with confidence scoring.
 - **GIS Roof Intelligence**: Uses OpenStreetMap Overpass API for building footprints, computes roof area, and integrates satellite imagery with roof age/material/type.

@@ -106,10 +106,25 @@ interface NoaaImportResult {
   errors: string[];
 }
 
+const STATE_ABBREV_TO_FULL: Record<string, string> = {
+  TX: "TEXAS", CO: "COLORADO", OK: "OKLAHOMA", KS: "KANSAS",
+  NE: "NEBRASKA", NM: "NEW MEXICO", AR: "ARKANSAS", LA: "LOUISIANA",
+  MO: "MISSOURI", MS: "MISSISSIPPI", AL: "ALABAMA", GA: "GEORGIA",
+  FL: "FLORIDA", SC: "SOUTH CAROLINA", NC: "NORTH CAROLINA",
+  TN: "TENNESSEE", KY: "KENTUCKY", VA: "VIRGINIA", WV: "WEST VIRGINIA",
+  OH: "OHIO", IN: "INDIANA", IL: "ILLINOIS", IA: "IOWA",
+  MN: "MINNESOTA", WI: "WISCONSIN", MI: "MICHIGAN", PA: "PENNSYLVANIA",
+  NY: "NEW YORK", NJ: "NEW JERSEY", CT: "CONNECTICUT", MA: "MASSACHUSETTS",
+  WY: "WYOMING", MT: "MONTANA", SD: "SOUTH DAKOTA", ND: "NORTH DAKOTA",
+  AZ: "ARIZONA", UT: "UTAH", NV: "NEVADA", ID: "IDAHO",
+  OR: "OREGON", WA: "WASHINGTON", CA: "CALIFORNIA",
+};
+
 export async function importNoaaHailData(
   year: number,
   marketId: string,
-  targetCounties?: Set<string>
+  targetCounties?: Set<string>,
+  targetState?: string
 ): Promise<NoaaImportResult> {
   const result: NoaaImportResult = {
     year,
@@ -178,7 +193,8 @@ export async function importNoaaHailData(
       const state = fields[stateIdx]?.toUpperCase();
       const eventType = fields[eventTypeIdx]?.toLowerCase();
 
-      if (state !== "TEXAS" || eventType !== "hail") continue;
+      const fullStateName = targetState ? (STATE_ABBREV_TO_FULL[targetState.toUpperCase()] || targetState.toUpperCase()) : "TEXAS";
+      if (state !== fullStateName || eventType !== "hail") continue;
 
       const countyRaw = fields[czNameIdx]?.toUpperCase() || "";
       if (!counties.has(countyRaw)) continue;
@@ -255,11 +271,12 @@ export async function importNoaaMultiYear(
   startYear: number,
   endYear: number,
   marketId: string,
-  targetCounties?: Set<string>
+  targetCounties?: Set<string>,
+  targetState?: string
 ): Promise<NoaaImportResult[]> {
   const results: NoaaImportResult[] = [];
   for (let year = startYear; year <= endYear; year++) {
-    const result = await importNoaaHailData(year, marketId, targetCounties);
+    const result = await importNoaaHailData(year, marketId, targetCounties, targetState);
     results.push(result);
   }
   return results;
