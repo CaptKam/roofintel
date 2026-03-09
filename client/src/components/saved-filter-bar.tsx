@@ -23,6 +23,39 @@ const FILTER_COLORS = [
   "#ec4899", "#06b6d4", "#f97316",
 ];
 
+const SMART_PRESETS: Array<{ name: string; icon: string; filters: FilterState; color: string }> = [
+  {
+    name: "Hot Claim Windows",
+    icon: "\uD83D\uDD25",
+    filters: { lastHailWithin: 12, minRoofAge: 15, claimWindowOpen: true },
+    color: "#ef4444",
+  },
+  {
+    name: "Big Box Warehouses",
+    icon: "\uD83C\uDFE2",
+    filters: { minRoofArea: 50000, zoning: "Commercial" },
+    color: "#3b82f6",
+  },
+  {
+    name: "High Value Targets",
+    icon: "\uD83D\uDCB0",
+    filters: { minPropertyValue: 5000000, minScore: 60 },
+    color: "#10b981",
+  },
+  {
+    name: "Storm Damaged",
+    icon: "\u26A1",
+    filters: { lastHailWithin: 6, riskTier: "critical" },
+    color: "#f59e0b",
+  },
+  {
+    name: "Ready to Contact",
+    icon: "\uD83D\uDCDE",
+    filters: { hasPhone: true, minScore: 60, status: "new" },
+    color: "#8b5cf6",
+  },
+];
+
 function hasActiveFilters(filters: FilterState): boolean {
   return Object.entries(filters).some(([key, val]) => {
     if (key === "limit" || key === "offset" || key === "search") return false;
@@ -110,6 +143,33 @@ export function SavedFilterBar({ currentFilters, onApplyFilter, onClearFilters }
   return (
     <div className="flex items-center gap-2 flex-wrap" data-testid="saved-filter-bar">
       <Bookmark className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+
+      {SMART_PRESETS.map((preset) => {
+        const isActive = filtersMatch(preset.filters, currentFilters);
+        return (
+          <Button
+            key={preset.name}
+            variant={isActive ? "default" : "outline"}
+            size="sm"
+            className="h-7 text-xs rounded-full px-3 gap-1"
+            onClick={() => {
+              if (isActive) {
+                onClearFilters();
+              } else {
+                onApplyFilter(preset.filters);
+              }
+            }}
+            data-testid={`button-preset-${preset.name.toLowerCase().replace(/\s+/g, "-")}`}
+          >
+            <span>{preset.icon}</span>
+            {preset.name}
+          </Button>
+        );
+      })}
+
+      {(savedFilters || []).length > 0 && (
+        <div className="w-px h-5 bg-border shrink-0" />
+      )}
 
       {(savedFilters || []).map((sf) => {
         const isActive = filtersMatch(sf.filters as FilterState, currentFilters);

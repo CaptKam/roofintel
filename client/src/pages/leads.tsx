@@ -38,12 +38,8 @@ import {
   DollarSign,
   Shield,
   Layers,
-  CircleCheck,
-  CircleMinus,
-  CircleAlert,
   ShieldAlert,
   ArrowUpDown,
-  Flame,
 } from "lucide-react";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
 import { AIFilterBar } from "@/components/ai-filter-bar";
@@ -152,23 +148,6 @@ export default function Leads() {
   const { data, isLoading } = useQuery<LeadsResponse>({
     queryKey: [`/api/leads?${queryString}`],
   });
-
-  const { data: roiDecisionsData } = useQuery<Array<{ leadId: string; decisionType: string; roiScore: number }>>({
-    queryKey: ["/api/admin/roi/decisions", { limit: 500 }],
-    queryFn: async () => {
-      const res = await fetch("/api/admin/roi/decisions?limit=500");
-      if (!res.ok) return [];
-      const data = await res.json();
-      return Array.isArray(data) ? data : data.decisions || [];
-    },
-  });
-
-  const roiDecisionMap = new Map<string, { decisionType: string; roiScore: number }>();
-  if (roiDecisionsData) {
-    for (const d of roiDecisionsData) {
-      roiDecisionMap.set(d.leadId, { decisionType: d.decisionType, roiScore: d.roiScore });
-    }
-  }
 
   const leads = data?.leads;
   const total = data?.total ?? 0;
@@ -287,27 +266,12 @@ export default function Leads() {
           />
         </div>
         <Button
-          variant={minScore === "80" ? "default" : "outline"}
-          onClick={() => {
-            if (minScore === "80") {
-              applyFilterPreset({});
-            } else {
-              applyFilterPreset({ minScore: "80" });
-            }
-          }}
-          data-testid="button-hot-leads"
-          className={minScore === "80" ? "bg-orange-600 hover:bg-orange-700 text-white" : ""}
-        >
-          <Flame className="w-4 h-4 mr-1.5" />
-          Hot Leads
-        </Button>
-        <Button
           variant={showFilters ? "secondary" : "outline"}
           onClick={() => setShowFilters(!showFilters)}
           data-testid="button-toggle-filters"
         >
           <SlidersHorizontal className="w-4 h-4 mr-1.5" />
-          Filters
+          Advanced Filters
           {hasFilters && (
             <Badge variant="secondary" className="ml-1.5 text-[10px]">
               Active
@@ -649,65 +613,18 @@ export default function Leads() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {roiDecisionMap.has(lead.id) && (() => {
-                    const roi = roiDecisionMap.get(lead.id)!;
-                    const tierColors: Record<string, string> = {
-                      premium: "bg-purple-500/15 text-purple-700 dark:text-purple-400",
-                      tier3: "bg-red-500/15 text-red-700 dark:text-red-400",
-                      tier2: "bg-orange-500/15 text-orange-700 dark:text-orange-400",
-                      tier1: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400",
-                      free_only: "bg-blue-500/15 text-blue-700 dark:text-blue-400",
-                      skip: "bg-gray-500/15 text-gray-700 dark:text-gray-400",
-                    };
-                    const colorClass = tierColors[roi.decisionType] || "bg-gray-500/15 text-gray-700 dark:text-gray-400";
-                    return (
-                      <Badge
-                        variant="secondary"
-                        className={`no-default-hover-elevate no-default-active-elevate text-[10px] ${colorClass}`}
-                        data-testid={`badge-roi-tier-${lead.id}`}
-                      >
-                        {roi.decisionType}
-                      </Badge>
-                    );
-                  })()}
-                  {lead.roofRiskIndex != null && lead.roofRiskIndex > 0 && (
+                  {lead.roofRiskIndex != null && lead.roofRiskIndex >= 61 && (
                     <Badge
                       variant="secondary"
                       className={`no-default-hover-elevate no-default-active-elevate font-mono text-[10px] ${
                         lead.roofRiskIndex >= 81
                           ? "bg-red-500/15 text-red-700 dark:text-red-400"
-                          : lead.roofRiskIndex >= 61
-                          ? "bg-orange-500/15 text-orange-700 dark:text-orange-400"
-                          : lead.roofRiskIndex >= 31
-                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                          : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                          : "bg-orange-500/15 text-orange-700 dark:text-orange-400"
                       }`}
                       data-testid={`badge-risk-${lead.id}`}
                     >
                       <ShieldAlert className="w-3 h-3 mr-0.5" />
                       {lead.roofRiskIndex}
-                    </Badge>
-                  )}
-                  {(lead as any).dataConfidence && (
-                    <Badge
-                      variant="secondary"
-                      className={`no-default-hover-elevate no-default-active-elevate text-[10px] ${
-                        (lead as any).dataConfidence === "high"
-                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                          : (lead as any).dataConfidence === "medium"
-                          ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                          : "bg-red-500/15 text-red-700 dark:text-red-400"
-                      }`}
-                      data-testid={`badge-confidence-${lead.id}`}
-                    >
-                      {(lead as any).dataConfidence === "high" ? (
-                        <CircleCheck className="w-3 h-3 mr-0.5" />
-                      ) : (lead as any).dataConfidence === "medium" ? (
-                        <CircleMinus className="w-3 h-3 mr-0.5" />
-                      ) : (
-                        <CircleAlert className="w-3 h-3 mr-0.5" />
-                      )}
-                      {(lead as any).dataConfidence === "high" ? "High" : (lead as any).dataConfidence === "medium" ? "Med" : "Low"}
                     </Badge>
                   )}
                   <StatusBadge status={lead.status} />
