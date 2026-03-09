@@ -31,7 +31,7 @@ interface FilterConfig {
   county?: string;
 }
 
-function getFieldValue(attributes: Record<string, any>, mapping: string | string[]): any {
+export function getFieldValue(attributes: Record<string, any>, mapping: string | string[]): any {
   if (Array.isArray(mapping)) {
     for (const key of mapping) {
       if (typeof key === 'string' && key.startsWith('_STATIC_')) {
@@ -49,7 +49,7 @@ function getFieldValue(attributes: Record<string, any>, mapping: string | string
   return attributes[mapping] ?? null;
 }
 
-function getCentroid(geometry?: { rings?: number[][][] }, defaultLat = 32.7767, defaultLng = -96.7970): [number, number] {
+export function getCentroid(geometry?: { rings?: number[][][] }, defaultLat = 32.7767, defaultLng = -96.7970): [number, number] {
   if (!geometry?.rings?.[0]?.length) return [defaultLat, defaultLng];
   const pts = geometry.rings[0];
   const lng = pts.reduce((s, p) => s + p[0], 0) / pts.length;
@@ -57,7 +57,7 @@ function getCentroid(geometry?: { rings?: number[][][] }, defaultLat = 32.7767, 
   return [lat, lng];
 }
 
-function inferOwnerType(name: string): string {
+export function inferOwnerType(name: string): string {
   const upper = (name || "").toUpperCase();
   if (upper.includes("LLC") || upper.includes("L.L.C.") || upper.includes("LIMITED LIABILITY")) return "LLC";
   if (upper.includes("INC") || upper.includes("CORP") || upper.includes("CORPORATION") || upper.includes("CO.")) return "Corporation";

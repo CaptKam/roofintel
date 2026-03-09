@@ -595,6 +595,193 @@ Rules:
     }
   });
 
+  app.post("/api/leads/lookup", async (req, res) => {
+    try {
+      const { address, marketId } = req.body;
+      if (!address || typeof address !== "string" || address.trim().length < 5) {
+        return res.status(400).json({ message: "Please enter a valid address" });
+      }
+
+      const geocodeRes = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address.trim())}&format=json&limit=1&countrycodes=us`,
+        { headers: { "User-Agent": "RoofIntel/1.0" } }
+      );
+      if (!geocodeRes.ok) {
+        return res.status(502).json({ message: "Geocoding service unavailable. Please try again later." });
+      }
+      let geocodeData: any[];
+      try { geocodeData = await geocodeRes.json(); } catch {
+        return res.status(502).json({ message: "Geocoding service returned invalid data." });
+      }
+      if (!Array.isArray(geocodeData) || geocodeData.length === 0) {
+        return res.status(404).json({ message: "Could not find that address. Please check the spelling and try again." });
+      }
+
+      const lat = parseFloat(geocodeData[0].lat);
+      const lng = parseFloat(geocodeData[0].lon);
+      if (isNaN(lat) || isNaN(lng)) {
+        return res.status(502).json({ message: "Geocoding returned invalid coordinates." });
+      }
+      const displayName = geocodeData[0].display_name || address;
+
+      const markets = await storage.getMarkets();
+      let matchedMarket = marketId ? markets.find(m => m.id === marketId) : null;
+      if (!matchedMarket) {
+        matchedMarket = markets.find(m => {
+          const bb = m.boundingBox as any;
+          if (!bb) return false;
+          return lat >= bb.south && lat <= bb.north && lng >= bb.west && lng <= bb.east;
+        }) || null;
+      }
+
+      if (!matchedMarket) {
+        return res.status(404).json({
+          message: "This address is not within any of your active markets.",
+          geocoded: { lat, lng, displayName }
+        });
+      }
+
+      const existingLeads = await storage.getLeads({
+        marketId: matchedMarket.id,
+        search: address.trim().split(",")[0].trim(),
+        limit: 5
+      });
+      
+      const normalizeAddr = (s: string) => s.replace(/[^a-z0-9]/gi, "").toLowerCase();
+      const inputNorm = normalizeAddr(address.split(",")[0]);
+      const existing = existingLeads.leads.find(l => {
+        const leadNorm = normalizeAddr(l.address || "");
+        return leadNorm === inputNorm || 
+               (Math.abs((l.latitude || 0) - lat) < 0.001 && Math.abs((l.longitude || 0) - lng) < 0.001);
+      });
+      if (existing) {
+        return res.json({
+          message: "Property already in your pipeline",
+          lead: { ...existing, dataConfidence: computeDataConfidence(existing) },
+          alreadyExists: true
+        });
+      }
+
+      let parcelData: any = null;
+      const dataSources = await storage.getMarketDataSources(matchedMarket.id);
+      const arcgisSource = dataSources.find(ds => ds.sourceType === "cad_arcgis" && ds.isActive);
+
+      if (arcgisSource) {
+        const addrParts = address.trim().split(",")[0].trim().split(/\s+/);
+        const streetNumRaw = addrParts[0].replace(/[^0-9]/g, "");
+        if (!streetNumRaw) {
+          return res.status(400).json({ message: "Could not parse a street number from the address." });
+        }
+        const directionals = new Set(["N", "S", "E", "W", "NE", "NW", "SE", "SW", "NORTH", "SOUTH", "EAST", "WEST"]);
+        const suffixes = new Set(["RD", "DR", "ST", "AVE", "BLVD", "LN", "CT", "PKWY", "CIR", "WAY", "PL", "TRL", "HWY", "LOOP"]);
+        const nameParts = addrParts.slice(1).filter(p => !directionals.has(p.toUpperCase()) && !suffixes.has(p.toUpperCase()));
+        const streetName = (nameParts.join(" ") || addrParts[1] || "").replace(/'/g, "''").replace(/[%_]/g, "");
+
+        const addressLayerUrl = arcgisSource.endpoint.replace(/\/\d+\/query$/, "/0/query");
+        
+        try {
+          const addrQuery = `NUMBER_ = ${streetNumRaw} AND UPPER(FNAME) LIKE '%${streetName.toUpperCase()}%'`;
+          const addrRes = await fetch(
+            `${addressLayerUrl}?where=${encodeURIComponent(addrQuery)}&outFields=PARCELNO,NUMBER_,FDPRE,FNAME,FTYPE,FDSUF,CITY,ZIP&returnGeometry=true&outSR=4326&f=json`,
+            { headers: { "User-Agent": "RoofIntel/1.0" } }
+          );
+          const addrData = await addrRes.json();
+          
+          if (addrData.features && addrData.features.length > 0) {
+            const addrFeature = addrData.features[0];
+            const parcelNo = addrFeature.attributes.PARCELNO;
+            
+            const situsAddr = [
+              addrFeature.attributes.NUMBER_,
+              addrFeature.attributes.FDPRE,
+              addrFeature.attributes.FNAME,
+              addrFeature.attributes.FTYPE,
+              addrFeature.attributes.FDSUF
+            ].filter(Boolean).join(" ");
+
+            await new Promise(r => setTimeout(r, 2000));
+            
+            const safeParcelNo = String(parcelNo).replace(/'/g, "''").replace(/[^a-zA-Z0-9\-_.]/g, "");
+            const parcelQuery = `PARCELNO = '${safeParcelNo}'`;
+            const parcelRes = await fetch(
+              `${arcgisSource.endpoint}?where=${encodeURIComponent(parcelQuery)}&outFields=*&returnGeometry=true&outSR=4326&f=json`,
+              { headers: { "User-Agent": "RoofIntel/1.0" } }
+            );
+            const parcelResult = await parcelRes.json();
+            
+            if (parcelResult.features && parcelResult.features.length > 0) {
+              const pf = parcelResult.features[0];
+              const fm = arcgisSource.fieldMapping as any || {};
+              const fc = arcgisSource.filterConfig as any || {};
+              const { getCentroid, inferOwnerType, getFieldValue } = await import("./arcgis-importer");
+              
+              const ownerName = getFieldValue(pf.attributes, fm.ownerName || "OWNERNAMES") || "Unknown Owner";
+              const ownerType = inferOwnerType(ownerName);
+              const [pLat, pLng] = getCentroid(pf.geometry, lat, lng);
+              
+              parcelData = {
+                address: situsAddr.toUpperCase(),
+                city: addrFeature.attributes.CITY || fc.defaultCity || matchedMarket.name,
+                zipCode: String(addrFeature.attributes.ZIP || ""),
+                ownerName,
+                ownerType,
+                latitude: pLat,
+                longitude: pLng,
+                sourceId: parcelNo,
+                county: fc.county || matchedMarket.counties?.[0] || "",
+                state: fc.defaultState || matchedMarket.state || "CO",
+              };
+            }
+          }
+        } catch (arcErr: any) {
+          console.log(`[Lookup] ArcGIS query failed: ${arcErr.message}`);
+        }
+      }
+
+      const leadData: any = {
+        marketId: matchedMarket.id,
+        address: parcelData?.address || address.split(",")[0].trim().toUpperCase(),
+        city: parcelData?.city || matchedMarket.name,
+        county: parcelData?.county || matchedMarket.counties?.[0] || "",
+        state: parcelData?.state || matchedMarket.state || "",
+        zipCode: parcelData?.zipCode || "",
+        latitude: parcelData?.latitude || lat,
+        longitude: parcelData?.longitude || lng,
+        ownerName: parcelData?.ownerName || "Unknown Owner",
+        ownerType: parcelData?.ownerType || "Individual",
+        llcName: parcelData?.ownerType === "LLC" ? parcelData.ownerName : null,
+        sqft: 5000,
+        yearBuilt: 1995,
+        constructionType: "Masonry",
+        zoning: "Commercial",
+        stories: 1,
+        units: 1,
+        hailEvents: 0,
+        distressScore: 0,
+        intelligenceScore: 0,
+        leadScore: 25,
+        status: "new",
+        sourceType: parcelData?.sourceId ? `lookup_${matchedMarket.state?.toLowerCase() || "manual"}` : "manual_entry",
+        sourceId: parcelData?.sourceId || `manual_${Date.now()}`,
+        enrichmentStatus: "pending",
+        dataConfidence: "low",
+      };
+
+      const newLead = await storage.createLead(leadData);
+      console.log(`[Lookup] Created lead for "${address}" → ${newLead.id} (market: ${matchedMarket.name})`);
+
+      res.json({
+        message: `Property added to ${matchedMarket.name} pipeline`,
+        lead: { ...newLead, dataConfidence: computeDataConfidence(newLead) },
+        alreadyExists: false,
+        parcelDataFound: !!parcelData,
+      });
+    } catch (error: any) {
+      console.error("[Lookup] Error:", error);
+      res.status(500).json({ message: "Failed to look up property" });
+    }
+  });
+
   app.get("/api/leads/:id", async (req, res) => {
     try {
       const lead = await storage.getLeadById(req.params.id);

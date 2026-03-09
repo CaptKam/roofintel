@@ -40,7 +40,17 @@ import {
   Layers,
   ShieldAlert,
   ArrowUpDown,
+  Plus,
+  Loader2,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { SavedFilterBar } from "@/components/saved-filter-bar";
 import { AIFilterBar } from "@/components/ai-filter-bar";
 import type { Lead } from "@shared/schema";
@@ -61,6 +71,9 @@ export default function Leads() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [showAddProperty, setShowAddProperty] = useState(false);
+  const [lookupAddress, setLookupAddress] = useState("");
+  const [lookupLoading, setLookupLoading] = useState(false);
   const [county, setCounty] = useState<string>(urlParams.get("county") || "");
   const [minScore, setMinScore] = useState<string>(urlParams.get("minScore") || "");
   const [zoning, setZoning] = useState<string>(urlParams.get("zoning") || "");
@@ -220,6 +233,44 @@ export default function Leads() {
     setExporting(false);
   };
 
+  const handleLookup = async () => {
+    if (!lookupAddress.trim()) return;
+    setLookupLoading(true);
+    try {
+      const res = await apiRequest("POST", "/api/leads/lookup", {
+        address: lookupAddress.trim(),
+        marketId: activeMarket?.id,
+      });
+      const data = await res.json();
+      if (data.alreadyExists) {
+        toast({
+          title: "Already in pipeline",
+          description: `${data.lead.address} is already tracked in your ${activeMarket?.name || ""} pipeline.`,
+        });
+      } else {
+        toast({
+          title: "Property added",
+          description: `${data.lead.address}, ${data.lead.city} added to your pipeline.${data.parcelDataFound ? " Owner & parcel data found." : ""}`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      }
+      setShowAddProperty(false);
+      setLookupAddress("");
+    } catch (err: any) {
+      let msg = "Failed to look up property";
+      try {
+        const errText = err?.message || "";
+        if (errText.includes("{")) {
+          msg = JSON.parse(errText.slice(errText.indexOf("{"))).message || msg;
+        } else if (errText) {
+          msg = errText;
+        }
+      } catch {}
+      toast({ title: "Lookup failed", description: msg, variant: "destructive" });
+    }
+    setLookupLoading(false);
+  };
+
   const unmaskedCount = !isLoading && leads ? leads.filter(l => l.managingMember).length : 0;
 
   return (
@@ -243,15 +294,24 @@ export default function Leads() {
             )}
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleExport}
-          disabled={exporting || isLoading || total === 0}
-          data-testid="button-export-csv"
-        >
-          <Download className="w-4 h-4 mr-1.5" />
-          {exporting ? "Exporting..." : "Export CSV"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowAddProperty(true)}
+            data-testid="button-add-property"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            Add Property
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={exporting || isLoading || total === 0}
+            data-testid="button-export-csv"
+          >
+            <Download className="w-4 h-4 mr-1.5" />
+            {exporting ? "Exporting..." : "Export CSV"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -702,6 +762,61 @@ export default function Leads() {
           </p>
         </div>
       )}
+
+      <Dialog open={showAddProperty} onOpenChange={setShowAddProperty}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add Property</DialogTitle>
+            <DialogDescription>
+              Enter a street address to look up property and owner data from public records.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Input
+                placeholder="e.g. 2908 S Timberline Rd, Fort Collins, CO 80525"
+                value={lookupAddress}
+                onChange={(e) => setLookupAddress(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !lookupLoading && handleLookup()}
+                disabled={lookupLoading}
+                data-testid="input-lookup-address"
+                className="h-11"
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Include city and state for best results. The property will be matched to {activeMarket?.name || "your active market"}.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => { setShowAddProperty(false); setLookupAddress(""); }}
+                disabled={lookupLoading}
+                data-testid="button-cancel-lookup"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleLookup}
+                disabled={lookupLoading || lookupAddress.trim().length < 5}
+                data-testid="button-submit-lookup"
+              >
+                {lookupLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                    Looking up...
+                  </>
+                ) : (
+                  <>
+                    <Search className="w-4 h-4 mr-1.5" />
+                    Look Up Property
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
