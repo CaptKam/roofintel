@@ -5708,6 +5708,179 @@ ${pages.map(p => `  <url><loc>${baseUrl}${p}</loc><changefreq>daily</changefreq>
   startXweatherMonitor(2);
 
   // ═══════════════════════════════════════════════════════════
+  // UNIFIED ENRICHMENT: 3 simple actions (Free, Skip Trace, Google Places)
+  // ═══════════════════════════════════════════════════════════
+
+  // 1. FREE ENRICHMENT — single lead (runs all free agents: TX SOS, County Clerk, Phone, Web Research, SEC EDGAR)
+  app.post("/api/unified/enrich-free/:leadId", async (req, res) => {
+    try {
+      const { leadId } = req.params;
+      const lead = await storage.getLeadById(leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      // Mark enriching
+      await storage.updateLead(leadId, { enrichmentStatus: "enriching" });
+
+      const results: Array<{ agent: string; status: string; detail?: string }> = [];
+
+      // TX SOS (TX only)
+      if (lead.state === "TX") {
+        try {
+          const { enrichLeadFromTXSOS } = await import("./tx-sos");
+          await enrichLeadFromTXSOS(leadId);
+          results.push({ agent: "TX SOS", status: "complete" });
+        } catch (err: any) { results.push({ agent: "TX SOS", status: "error", detail: err.message }); }
+      }
+
+      // County Clerk (TX only)
+      if (lead.state === "TX") {
+        try {
+          const { enrichLeadFromCountyClerk } = await import("./county-clerk");
+          await enrichLeadFromCountyClerk(leadId);
+          results.push({ agent: "County Clerk", status: "complete" });
+        } catch (err: any) { results.push({ agent: "County Clerk", status: "error", detail: err.message }); }
+      }
+
+      // SEC EDGAR (all states)
+      try {
+        const { enrichLeadFromEdgar } = await import("./sec-edgar");
+        await enrichLeadFromEdgar(leadId);
+        results.push({ agent: "SEC EDGAR", status: "complete" });
+      } catch (err: any) { results.push({ agent: "SEC EDGAR", status: "error", detail: err.message }); }
+
+      // Phone discovery
+      try {
+        const { enrichLeadPhones } = await import("./phone-enrichment");
+        await enrichLeadPhones([leadId]);
+        results.push({ agent: "Phone Discovery", status: "complete" });
+      } catch (err: any) { results.push({ agent: "Phone Discovery", status: "error", detail: err.message }); }
+
+      // Web research
+      try {
+        const { runWebResearch } = await import("./web-research-agent");
+        await runWebResearch([leadId]);
+        results.push({ agent: "Web Research", status: "complete" });
+      } catch (err: any) { results.push({ agent: "Web Research", status: "error", detail: err.message }); }
+
+      // Recalculate score
+      const updatedLead = await storage.getLeadById(leadId);
+      const newScore = calculateScore(updatedLead || lead);
+      await storage.updateLeadScore(leadId, newScore);
+
+      await storage.updateLead(leadId, { enrichmentStatus: "complete", lastEnrichedAt: new Date() });
+
+      res.json({
+        success: true,
+        leadId,
+        newScore,
+        agentsRun: results.length,
+        results,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Free enrichment error", error: error.message });
+    }
+  });
+
+  // 2. PAID SKIP TRACE — single lead (Hunter.io + PDL + Owner Intelligence)
+  app.post("/api/unified/skip-trace/:leadId", async (req, res) => {
+    try {
+      const { leadId } = req.params;
+      const lead = await storage.getLeadById(leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const results: Array<{ agent: string; status: string; detail?: string }> = [];
+
+      // Hunter.io
+      try {
+        const { searchHunterDomain } = await import("./hunter-io");
+        const domain = (lead as any).website || (lead as any).ownerWebsite;
+        if (domain) {
+          const hunterResult = await searchHunterDomain(domain);
+          results.push({ agent: "Hunter.io", status: "complete", detail: `${hunterResult?.emails?.length || 0} emails found` });
+        } else {
+          results.push({ agent: "Hunter.io", status: "skipped", detail: "No domain available" });
+        }
+      } catch (err: any) { results.push({ agent: "Hunter.io", status: "error", detail: err.message }); }
+
+      // PDL
+      try {
+        const { enrichPersonPDL } = await import("./pdl-enrichment");
+        const pdlResult = await enrichPersonPDL(leadId);
+        results.push({ agent: "PDL", status: "complete", detail: pdlResult?.person ? "Match found" : "No match" });
+      } catch (err: any) { results.push({ agent: "PDL", status: "error", detail: err.message }); }
+
+      // Owner Intelligence pipeline
+      try {
+        const { runOwnerIntelligence } = await import("./owner-intelligence");
+        await runOwnerIntelligence(leadId);
+        results.push({ agent: "Owner Intelligence", status: "complete" });
+      } catch (err: any) { results.push({ agent: "Owner Intelligence", status: "error", detail: err.message }); }
+
+      // Recalculate score
+      const updatedLead = await storage.getLeadById(leadId);
+      const newScore = calculateScore(updatedLead || lead);
+      await storage.updateLeadScore(leadId, newScore);
+
+      res.json({
+        success: true,
+        leadId,
+        newScore,
+        agentsRun: results.length,
+        results,
+        costType: "paid",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Skip trace error", error: error.message });
+    }
+  });
+
+  // 3. PAID GOOGLE PLACES — single lead (Google Places API + Serper)
+  app.post("/api/unified/google-places/:leadId", async (req, res) => {
+    try {
+      const { leadId } = req.params;
+      const lead = await storage.getLeadById(leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+      const results: Array<{ agent: string; status: string; detail?: string }> = [];
+
+      // Google Places via enrichment orchestrator
+      if (process.env.GOOGLE_PLACES_API_KEY) {
+        try {
+          const { enrichLeadPaidApis } = await import("./lead-enrichment-orchestrator");
+          const gpResult = await enrichLeadPaidApis(leadId);
+          results.push({ agent: "Google Places", status: "complete", detail: gpResult?.phone ? `Phone: ${gpResult.phone}` : "Done" });
+        } catch (err: any) { results.push({ agent: "Google Places", status: "error", detail: err.message }); }
+      } else {
+        results.push({ agent: "Google Places", status: "skipped", detail: "API key not configured" });
+      }
+
+      // Serper web search via owner intelligence
+      if (process.env.SERPER_API_KEY) {
+        try {
+          const { runOwnerIntelligence } = await import("./owner-intelligence");
+          const serperResult = await runOwnerIntelligence(lead as any, { skipPaidApis: false });
+          results.push({ agent: "Serper Search", status: "complete", detail: serperResult?.managingMember || "Done" });
+        } catch (err: any) { results.push({ agent: "Serper Search", status: "error", detail: err.message }); }
+      } else {
+        results.push({ agent: "Serper Search", status: "skipped", detail: "API key not configured" });
+      }
+
+      const updatedLead = await storage.getLeadById(leadId);
+      const newScore = calculateScore(updatedLead || lead);
+      await storage.updateLeadScore(leadId, newScore);
+
+      res.json({
+        success: true,
+        leadId,
+        newScore,
+        agentsRun: results.length,
+        results,
+        costType: "paid",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Google Places error", error: error.message });
+    }
+  });
   // AUTOMATION ENGINE ENDPOINTS
   // ═══════════════════════════════════════════════════════════
 
