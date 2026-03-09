@@ -163,6 +163,7 @@ export async function seedDatabase() {
   const existingMarkets = await storage.getMarkets();
   if (existingMarkets.length > 0) {
     console.log("Database already seeded, skipping...");
+    await seedFortCollinsMarket();
     return;
   }
 
@@ -382,6 +383,8 @@ export async function seedDatabase() {
   console.log("Seeded Colorado Springs market with data source configurations");
 
   await seedColoradoSpringsSources();
+
+  await seedFortCollinsMarket();
 }
 
 async function seedColoradoSpringsSources() {
@@ -428,4 +431,193 @@ async function seedColoradoSpringsSources() {
   });
 
   console.log("Seeded Colorado Springs Land Records market data source");
+}
+
+async function seedFortCollinsMarket() {
+  const markets = await storage.getMarkets();
+  if (markets.some(m => m.name?.toLowerCase().includes("fort collins"))) {
+    console.log("Fort Collins market already exists, skipping");
+    return;
+  }
+
+  console.log("Seeding Fort Collins market...");
+
+  const fcoMarket = await storage.createMarket({
+    name: "Fort Collins",
+    state: "CO",
+    counties: ["Larimer"],
+    centerLat: 40.5853,
+    centerLng: -105.0844,
+    radiusMiles: 30,
+    isActive: true,
+    boundingBox: {
+      north: 41.02,
+      south: 40.15,
+      east: -104.52,
+      west: -105.65,
+    },
+    metroArea: "Fort Collins",
+  });
+
+  await storage.createDataSource({
+    name: "NOAA Storm Events - Fort Collins",
+    type: "noaa_hail",
+    url: "https://www.ncei.noaa.gov/pub/data/swdi/stormevents/csvfiles/",
+    marketId: fcoMarket.id,
+    isActive: true,
+  });
+
+  await storage.createDataSource({
+    name: "Fort Collins Parcels",
+    type: "cad_arcgis",
+    url: "https://gisweb.fcgov.com/arcgis/rest/services/FCMaps/MapServer/3",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "City of Fort Collins parcel data with owner names, parcel numbers, jurisdiction",
+      fields: ["PARCELNO", "ACCOUNTNO", "OWNERNAMES", "NAME1", "NAME2", "MAILADDRESS1", "MAILADDRESS2", "MAILCITY", "MAILSTATE", "MAILZIPCODE", "JURISDICTION", "SHAPE_Area"],
+      geometryType: "esriGeometryPolygon",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "Fort Collins Parcel Addresses",
+    type: "cad_arcgis",
+    url: "https://gisweb.fcgov.com/arcgis/rest/services/FCMaps/MapServer/0",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "Fort Collins parcel address points with street components and zip codes",
+      fields: ["PARCELNO", "NUMBER_", "FDPRE", "FNAME", "FTYPE", "FDSUF", "BUILDING", "UNIT", "ZIP", "CITY"],
+      geometryType: "esriGeometryPolygon",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "Fort Collins Development Projects",
+    type: "permits",
+    url: "https://gisweb.fcgov.com/arcgis/rest/services/FCMaps/MapServer/30",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "Current development project applications with permit IDs, project names, types, and status",
+      fields: ["PROJECTNUM", "PROJECTNAME", "PROJECTTYPE", "B1_APPL_STATUS"],
+      geometryType: "esriGeometryPoint",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "Fort Collins Zoning",
+    type: "zoning",
+    url: "https://gisweb.fcgov.com/arcgis/rest/services/FCMaps/MapServer/33",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "City of Fort Collins zoning districts",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "CO Business Entities (SOS) - Fort Collins",
+    type: "business_entity",
+    url: "https://data.colorado.gov/resource/4ykn-tg5h.json",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "Colorado Secretary of State business entity registrations. Filter by principalcity=FORT COLLINS",
+      filterParam: "$where=principalcity='FORT COLLINS'",
+      apiType: "socrata",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "NOAA SWDI Radar Hail - Fort Collins",
+    type: "noaa_swdi",
+    url: "https://www.ncei.noaa.gov/access/services/search/v1/data?dataset=swdi-nx3hail",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "Real-time NOAA SWDI NEXRAD Level-3 hail signatures for Fort Collins bounding box",
+      bbox: "-105.65,40.15,-104.52,41.02",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "FEMA Flood Zones - Fort Collins",
+    type: "fema_flood",
+    url: "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "FEMA National Flood Hazard Layer for flood zone risk assessment around Fort Collins properties",
+      bbox: { north: 41.02, south: 40.15, east: -104.52, west: -105.65 },
+    },
+  });
+
+  await storage.createDataSource({
+    name: "OpenStreetMap Buildings - Fort Collins",
+    type: "osm_buildings",
+    url: "https://overpass-api.de/api/interpreter",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "OpenStreetMap Overpass API for building footprint polygons in Fort Collins area",
+      bbox: "40.15,-105.65,41.02,-104.52",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "NAIP Aerial Imagery - Fort Collins",
+    type: "naip_imagery",
+    url: "https://planetarycomputer.microsoft.com/api/stac/v1",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "Microsoft Planetary Computer STAC API for USDA NAIP aerial imagery in Fort Collins area",
+      bbox: [-105.65, 40.15, -104.52, 41.02],
+      collection: "naip",
+    },
+  });
+
+  await storage.createDataSource({
+    name: "Esri Satellite Imagery - Fort Collins",
+    type: "satellite_imagery",
+    url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer",
+    marketId: fcoMarket.id,
+    isActive: true,
+    config: {
+      description: "Esri World Imagery for satellite views of Fort Collins commercial rooftops",
+    },
+  });
+
+  await storage.createMarketDataSource({
+    marketId: fcoMarket.id,
+    sourceName: "Fort Collins Parcels",
+    sourceType: "cad_arcgis",
+    endpoint: "https://gisweb.fcgov.com/arcgis/rest/services/Parcels/MapServer/0/query",
+    fieldMapping: {
+      sourceId: "PARCELID",
+      address: ["SITUS_ADDRESS", "FULL_ADDRESS", "ADDRESS"],
+      ownerName: ["OwnerName", "OWNER_NAME", "OWNER"],
+      city: ["SITUS_CITY", "CITY"],
+      zipCode: ["SITUS_ZIP", "ZIP_CODE"],
+      classDescription: ["LAND_USE_DESC", "USE_CODE_DESC", "PROPTYPE"],
+      totalValue: ["TOTAL_VALUE", "ASSESSED_VALUE"],
+      improvementValue: ["IMP_VALUE", "IMPROVEMENT_VALUE"],
+      landValue: ["LAND_VALUE"],
+      sqft: ["BLDG_SQFT", "BUILDING_SQFT"],
+      yearBuilt: ["YEAR_BUILT", "YR_BUILT"],
+      stories: ["NUM_STORIES"],
+      state: "_STATIC_CO",
+    },
+    filterConfig: {
+      county: "Larimer",
+      defaultCity: "Fort Collins",
+      defaultState: "CO",
+      minImpValue: 50000,
+    },
+    isActive: true,
+  });
+
+  console.log("Seeded Fort Collins market with data source configurations");
 }
