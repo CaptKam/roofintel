@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { PageMeta } from "@/components/page-meta";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -1823,6 +1823,20 @@ export default function Admin() {
   const [dcadMaxRecords, setDcadMaxRecords] = useState("5000");
   const [lastResults, setLastResults] = useState<Record<string, string>>({});
   const [permitYearsBack, setPermitYearsBack] = useState(5);
+  const [showManualControls, setShowManualControls] = useState(false);
+
+  const marketId = activeMarket?.id;
+  const isTexas = activeMarket?.state === "TX";
+  const hasDallas = activeMarket?.counties?.some((c: string) => c.toLowerCase() === "dallas");
+  const hasTarrant = activeMarket?.counties?.some((c: string) => c.toLowerCase() === "tarrant");
+
+  useEffect(() => {
+    setDcadMinValue("100000");
+    setDcadMinSqft("0");
+    setDcadMaxRecords("5000");
+    setPermitYearsBack(5);
+    setLastResults({});
+  }, [marketId]);
 
   const { data: markets, isLoading: marketsLoading } = useQuery<Market[]>({
     queryKey: ["/api/markets"],
@@ -1885,8 +1899,6 @@ export default function Admin() {
   }>({
     queryKey: ["/api/permits/roofing-stats"],
   });
-
-  const marketId = activeMarket?.id;
 
   const { data: violationsStatus, isLoading: violationsLoading } = useQuery<ViolationsStatus>({
     queryKey: ["/api/violations/status"],
@@ -1952,6 +1964,25 @@ export default function Admin() {
     },
     onError: () => {
       toast({ title: "Correlation failed", description: "Could not start hail proximity matching.", variant: "destructive" });
+    },
+  });
+
+  const marketSyncMutation = useMutation({
+    mutationFn: async ({ marketId }: { marketId: string }) => {
+      const res = await apiRequest("POST", "/api/automation/market-load", { marketId });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Market sync started", description: data.message || `Running full pipeline for ${activeMarket?.name}. This may take several minutes.` });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/import/runs"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/enrichment/pipeline-stats"] });
+      }, 15000);
+    },
+    onError: (err: any) => {
+      toast({ title: "Market sync failed", description: err?.message || "Could not start pipeline.", variant: "destructive" });
     },
   });
 
@@ -2726,6 +2757,38 @@ export default function Admin() {
 
 
         <TabsContent value="markets-sources" className="space-y-6">
+          <Card className="shadow-sm border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/10">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <div>
+                <CardTitle className="text-lg font-semibold">One-Click Market Sync: {activeMarket?.name || "Select Market"}</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Automatically runs the full data pipeline for {activeMarket?.name || "the selected market"} — imports properties, fetches NOAA hail data, downloads permits, and maps decision makers.
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 pt-0">
+              <div className="flex items-center gap-3">
+                <Button
+                  size="lg"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => marketId && marketSyncMutation.mutate({ marketId })}
+                  disabled={marketSyncMutation.isPending || !marketId}
+                  data-testid="button-market-sync"
+                >
+                  {marketSyncMutation.isPending ? (
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="w-5 h-5 mr-2" />
+                  )}
+                  Sync {activeMarket?.name || "Market"} Data
+                </Button>
+                {marketSyncMutation.isPending && (
+                  <span className="text-sm text-muted-foreground animate-pulse">Pipeline running...</span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <EnrichmentCreditsCard />
           <BatchFreeEnrichmentCard />
           <BatchGooglePlacesCard />
@@ -2767,7 +2830,24 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
+          <div className="border rounded-lg">
+            <button
+              onClick={() => setShowManualControls(!showManualControls)}
+              className="w-full flex items-center justify-between px-5 py-3 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              data-testid="button-toggle-manual-controls"
+            >
+              <span className="flex items-center gap-2">
+                {showManualControls ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                Advanced: Manual Agent Controls
+              </span>
+              <span className="text-xs text-muted-foreground">Individual data import tools</span>
+            </button>
+          </div>
+
+          {showManualControls && (
+          <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {hasDallas && (
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                 <CardTitle className="text-base font-semibold">
@@ -2845,6 +2925,7 @@ export default function Admin() {
                 </p>
               </CardContent>
             </Card>
+            )}
 
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -2991,6 +3072,7 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -3102,6 +3184,8 @@ export default function Admin() {
               </CardContent>
             </Card>
           </div>
+          </>
+          )}
         </TabsContent>
 
         <TabsContent value="data-quality" className="space-y-6">
@@ -3173,6 +3257,7 @@ export default function Admin() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {hasDallas && (
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                 <CardTitle className="text-base font-semibold">
@@ -3251,7 +3336,9 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
+            )}
 
+            {isTexas && (
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                 <CardTitle className="text-base font-semibold">
@@ -3323,6 +3410,7 @@ export default function Admin() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  {hasDallas && (
                   <Button
                     size="sm"
                     onClick={() => importDallasPermitsMutation.mutate()}
@@ -3336,6 +3424,8 @@ export default function Admin() {
                     )}
                     Import Dallas Permits
                   </Button>
+                  )}
+                  {hasTarrant && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -3350,6 +3440,7 @@ export default function Admin() {
                     )}
                     Fort Worth ({permitYearsBack}yr ArcGIS)
                   </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
@@ -3399,6 +3490,7 @@ export default function Admin() {
                 )}
               </CardContent>
             </Card>
+            )}
 
             <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">

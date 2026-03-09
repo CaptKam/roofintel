@@ -11,6 +11,8 @@ RoofIntel uses a modern web architecture designed for scalability and multi-mark
 
 ### UI/UX Decisions
 The user interface features a professional B2B color scheme (blue/slate), dark sidebar navigation with light/dark mode, and the Inter font family. It utilizes responsive Shadcn/UI components and an interactive Leaflet map for lead visualization, including color-coded markers, detailed popups, live hail tracking, and predictive hail threats. Data quality is indicated by confidence badges and dashboard summary cards. The navigation is streamlined into a 5-item sidebar for optimal user focus: Hail Chaser (unified storm map), Ops Center (daily cockpit with KPIs, Grok Intelligence, ROI Engine, ZIP Priority), Leads (filterable list), Owners (Portfolios, Network graph, Contractors), and Admin (system configuration).
+- **Leads Page**: Features an AI-powered natural language filter bar (Claude Haiku), 5 smart preset tabs (Hot Claim Windows, Big Box Warehouses, High Value Targets, Storm Damaged, Ready to Contact), simplified lead cards showing only Risk badge (≥61), Status, and Score. Advanced filters are collapsed by default.
+- **Admin Page**: One-Click Market Sync card at top of Markets & Sources tab, market-aware conditional rendering (Dallas-specific cards like DCAD/Code Violations gated by `hasDallas`, Building Permits by `isTexas`, Fort Worth buttons by `hasTarrant`), collapsible "Advanced: Manual Agent Controls" section, state reset on market switch.
 
 ### Technical Implementations
 - **Frontend**: React, TypeScript, Vite, TailwindCSS, Shadcn/UI, Recharts, React-Leaflet, Wouter, react-helmet-async.

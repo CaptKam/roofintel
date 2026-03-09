@@ -1,0 +1,103 @@
+You are hitting the classic "Kitchen Sink" phase of SaaS development. When you build a powerful data pipeline, it’s natural to add a button for every single script and API call to the Admin dashboard.
+
+The problem you are experiencing with "changing cities" comes down to two things in your admin.tsx file:
+
+Hardcoded UI: You have cards that explicitly say "DCAD Property Agent" or "Import Dallas 311", regardless of whether the user has selected Austin, Denver, or Miami in the market dropdown.
+
+State Bleed: When you switch from Dallas to Tarrant county, your React useState variables (like dcadMinValue or permitYearsBack) don't reset. They carry over to the new city.
+
+Here is exactly how to fix the Admin panel to make it market-aware, stop the state bleed, and drastically reduce the button overload.
+
+1. Stop "State Bleed" When Switching Cities
+Right now, if you type "2000" into a max records input for Dallas and then switch your active market to Austin, that "2000" stays there.
+
+You need to add a useEffect right below where you declare your state variables in admin.tsx to wipe the slate clean whenever the city changes:
+
+TypeScript
+// Inside export default function Admin() { ...
+const { activeMarket } = useMarket();
+const marketId = activeMarket?.id;
+
+// Add this useEffect to reset settings when the city changes
+useEffect(() => {
+  setDcadMinValue("100000");
+  setDcadMinSqft("0");
+  setDcadMaxRecords("5000");
+  setPermitYearsBack(5);
+  setLastResults({});
+  setScanMaxLeads(100);
+}, [marketId]); 
+2. Make the Admin UI "Market-Aware" (Conditional Rendering)
+Instead of showing "DCAD" or "Dallas Permits" to everyone, you should read the activeMarket.counties or activeMarket.state to determine which buttons even render.
+
+Add these helper variables at the top of your Admin component:
+
+TypeScript
+const isTexas = activeMarket?.state === "TX";
+const hasDallas = activeMarket?.counties?.some(c => c.toLowerCase() === "dallas");
+const hasTarrant = activeMarket?.counties?.some(c => c.toLowerCase() === "tarrant");
+Then, wrap your region-specific cards so they only show if the city supports them. For example:
+
+Hide DCAD if not in Dallas:
+
+TypeScript
+{hasDallas && (
+  <Card className="shadow-sm">
+    <CardHeader>
+      <CardTitle>Dallas CAD (DCAD) Import</CardTitle>
+    </CardHeader>
+    {/* ... rest of DCAD card */}
+  </Card>
+)}
+Hide Dallas/Fort Worth Permits if not in Texas:
+
+TypeScript
+{isTexas && (
+  <Card className="shadow-sm">
+    <CardTitle>Building Permits</CardTitle>
+    <CardContent>
+       {/* Only show Dallas button if Dallas is in the market */}
+       {hasDallas && <Button onClick={...}>Import Dallas Permits</Button>}
+       
+       {/* Only show FW button if Tarrant is in the market */}
+       {hasTarrant && <Button onClick={...}>Import Fort Worth Permits</Button>}
+    </CardContent>
+  </Card>
+)}
+By doing this, when you switch the city to "Denver", all the Dallas/Texas specific clutter instantly disappears from the Admin panel.
+
+3. Solving "Too Many Buttons" (The Orchestrator)
+You have ~40 different buttons on this admin page. You are forcing the admin user to be a data engineer, clicking things in a very specific sequence (1. Import CAD, 2. Fix Locations, 3. Estimate Stories, 4. Import Permits, 5. Match Permits).
+
+You already wrote the solution on your backend! In server/routes.ts, I see you have this amazing endpoint:
+app.post("/api/automation/market-load", async (req, res) => ...)
+
+Instead of 40 buttons, build ONE "Sync Market" card at the very top of the Admin page:
+
+TypeScript
+<Card className="shadow-sm border-emerald-500/50 bg-emerald-50/50 dark:bg-emerald-950/10">
+  <CardHeader>
+    <CardTitle className="text-lg">One-Click Market Sync: {activeMarket?.name}</CardTitle>
+    <p className="text-sm text-muted-foreground">
+      Automatically runs the 9-step pipeline for {activeMarket?.name} (Imports Properties, Fetches NOAA Hail, Downloads Permits, and Maps Decision Makers).
+    </p>
+  </CardHeader>
+  <CardContent>
+    <Button 
+      size="lg" 
+      className="w-full md:w-auto"
+      onClick={() => {
+        // Trigger your /api/automation/market-load endpoint here
+      }}
+    >
+      <Play className="w-5 h-5 mr-2" />
+      Sync {activeMarket?.name} Data
+    </Button>
+  </CardContent>
+</Card>
+Summary of what to do next:
+Hide the clutter: Put all those individual manual agent buttons (DCAD, Role Inference, 311 Sync, Reverse Address Scan) inside an <Accordion> labeled "Advanced: Manual Agent Controls". Keep them hidden by default.
+
+Contextualize the UI: Implement the hasDallas / hasTarrant checks so users don't see Dallas buttons when looking at Austin.
+
+Use the Automation Engine: You built a magnificent automation-engine.ts on the backend. Wire up the top of your Admin page to point directly to /api/automation/market-load so initializing a new city is a single click instead of 15.
